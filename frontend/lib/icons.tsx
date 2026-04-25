@@ -1,0 +1,36 @@
+// lib/icons.tsx
+import {
+  ImageIcon,
+  VideoIcon,
+  Calendar,
+  MapPin,
+  User,
+  LinkIcon,
+  Globe,
+  Radio,
+  Eye,
+  EyeOff,
+  AlertCircle,
+  Type,
+  FileText,
+  Trash2,
+  Upload,
+} from "lucide-react";
+
+export const Icons = {
+  Image: ImageIcon,
+  Video: VideoIcon,
+  Calendar,
+  MapPin,
+  User,
+  Link: LinkIcon,
+  Globe,
+  Radio,
+  Eye,
+  EyeOff,
+  Alert: AlertCircle,
+  Type,
+  FileText,
+  Trash: Trash2,
+  Upload,
+} as const;
