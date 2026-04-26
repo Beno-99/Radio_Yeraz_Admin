@@ -1,6 +1,7 @@
 // src/firebase/firebase.service.ts
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import * as admin from 'firebase-admin';
+import { BatchResponse } from 'firebase-admin/messaging';
 
 @Injectable()
 export class FirebaseService implements OnModuleInit {
@@ -30,14 +31,18 @@ export class FirebaseService implements OnModuleInit {
   }
 
   // Send to multiple device tokens
-  async sendToMultipleDevices(tokens: string[], title: string, body: string) {
-    const message: admin.messaging.MulticastMessage = {
-      tokens,
-      notification: { title, body },
-    };
-    return admin.messaging().sendEachForMulticast(message);
-  }
+ async sendToMultipleDevices(
+  tokens: string[],
+  title: string,
+  body: string
+): Promise<admin.messaging.BatchResponse> {
+  const message: admin.messaging.MulticastMessage = {
+    tokens,
+    notification: { title, body },
+  };
 
+  return admin.messaging().sendEachForMulticast(message);
+}
   // Send to a topic (e.g., "emergency-alerts")
   async sendToTopic(topic: string, title: string, body: string, data?: Record<string, string>) {
     console.log('Init The Message');
