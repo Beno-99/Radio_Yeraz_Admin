@@ -1,4 +1,3 @@
-// src/posts/posts.service.ts
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Post, PostDocument } from './schemas/post.schema';
@@ -6,7 +5,11 @@ import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
 import { Admin, Role } from '../admin/schemas/admin.schema';
 import { NotificationGateway } from '../notifications/notification.gateway';
-import { BadRequestException, NotFoundException,Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  NotFoundException,
+  Injectable,
+} from '@nestjs/common';
 import { isValidObjectId } from 'mongoose';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -19,59 +22,48 @@ export class PostsService {
     private notificationGateway: NotificationGateway,
   ) {}
 
-  // ============ CREATE ============
   async create(
     createPostDto: CreatePostDto & { author: string },
     authorId: string,
   ): Promise<PostDocument> {
-    console.log('=== SERVICE CREATE POST ===');
-    console.log('DTO:', createPostDto);
-    console.log('Author ID:', authorId);
-
     try {
       const author = await this.adminModel.findById(authorId);
-      if (!author) {
-        console.log('Author not found:', authorId);
-        throw new NotFoundException('Author not found');
-      }
+      if (!author) throw new NotFoundException('Author not found');
+
+      const isPublishedValue = Boolean(createPostDto.isPublished);
+const isLiveValue = Boolean(createPostDto.isLive);
 
       const post = new this.postModel({
-        ...createPostDto,
-        author: authorId,
-        postedDate: new Date(),
-      });
+  ...createPostDto,
+  author: authorId,
+  postedDate: new Date(),
+  expiresAt: new Date(Date.now() + 1 * 60 * 1000),
+  status: isPublishedValue ? 'published' : 'draft',
+  isPublished: isPublishedValue,
+  isLive: isLiveValue,
+});
 
       const savedPost = await post.save();
-      console.log('Post saved:', savedPost._id);
 
-      // ── Notification logic ───────────────────────────────────────
       try {
         const authorName =
           author.displayName || author.username || author.email || 'Admin';
 
         if (savedPost.isPublished) {
-          // Published → notify everyone (mobile + admin)
           await this.notificationGateway.emitNewPost(savedPost, authorName);
-          console.log('✅ Published notification emitted to everyone');
         } else {
-          // Draft → notify admin dashboard only
           await this.notificationGateway.emitNewDraft(savedPost, authorName);
-          console.log('✅ Draft notification emitted to admin only');
         }
       } catch (notifError) {
         console.error('⚠️ Notification emit failed:', (notifError as Error).message);
       }
-      // ────────────────────────────────────────────────────────────
 
       return savedPost.populate('author', 'username displayName role');
     } catch (error) {
-      console.error('Service create error:', error);
-      console.error('Error stack:', (error as Error).stack);
       throw error;
     }
   }
 
-  // ============ READ ============
   async findAll(
     page: number = 1,
     limit: number = 10,
@@ -121,8 +113,9 @@ export class PostsService {
 
   async findById(id: string): Promise<PostDocument> {
     if (!isValidObjectId(id)) {
-    throw new BadRequestException('Invalid post id');
-  }
+      throw new BadRequestException('Invalid post id');
+    }
+
     const post = await this.postModel
       .findById(id)
       .populate('author', 'username displayName role')
@@ -142,7 +135,12 @@ export class PostsService {
 
   async findLivePosts() {
     return this.postModel
-      .find({ isLive: true, isPublished: true })
+      .find({
+        isLive: true,
+        isPublished: true,
+        status: 'published',
+        expiresAt: { $gte: new Date() },
+      })
       .populate('author', 'username displayName')
       .sort({ postedDate: -1 })
       .exec();
@@ -150,7 +148,11 @@ export class PostsService {
 
   async findRecentPosts(limit: number = 5) {
     return this.postModel
-      .find({ isPublished: true })
+      .find({
+        isPublished: true,
+        status: 'published',
+        expiresAt: { $gte: new Date() },
+      })
       .populate('author', 'username displayName')
       .sort({ postedDate: -1 })
       .limit(limit)
@@ -161,6 +163,8 @@ export class PostsService {
     return this.postModel
       .find({
         isPublished: true,
+        status: 'published',
+        expiresAt: { $gte: new Date() },
         $or: [
           { title: { $regex: query, $options: 'i' } },
           { description: { $regex: query, $options: 'i' } },
@@ -173,12 +177,10 @@ export class PostsService {
       .exec();
   }
 
-  // ============ UPDATE ============
   async update(
     id: string,
     updatePostDto: UpdatePostDto,
   ): Promise<PostDocument> {
-    // Get old post to check if isPublished changed
     const oldPost = await this.postModel.findById(id).exec();
 
     const updateData: any = { ...updatePostDto };
@@ -187,31 +189,52 @@ export class PostsService {
     );
     updateData.updatedAt = new Date();
 
+    if (updateData.isPublished !== undefined) {
+      updateData.isPublished =
+        updateData.isPublished === true || updateData.isPublished === 'true';
+    }
+
+    if (updateData.isLive !== undefined) {
+      updateData.isLive =
+        updateData.isLive === true || updateData.isLive === 'true';
+    }
+
+    if (updateData.eventDate !== undefined && oldPost?.eventDate) {
+      const oldEventDate = new Date(oldPost.eventDate).getTime();
+      const newEventDate = new Date(updateData.eventDate).getTime();
+
+      if (!Number.isNaN(newEventDate) && oldEventDate !== newEventDate) {
+        updateData.isPublished = true;
+        updateData.status = 'published';
+      }
+    }
+
+    if (updateData.isPublished !== undefined) {
+      updateData.status = updateData.isPublished ? 'published' : 'draft';
+    }
+
     const post = await this.postModel
       .findByIdAndUpdate(id, updateData, { new: true, runValidators: true })
       .exec();
 
     if (!post) throw new NotFoundException('Post not found');
 
-    // ── Notification logic ───────────────────────────────────────
     try {
       const author = await this.adminModel.findById(post.author);
       const authorName =
         author?.displayName || author?.username || author?.email || 'Admin';
 
       if (!oldPost?.isPublished && post.isPublished) {
-        // Was draft → now published: notify everyone (mobile + admin)
         await this.notificationGateway.emitNewPost(post, authorName);
-        console.log('✅ Post published — notification sent to everyone');
       } else {
-        // Just updated → notify admin only
         await this.notificationGateway.emitPostUpdated(post, authorName);
-        console.log('✅ Post updated — notification sent to admin only');
       }
     } catch (notifError) {
-      console.error('⚠️ Notification emit failed:', notifError instanceof Error ? notifError.message : String(notifError));
+      console.error(
+        '⚠️ Notification emit failed:',
+        notifError instanceof Error ? notifError.message : String(notifError),
+      );
     }
-    // ────────────────────────────────────────────────────────────
 
     return post;
   }
@@ -232,22 +255,33 @@ export class PostsService {
         await this.notificationGateway.emitPostPublished(post, authorName);
       }
     } catch (notifError) {
-      console.error('⚠️ Notification emit failed:', notifError instanceof Error ? notifError.message : String(notifError));
+      console.error(
+        '⚠️ Notification emit failed:',
+        notifError instanceof Error ? notifError.message : String(notifError),
+      );
     }
 
     return post.populate('author', 'username displayName role');
   }
 
-  // ============ DELETE WITH MEDIA CLEANUP ============
-  async delete(id: string): Promise<PostDocument> {
-    console.log('=== DELETING POST WITH MEDIA CLEANUP ===');
-
-    const post = await this.postModel.findById(id).exec();
+  async republish(id: string): Promise<PostDocument> {
+    const post = await this.postModel.findById(id);
     if (!post) throw new NotFoundException('Post not found');
 
-    console.log('🗑️ Deleting post:', post.title);
-    console.log('📸 mainImage:', post.mainImage || 'none');
-    console.log('🎥 video:', post.video || 'none');
+    post.status = 'published';
+    post.isPublished = true;
+    post.isLive = true;
+    post.postedDate = new Date();
+    post.expiresAt = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
+    post.updatedAt = new Date();
+
+    await post.save();
+    return post.populate('author', 'username displayName role');
+  }
+
+  async delete(id: string): Promise<PostDocument> {
+    const post = await this.postModel.findById(id).exec();
+    if (!post) throw new NotFoundException('Post not found');
 
     try {
       if (post.mainImage && post.mainImage.trim() !== '') {
@@ -265,7 +299,6 @@ export class PostsService {
           const fullPath = path.join(process.cwd(), filePath);
           if (fs.existsSync(fullPath)) {
             fs.unlinkSync(fullPath);
-            console.log('✅ Image deleted successfully');
             break;
           }
         }
@@ -284,7 +317,6 @@ export class PostsService {
           const fullPath = path.join(process.cwd(), filePath);
           if (fs.existsSync(fullPath)) {
             fs.unlinkSync(fullPath);
-            console.log('✅ Video deleted successfully');
             break;
           }
         }
@@ -293,14 +325,16 @@ export class PostsService {
       console.error('❌ Error deleting media files:', error);
     }
 
-    // Admin only notification for delete
     try {
       const author = await this.adminModel.findById(post.author);
       const authorName =
         author?.displayName || author?.username || author?.email || 'Admin';
       await this.notificationGateway.emitPostDeleted(post.title, authorName);
     } catch (notifError) {
-      console.error('⚠️ Notification emit failed:', notifError instanceof Error ? notifError.message : String(notifError));
+      console.error(
+        '⚠️ Notification emit failed:',
+        notifError instanceof Error ? notifError.message : String(notifError),
+      );
     }
 
     const deletedPost = await this.postModel
@@ -308,11 +342,9 @@ export class PostsService {
       .populate('author', 'username displayName role')
       .exec();
 
-    console.log('✅ Post document deleted successfully from MongoDB');
     return deletedPost;
   }
 
-  // ============ AUTHORIZATION ============
   async canAdminEditPost(
     postId: string,
     adminId: string,
@@ -337,7 +369,6 @@ export class PostsService {
     return false;
   }
 
-  // ============ STATISTICS ============
   async getStatistics(): Promise<any> {
     const [total, live, byAuthor, recentPosts, postsByMonth] =
       await Promise.all([
@@ -379,7 +410,6 @@ export class PostsService {
     };
   }
 
-  // ============ BULK OPERATIONS ============
   async bulkUpdateIsLive(ids: string[], isLive: boolean): Promise<number> {
     const result = await this.postModel.updateMany(
       { _id: { $in: ids } },
@@ -389,13 +419,9 @@ export class PostsService {
   }
 
   async deleteByAuthor(authorId: string): Promise<number> {
-    console.log('=== BULK DELETE BY AUTHOR ===');
-
     const posts = await this.postModel
       .find({ author: new Types.ObjectId(authorId) })
       .exec();
-
-    console.log(`Found ${posts.length} posts to delete`);
 
     let mediaFilesDeleted = 0;
     posts.forEach((post) => {
@@ -419,13 +445,10 @@ export class PostsService {
       }
     });
 
-    console.log(`Deleted ${mediaFilesDeleted} media files`);
-
     const result = await this.postModel.deleteMany({
       author: new Types.ObjectId(authorId),
     });
 
-    console.log(`Deleted ${result.deletedCount} post documents`);
     return result.deletedCount;
   }
 }

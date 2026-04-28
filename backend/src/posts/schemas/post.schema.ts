@@ -1,7 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema, Types } from 'mongoose';
-import { Admin } from '../../admin/schemas/admin.schema';
-import { Optional } from '@nestjs/common';
 
 export type PostDocument = Post & Document;
 
@@ -40,6 +38,13 @@ export class Post {
   @Prop({ type: Boolean, default: false })
   isPublished: boolean;
 
+  @Prop({
+    type: String,
+    enum: ['draft', 'published', 'expired'],
+    default: 'draft',
+  })
+  status: 'draft' | 'published' | 'expired';
+
   @Prop({ default: Date.now })
   postedDate: Date;
 
@@ -57,7 +62,7 @@ export class Post {
 
   @Prop({
     type: Date,
-    default: () => new Date(Date.now() + 10 * 24 * 60 * 60 * 1000), // 10 days from now
+    default: () => new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
   })
   expiresAt: Date;
 

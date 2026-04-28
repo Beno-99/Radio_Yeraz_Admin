@@ -1,7 +1,6 @@
-// app/dashboard/posts/[id]/edit/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
@@ -20,6 +19,10 @@ export default function EditPostPage() {
   const [currentImagePath, setCurrentImagePath] = useState("");
   const [hasVideo, setHasVideo] = useState(false);
   const [videoUrl, setVideoUrl] = useState("");
+  const [postMeta, setPostMeta] = useState({
+    postedDate: "",
+    expiresAt: "",
+  });
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -34,7 +37,6 @@ export default function EditPostPage() {
   const mediaUrl =
     process.env.NEXT_PUBLIC_MEDIA_GET_URL || "http://localhost:8000";
 
-  // Fetch post data
   useEffect(() => {
     const fetchPost = async () => {
       try {
@@ -58,13 +60,16 @@ export default function EditPostPage() {
           isPublished: post.isPublished ?? false,
         });
 
-        // Check for video
+        setPostMeta({
+          postedDate: post.postedDate || "",
+          expiresAt: post.expiresAt || "",
+        });
+
         if (post.video) {
           setHasVideo(true);
           setVideoUrl(post.video);
         }
 
-        // Set image if exists
         if (post.mainImage && post.mainImage !== "[object Object]") {
           setCurrentImagePath(post.mainImage);
         }
@@ -77,6 +82,18 @@ export default function EditPostPage() {
 
     fetchPost();
   }, [postId]);
+
+  const postStatus = useMemo(() => {
+    const now = new Date();
+    const expiresAt = postMeta.expiresAt ? new Date(postMeta.expiresAt) : null;
+    const postedDate = postMeta.postedDate ? new Date(postMeta.postedDate) : null;
+
+    if (expiresAt && expiresAt < now) return "Expired";
+    if (postedDate && postedDate > now) return "Scheduled";
+    if (formData.isLive) return "Live";
+    if (formData.isPublished) return "Published";
+    return "Draft";
+  }, [formData.isLive, formData.isPublished, postMeta]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,7 +108,6 @@ export default function EditPostPage() {
       return;
     }
 
-    // 🔔 Confirm before update
     const confirm = await Swal.fire({
       title: "Are you sure?",
       text: "Do you want to save changes?",
@@ -117,12 +133,12 @@ export default function EditPostPage() {
       formDataToSend.append("link", formData.link || "");
       formDataToSend.append("isLive", String(formData.isLive));
       formDataToSend.append("isPublished", String(formData.isPublished));
+      formDataToSend.append("expiresAt", postMeta.expiresAt || "");
 
       if (selectedFile && !hasVideo) {
         formDataToSend.append("mainImage", selectedFile);
       }
 
-      // 🔄 Loading alert
       Swal.fire({
         title: "Updating post...",
         text: "Please wait",
@@ -179,6 +195,17 @@ export default function EditPostPage() {
       : `${mediaUrl}${videoUrl}`
     : undefined;
 
+  const badgeClass =
+    postStatus === "Live"
+      ? "bg-red-100 text-red-700"
+      : postStatus === "Published"
+        ? "bg-green-100 text-green-700"
+        : postStatus === "Scheduled"
+          ? "bg-blue-100 text-blue-700"
+          : postStatus === "Expired"
+            ? "bg-gray-100 text-gray-700"
+            : "bg-yellow-100 text-yellow-700";
+
   return (
     <div className="max-w-3xl mx-auto p-6">
       <button
@@ -189,10 +216,14 @@ export default function EditPostPage() {
       </button>
 
       <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <h1 className="text-2xl font-bold mb-6">Edit Post</h1>
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold">Edit Post</h1>
+          <span className={`px-3 py-1 rounded-full text-xs font-medium ${badgeClass}`}>
+            {postStatus}
+          </span>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Video Preview */}
           {hasVideo && fullVideoUrl && (
             <div className="mb-4">
               <label className="block text-sm font-medium mb-2">
@@ -208,7 +239,6 @@ export default function EditPostPage() {
             </div>
           )}
 
-          {/* Image Upload - Only if no video */}
           {!hasVideo && (
             <SimpleImageUpload
               onImageSelect={setSelectedFile}
@@ -289,6 +319,7 @@ export default function EditPostPage() {
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
             />
           </div>
+
           <div>
             <label className="block text-sm font-medium mb-2">Link</label>
             <input
@@ -301,7 +332,6 @@ export default function EditPostPage() {
             />
           </div>
 
-          {/* Live Checkbox */}
           <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
             <input
               type="checkbox"
@@ -322,7 +352,6 @@ export default function EditPostPage() {
             </label>
           </div>
 
-          {/* Published Checkbox */}
           <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
             <input
               type="checkbox"

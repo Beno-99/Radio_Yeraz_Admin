@@ -1,6 +1,6 @@
 // src/ads/ads.scheduler.ts
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Ad, AdDocument } from './schemas/ad.schema';
@@ -14,10 +14,43 @@ export class AdsScheduler {
   constructor(
     @InjectModel(Ad.name) private adModel: Model<AdDocument>,
     private notificationGateway: NotificationGateway,
-    private notificationService: NotificationService, // ← ADD
+    private notificationService: NotificationService,
   ) {}
 
-  @Cron('0 9 * * *') // ← 9 AM daily (change to EVERY_MINUTE for testing)
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  async syncAdStatuses() {
+    const now = new Date();
+
+    const activateResult = await this.adModel.updateMany(
+      {
+        startDate: { $lte: now },
+        endDate: { $gte: now },
+        isActive: { $ne: true },
+      },
+      {
+        $set: { isActive: true, updatedAt: now },
+      },
+    );
+
+    const deactivateResult = await this.adModel.updateMany(
+      {
+        $or: [
+          { startDate: { $gt: now } },
+          { endDate: { $gt: now } },
+        ],
+        isActive: { $ne: false },
+      },
+      {
+        $set: { isActive: false, updatedAt: now },
+      },
+    );
+
+    this.logger.log(
+      `Ads synced. Activated: ${activateResult.modifiedCount}, Deactivated: ${deactivateResult.modifiedCount}`,
+    );
+  }
+
+  @Cron('0 9 * * *')
   async checkExpiringAds() {
     this.logger.log('🕐 Checking for expiring ads...');
 
@@ -46,7 +79,6 @@ export class AdsScheduler {
           (endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
         );
 
-        // ← Check if already notified today
         const todayStart = new Date();
         todayStart.setHours(0, 0, 0, 0);
 

@@ -1,5 +1,4 @@
-// components/ads/AdCard.tsx
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Eye,
@@ -67,7 +66,6 @@ export function AdCard({
     }
   };
 
-  // Build the image URL correctly
   const getImageUrl = () => {
     if (!ad.image || ad.image === "[object Object]" || imageError) {
       return null;
@@ -86,7 +84,6 @@ export function AdCard({
 
   const imageUrl = getImageUrl();
 
-  // Format date
   const formatDate = (dateString?: string) => {
     if (!dateString) return "No date";
     return new Date(dateString).toLocaleDateString("en-US", {
@@ -96,15 +93,22 @@ export function AdCard({
     });
   };
 
+  const adStatus = useMemo(() => {
+    return ad.isActive ? "Active" : "Inactive";
+  }, [ad.isActive]);
+
+  const statusClass =
+    adStatus === "Active" ? "text-green-600" : "text-gray-500";
+
+  const badgeClass =
+    adStatus === "Active" ? "bg-green-500" : "bg-gray-500";
+
   return (
     <div
       className={`bg-white rounded-xl border shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden flex flex-col h-full ${
-        isSelected
-          ? "border-purple-500 ring-2 ring-purple-200"
-          : "border-gray-200"
+        isSelected ? "border-purple-500 ring-2 ring-purple-200" : "border-gray-200"
       }`}
     >
-      {/* Image Section */}
       <div className="relative w-full h-48 bg-gray-100 overflow-hidden">
         {imageUrl ? (
           <>
@@ -133,7 +137,6 @@ export function AdCard({
           </div>
         )}
 
-        {/* Selection Checkbox - Positioned at top left */}
         {onSelect && (
           <div
             className="absolute top-2 left-2 z-10"
@@ -153,33 +156,27 @@ export function AdCard({
           </div>
         )}
 
-        {/* Status Badge */}
-        {ad.isActive && (
-          <div className="absolute top-2 right-2 px-2 py-1 bg-green-500 text-white text-xs font-medium rounded-full shadow-lg">
-            Active
-          </div>
-        )}
+        <div
+          className={`absolute top-2 right-2 px-2 py-1 text-white text-xs font-medium rounded-full shadow-lg ${badgeClass}`}
+        >
+          {adStatus}
+        </div>
       </div>
 
-      {/* Content Section */}
       <div className="p-4 flex-1 flex flex-col">
         <h3 className="font-semibold text-gray-900 text-lg line-clamp-1 mb-2">
           {ad.name}
         </h3>
 
-        {/* Stats */}
         <div className="flex items-center gap-3 mb-3 text-sm">
           <div className="flex items-center gap-1 text-gray-600">
             <MousePointerClick size={14} className="text-gray-400" />
             <span>{ad.clicks || 0} clicks</span>
           </div>
           <span className="text-gray-300">•</span>
-          <span className={ad.isActive ? "text-green-600" : "text-gray-500"}>
-            {ad.isActive ? "Active" : "Inactive"}
-          </span>
+          <span className={statusClass}>{adStatus}</span>
         </div>
 
-        {/* Details */}
         <div className="space-y-2 mb-4 flex-1">
           <div className="flex items-center gap-2 text-sm text-gray-600">
             <User size={14} className="text-gray-400 flex-shrink-0" />
@@ -193,7 +190,16 @@ export function AdCard({
           {ad.startDate && (
             <div className="flex items-center gap-2 text-sm text-gray-600">
               <CalendarDays size={14} className="text-gray-400 flex-shrink-0" />
-              <span className="truncate">{formatDate(ad.startDate)}</span>
+              <span className="truncate">
+                Start: {formatDate(ad.startDate)}
+              </span>
+            </div>
+          )}
+
+          {ad.endDate && (
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <CalendarDays size={14} className="text-gray-400 flex-shrink-0" />
+              <span className="truncate">End: {formatDate(ad.endDate)}</span>
             </div>
           )}
 
@@ -213,7 +219,6 @@ export function AdCard({
           )}
         </div>
 
-        {/* Actions */}
         <div className="flex items-center justify-between pt-3 mt-auto border-t border-gray-100">
           <div className="flex gap-1">
             <Link
