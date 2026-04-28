@@ -36,28 +36,28 @@ export class AdsService {
     try {
       await this.notificationGateway.emitAdCreated(populated, authorName);
     } catch (e) {
-      console.error('⚠️ Ad notification failed:', e.message);
+      console.error('⚠️ Ad notification failed:', (e as Error).message);
     }
 
     return populated;
   }
 
   async findAll(page: number = 1, limit: number = 10, filters: any = {}) {
-    const skip = (page - 1) * limit;
+  const skip = (page - 1) * limit;
 
-    const [data, total] = await Promise.all([
-      this.adModel
-        .find(filters)
-        .populate('author', 'username displayName')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .exec(),
-      this.adModel.countDocuments(filters),
-    ]);
+  const [data, total] = await Promise.all([
+    this.adModel
+      .find(filters)
+      .populate('author', 'username displayName')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .exec(),
+    this.adModel.countDocuments(filters),
+  ]);
 
-    return { data, total, page, pages: Math.ceil(total / limit) };
-  }
+  return { data, total, page, pages: Math.ceil(total / limit) };
+}
 
   async findOne(id: string): Promise<AdDocument> {
     const ad = await this.adModel
@@ -105,7 +105,7 @@ export class AdsService {
         await this.notificationGateway.emitAdUpdated(ad, authorName);
       }
     } catch (e) {
-      console.error('⚠️ Ad notification failed:', e.message);
+      console.error('⚠️ Ad notification failed:', (e as Error).message);
     }
     // ────────────────────────────────────────────────────────
 
@@ -143,7 +143,7 @@ export class AdsService {
         }
       }
     } catch (e) {
-      console.error('⚠️ Ad image delete failed:', e.message);
+      console.error('⚠️ Ad image delete failed:', (e as Error).message);
     }
 
     await this.adModel.findByIdAndDelete(id).exec();
@@ -152,7 +152,7 @@ export class AdsService {
     try {
       await this.notificationGateway.emitAdDeleted(ad.name, authorName);
     } catch (e) {
-      console.error('⚠️ Ad notification failed:', e.message);
+      console.error('⚠️ Ad notification failed:', (e as Error).message);
     }
     // ────────────────────────────────────────────────────────
 

@@ -1,5 +1,5 @@
 import { IsString, IsOptional, IsBoolean, IsDate } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 
 export class CreatePostDto {
   @IsString()
@@ -30,16 +30,15 @@ export class CreatePostDto {
 
   @IsOptional()
   @IsString()
-  mainImage?: string; // <-- Add this for updates
+  mainImage?: string;
 
   @IsOptional()
   @Transform(({ value }) => {
-    // Explicit string checks
     if (value === 'false') return false;
     if (value === 'true') return true;
     if (value === false) return false;
     if (value === true) return true;
-    return false; // default
+    return false;
   })
   isLive?: boolean;
 
@@ -56,5 +55,15 @@ export class CreatePostDto {
   @IsString()
   link?: string;
 
-  // NO mainImage here - it will be added by controller
+  @IsOptional()
+  @IsString()
+  status?: 'draft' | 'published' | 'expired';
+
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (!value) return undefined;
+    return new Date(value);
+  })
+  @IsDate()
+  expiresAt?: Date;
 }

@@ -27,6 +27,7 @@ export interface Post extends BaseEntity {
   postedDate: string;
   author: { _id: string; displayName: string };
   link?: string;
+  expiresAt?: string;
 }
 
 export interface Ad extends BaseEntity {

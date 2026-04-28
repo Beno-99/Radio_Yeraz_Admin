@@ -78,30 +78,10 @@ export const AdColumns = (): Column<Ad>[] => [
   {
     key: "isActive",
     header: "Status",
-    render: (value: boolean, ad: Ad) => {
-      const now = new Date();
-      const startDate = ad.startDate ? new Date(ad.startDate) : null;
-      const endDate = ad.endDate ? new Date(ad.endDate) : null;
-
-      let status = "Draft";
-      let bgColor = "bg-gray-100";
-      let textColor = "text-gray-800";
-
-      if (value) {
-        if (startDate && now < startDate) {
-          status = "Scheduled";
-          bgColor = "bg-yellow-100";
-          textColor = "text-yellow-800";
-        } else if (endDate && now > endDate) {
-          status = "Expired";
-          bgColor = "bg-red-100";
-          textColor = "text-red-800";
-        } else {
-          status = "Active";
-          bgColor = "bg-green-100";
-          textColor = "text-green-800";
-        }
-      }
+    render: (value: boolean) => {
+      const status = value ? "Active" : "Inactive";
+      const bgColor = value ? "bg-green-100" : "bg-gray-100";
+      const textColor = value ? "text-green-800" : "text-gray-800";
 
       return (
         <span

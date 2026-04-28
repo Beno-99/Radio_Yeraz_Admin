@@ -252,11 +252,23 @@ async getPostById(@Param('id') id: string) {
       console.log('Post isLive:', post.isLive);
       console.log('Post isPublished:', post.isPublished);
 
-      var notification = await this.firebaseService.sendToTopic("client","A New Post Added",post.title,{
-        postId: post._id.toString(),
-      });
+      try {
+        const notificationId = await this.firebaseService.sendToTopic(
+          'client',
+          'A New Post Added',
+          post.title,
+          {
+            postId: post._id.toString(),
+          },
+        );
 
-      console.log(notification);
+        console.log('FCM topic notification sent:', notificationId);
+      } catch (notifError) {
+        console.error(
+          'FCM topic notification failed:',
+          notifError instanceof Error ? notifError.message : String(notifError),
+        );
+      }
 
       return {
         success: true,
@@ -395,6 +407,35 @@ async getPostById(@Param('id') id: string) {
       data: post,
     };
   }
+
+  @Put(':id/republish')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(Role.SUPER_ADMIN, Role.ADMIN)
+async republishPost(@Param('id') id: string, @Req() req: Request) {
+  const adminId = req.user['sub'];
+  const adminRole = req.user['role'] as Role;
+
+  const canEdit = await this.postsService.canAdminEditPost(
+    id,
+    adminId,
+    adminRole,
+  );
+
+  if (!canEdit) {
+    return {
+      success: false,
+      message: 'You are not authorized to modify this post',
+    };
+  }
+
+  const post = await this.postsService.republish(id);
+
+  return {
+    success: true,
+    message: 'Post republished successfully',
+    data: post,
+  };
+}
 
   // ============ AUTHOR SPECIFIC ENDPOINTS ============
   @Get('author/my-posts')

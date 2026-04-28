@@ -16,7 +16,7 @@ export class PostReminderService {
   ) {}
 
   @Cron('0 0 9 * * *', {
-    timeZone: 'Asia/Damascus', // change to your app timezone
+    timeZone: 'Asia/Damascus',
   })
   async sendTodayEventReminders() {
     const now = new Date();
@@ -25,10 +25,9 @@ export class PostReminderService {
     const endOfToday = new Date(now);
     endOfToday.setHours(23, 59, 59, 999);
 
-    // find posts that are published, not yet sent, and eventDate is later today
     const posts = await this.postModel.find({
       isPublished: true,
-      reminderSentAt: null,
+      $or: [{ reminderSentAt: null }, { reminderSentAt: { $exists: false } }],
       eventDate: { $gte: startOfToday, $lte: endOfToday },
     });
 
@@ -37,25 +36,41 @@ export class PostReminderService {
       return;
     }
 
-    try {
-       for (const post of posts) {
-        await this.firebaseService.sendToTopic(
-            'client',
-          `Մնացեք մեզի հետ ժամը ${post.eventTime}-ին։`,
+    const sentPostIds: PostDocument['_id'][] = [];
+    let successCount = 0;
+
+    for (const post of posts) {
+      try {
+        const messageId = await this.firebaseService.sendToTopic(
+          'client',
+          `Մնացէք մեզի հետ, ժամը ${post.eventTime}-ին:`,
           `${post.title}`,
           { postId: post._id.toString() },
         );
-      }
-      this.logger.log(`Sent ${posts.length} reminder notifications.`);
 
-      // mark all matching posts as sent in one go (or loop if you prefer)
+        sentPostIds.push(post._id);
+        successCount += 1;
+        this.logger.log(
+          `Reminder sent for post ${post._id.toString()} (messageId: ${messageId})`,
+        );
+      } catch (error) {
+        this.logger.error(
+          `Failed to send reminder for post ${post._id.toString()}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+
+    if (sentPostIds.length > 0) {
       await this.postModel.updateMany(
-        { _id: { $in: posts.map((p) => p._id) } },
+        { _id: { $in: sentPostIds } },
         { $set: { reminderSentAt: new Date() } },
       );
-    } catch (error) {
-      this.logger.error('Failed to send event reminders', error);
-      throw error;
     }
+
+    this.logger.log(
+      `Reminder job complete. Sent: ${successCount}, Failed: ${posts.length - successCount}`,
+    );
   }
 }

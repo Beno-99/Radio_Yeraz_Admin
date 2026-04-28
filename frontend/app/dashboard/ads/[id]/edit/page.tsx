@@ -1,7 +1,6 @@
-// app/dashboard/ads/[id]/edit/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
@@ -29,7 +28,6 @@ export default function EditAdPage() {
   const mediaUrl =
     process.env.NEXT_PUBLIC_MEDIA_GET_URL || "http://localhost:8000";
 
-  // Fetch ad data
   useEffect(() => {
     const fetchAd = async () => {
       try {
@@ -47,7 +45,7 @@ export default function EditAdPage() {
         if (ad.image && ad.image !== "[object Object]") {
           setCurrentImagePath(ad.image);
         }
-      } catch (error) {
+      } catch {
         toast.error("Failed to load ad");
       } finally {
         setLoading(false);
@@ -57,26 +55,26 @@ export default function EditAdPage() {
     fetchAd();
   }, [adId]);
 
+  const adStatus = useMemo(() => {
+    return formData.isActive ? "Active" : "Inactive";
+  }, [formData.isActive]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    const checkbox = document.getElementById("isActive") as HTMLInputElement;
-    const isActiveValue = checkbox?.checked ?? false;
+    setSaving(true);
 
     const formDataToSend = new FormData();
-
     formDataToSend.append("name", formData.name);
     formDataToSend.append("targetUrl", formData.targetUrl || "");
     formDataToSend.append("startDate", formData.startDate);
     formDataToSend.append("endDate", formData.endDate);
-    formDataToSend.append("isActive", String(isActiveValue));
+    formDataToSend.append("isActive", String(formData.isActive));
 
     if (selectedFile) {
       formDataToSend.append("image", selectedFile);
     }
 
     try {
-      // 🔄 Show loading alert
       Swal.fire({
         title: "Updating...",
         text: "Please wait",
@@ -114,10 +112,10 @@ export default function EditAdPage() {
         title: "Something went wrong",
         text: error.response?.data?.message || "Failed to update ad",
       });
+    } finally {
+      setSaving(false);
     }
   };
-
-
 
   if (loading) return <div className="text-center py-8">Loading...</div>;
 
@@ -126,6 +124,9 @@ export default function EditAdPage() {
       ? currentImagePath
       : `${mediaUrl}${currentImagePath}`
     : undefined;
+
+  const badgeClass =
+    adStatus === "Active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700";
 
   return (
     <div className="max-w-3xl mx-auto p-6">
@@ -137,7 +138,12 @@ export default function EditAdPage() {
       </button>
 
       <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <h1 className="text-2xl font-bold mb-6">Edit Ad</h1>
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold">Edit Ad</h1>
+          <span className={`px-3 py-1 rounded-full text-xs font-medium ${badgeClass}`}>
+            {adStatus}
+          </span>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <AdImageUpload
@@ -181,9 +187,7 @@ export default function EditAdPage() {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-2">
-                Start Date
-              </label>
+              <label className="block text-sm font-medium mb-2">Start Date</label>
               <input
                 type="date"
                 value={formData.startDate}
@@ -206,15 +210,14 @@ export default function EditAdPage() {
             </div>
           </div>
 
-          {/* Active Checkbox */}
           <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
             <input
               type="checkbox"
               id="isActive"
               checked={formData.isActive}
-              onChange={(e) => {
-                setFormData({ ...formData, isActive: e.target.checked });
-              }}
+              onChange={(e) =>
+                setFormData({ ...formData, isActive: e.target.checked })
+              }
               className="w-5 h-5 text-purple-600 rounded focus:ring-purple-500 cursor-pointer"
             />
             <label
@@ -230,7 +233,7 @@ export default function EditAdPage() {
                   : "bg-gray-100 text-gray-700"
               }`}
             >
-              {formData.isActive ? "ACTIVE" : "INACTIVE"}
+              {adStatus}
             </span>
           </div>
 
