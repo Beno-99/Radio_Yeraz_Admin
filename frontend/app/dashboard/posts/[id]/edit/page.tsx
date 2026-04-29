@@ -2,11 +2,13 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Upload, Image as ImageIcon, Video } from "lucide-react";
 import { toast } from "sonner";
 import { postsAPI } from "@/lib/api/api";
 import { SimpleImageUpload } from "@/components/posts/PostImageUpload";
 import Swal from "sweetalert2";
+
+type MediaType = "image" | "video" | "none";
 
 export default function EditPostPage() {
   const router = useRouter();
@@ -16,9 +18,11 @@ export default function EditPostPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedVideoFile, setSelectedVideoFile] = useState<File | null>(null);
   const [currentImagePath, setCurrentImagePath] = useState("");
+  const [currentVideoPath, setCurrentVideoPath] = useState("");
   const [hasVideo, setHasVideo] = useState(false);
-  const [videoUrl, setVideoUrl] = useState("");
+  const [mediaType, setMediaType] = useState<MediaType>("image");
   const [postMeta, setPostMeta] = useState({
     postedDate: "",
     expiresAt: "",
@@ -43,12 +47,6 @@ export default function EditPostPage() {
         const response = await postsAPI.getPost(postId);
         const post = response.data.data || response.data;
 
-        console.log("📥 Fetched post:", {
-          title: post.title,
-          isLive: post.isLive,
-          isPublished: post.isPublished,
-        });
-
         setFormData({
           title: post.title || "",
           description: post.description || "",
@@ -65,13 +63,19 @@ export default function EditPostPage() {
           expiresAt: post.expiresAt || "",
         });
 
-        if (post.video) {
+        if (post.video && post.video !== "") {
           setHasVideo(true);
-          setVideoUrl(post.video);
-        }
-
-        if (post.mainImage && post.mainImage !== "[object Object]") {
+          setMediaType("video");
+          setCurrentVideoPath(post.video);
+          setCurrentImagePath("");
+        } else if (post.mainImage && post.mainImage !== "[object Object]") {
+          setHasVideo(false);
+          setMediaType("image");
           setCurrentImagePath(post.mainImage);
+          setCurrentVideoPath("");
+        } else {
+          setHasVideo(false);
+          setMediaType("none");
         }
       } catch (error) {
         toast.error("Failed to load post");
@@ -85,15 +89,21 @@ export default function EditPostPage() {
 
   const postStatus = useMemo(() => {
     const now = new Date();
+    const eventDate = formData.eventDate ? new Date(formData.eventDate) : null;
+    const eventExpiry =
+      eventDate && !Number.isNaN(eventDate.getTime())
+        ? new Date(eventDate.getTime() + 5 * 24 * 60 * 60 * 1000)
+        : null;
     const expiresAt = postMeta.expiresAt ? new Date(postMeta.expiresAt) : null;
     const postedDate = postMeta.postedDate ? new Date(postMeta.postedDate) : null;
 
-    if (expiresAt && expiresAt < now) return "Expired";
+    if (eventExpiry && eventExpiry < now) return "Expired";
+    if (!eventExpiry && expiresAt && expiresAt < now) return "Expired";
     if (postedDate && postedDate > now) return "Scheduled";
     if (formData.isLive) return "Live";
     if (formData.isPublished) return "Published";
     return "Draft";
-  }, [formData.isLive, formData.isPublished, postMeta]);
+  }, [formData.eventDate, formData.isLive, formData.isPublished, postMeta]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,10 +143,24 @@ export default function EditPostPage() {
       formDataToSend.append("link", formData.link || "");
       formDataToSend.append("isLive", String(formData.isLive));
       formDataToSend.append("isPublished", String(formData.isPublished));
-      formDataToSend.append("expiresAt", postMeta.expiresAt || "");
 
-      if (selectedFile && !hasVideo) {
-        formDataToSend.append("mainImage", selectedFile);
+      if (mediaType === "image") {
+        if (selectedFile) {
+          formDataToSend.append("mainImage", selectedFile);
+        }
+        formDataToSend.append("removeVideo", "true");
+      }
+
+      if (mediaType === "video") {
+        if (selectedVideoFile) {
+          formDataToSend.append("video", selectedVideoFile);
+        }
+        formDataToSend.append("removeImage", "true");
+      }
+
+      if (mediaType === "none") {
+        formDataToSend.append("removeImage", "true");
+        formDataToSend.append("removeVideo", "true");
       }
 
       Swal.fire({
@@ -149,7 +173,6 @@ export default function EditPostPage() {
       });
 
       const response = await postsAPI.updatePost(postId, formDataToSend);
-
       Swal.close();
 
       if (response.success) {
@@ -170,7 +193,6 @@ export default function EditPostPage() {
       }
     } catch (error: any) {
       Swal.close();
-
       Swal.fire({
         icon: "error",
         title: "Error",
@@ -189,10 +211,10 @@ export default function EditPostPage() {
       : `${mediaUrl}${currentImagePath}`
     : undefined;
 
-  const fullVideoUrl = videoUrl
-    ? videoUrl.startsWith("http")
-      ? videoUrl
-      : `${mediaUrl}${videoUrl}`
+  const currentVideoUrl = currentVideoPath
+    ? currentVideoPath.startsWith("http")
+      ? currentVideoPath
+      : `${mediaUrl}${currentVideoPath}`
     : undefined;
 
   const badgeClass =
@@ -224,14 +246,76 @@ export default function EditPostPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          {hasVideo && fullVideoUrl && (
+          <div className="p-4 bg-gray-50 rounded-lg">
+            <label className="block text-sm font-medium mb-3">
+              Media Type
+            </label>
+
+            <div className="grid grid-cols-3 gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setMediaType("image");
+                  setSelectedVideoFile(null);
+                  setHasVideo(false);
+                }}
+                className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium ${
+                  mediaType === "image"
+                    ? "bg-purple-600 text-white border-purple-600"
+                    : "bg-white text-gray-700 border-gray-300"
+                }`}
+              >
+                <ImageIcon size={16} />
+                Image
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMediaType("video");
+                  setSelectedFile(null);
+                  setHasVideo(true);
+                }}
+                className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium ${
+                  mediaType === "video"
+                    ? "bg-purple-600 text-white border-purple-600"
+                    : "bg-white text-gray-700 border-gray-300"
+                }`}
+              >
+                <Video size={16} />
+                Video
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMediaType("none");
+                  setSelectedFile(null);
+                  setSelectedVideoFile(null);
+                  setHasVideo(false);
+                  setCurrentImagePath("");
+                  setCurrentVideoPath("");
+                }}
+                className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium ${
+                  mediaType === "none"
+                    ? "bg-purple-600 text-white border-purple-600"
+                    : "bg-white text-gray-700 border-gray-300"
+                }`}
+              >
+                <Upload size={16} />
+                Remove
+              </button>
+            </div>
+          </div>
+
+          {mediaType === "video" && currentVideoUrl && !selectedVideoFile && (
             <div className="mb-4">
               <label className="block text-sm font-medium mb-2">
                 Current Video
               </label>
               <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
                 <video
-                  src={fullVideoUrl}
+                  src={currentVideoUrl}
                   controls
                   className="w-full h-full object-contain"
                 />
@@ -239,7 +323,7 @@ export default function EditPostPage() {
             </div>
           )}
 
-          {!hasVideo && (
+          {mediaType === "image" && (
             <SimpleImageUpload
               onImageSelect={setSelectedFile}
               currentImageUrl={currentImageUrl}
@@ -247,7 +331,32 @@ export default function EditPostPage() {
             />
           )}
 
-          {selectedFile && (
+          {mediaType === "video" && (
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Upload New Video
+              </label>
+              <input
+                type="file"
+                accept="video/*"
+                onChange={(e) => setSelectedVideoFile(e.target.files?.[0] || null)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+              />
+              {selectedVideoFile && (
+                <div className="bg-green-50 p-3 rounded-lg text-sm text-green-700 mt-3">
+                  ✅ New video selected: {selectedVideoFile.name}
+                </div>
+              )}
+            </div>
+          )}
+
+          {mediaType === "none" && (
+            <div className="p-4 rounded-lg border border-dashed border-gray-300 text-gray-500 text-sm">
+              No media selected. This post will be saved without image or video.
+            </div>
+          )}
+
+          {selectedFile && mediaType === "image" && (
             <div className="bg-green-50 p-3 rounded-lg text-sm text-green-700">
               ✅ New image selected: {selectedFile.name}
             </div>
@@ -339,7 +448,6 @@ export default function EditPostPage() {
               checked={formData.isLive}
               onChange={(e) => {
                 const newValue = e.target.checked;
-                console.log("🔄 Live checkbox changed to:", newValue);
                 setFormData({ ...formData, isLive: newValue });
               }}
               className="w-5 h-5 text-purple-600 rounded"
@@ -359,7 +467,6 @@ export default function EditPostPage() {
               checked={formData.isPublished}
               onChange={(e) => {
                 const newValue = e.target.checked;
-                console.log("🔄 Published checkbox changed to:", newValue);
                 setFormData({ ...formData, isPublished: newValue });
               }}
               className="w-5 h-5 text-purple-600 rounded"

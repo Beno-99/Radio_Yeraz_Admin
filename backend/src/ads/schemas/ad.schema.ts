@@ -18,6 +18,13 @@ export class Ad {
   @Prop({ default: true })
   isActive: boolean;
 
+  @Prop({
+    type: String,
+    enum: ['pending', 'active', 'inactive', 'expired'],
+    default: 'pending',
+  })
+  status: 'pending' | 'active' | 'inactive' | 'expired';
+
   @Prop({ default: 0 })
   clicks: number;
 

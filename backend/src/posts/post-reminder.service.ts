@@ -27,6 +27,7 @@ export class PostReminderService {
 
     const posts = await this.postModel.find({
       isPublished: true,
+      status: 'published',
       $or: [{ reminderSentAt: null }, { reminderSentAt: { $exists: false } }],
       eventDate: { $gte: startOfToday, $lte: endOfToday },
     });

@@ -39,6 +39,9 @@ async getAllAds(@Query() query: any) {
   if (query.isActive !== undefined) {
     filters.isActive = query.isActive === 'true';
   }
+  if (query.status) {
+    filters.status = query.status;
+  }
 
   const result = await this.adsService.findAll(page, limit, filters);
   return { success: true, ...result };
@@ -52,6 +55,7 @@ async getPublicAds(@Query() query: any) {
 
   const filters: any = {
     isActive: true,
+    status: 'active',
     startDate: { $lte: now },
     endDate: { $gte: now },
   };

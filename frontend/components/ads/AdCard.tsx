@@ -94,14 +94,32 @@ export function AdCard({
   };
 
   const adStatus = useMemo(() => {
-    return ad.isActive ? "Active" : "Inactive";
-  }, [ad.isActive]);
+    const raw = (ad.status || "").toString().toLowerCase();
+    if (["pending", "active", "inactive", "expired"].includes(raw)) {
+      return raw as "pending" | "active" | "inactive" | "expired";
+    }
+    return ad.isActive ? "active" : "inactive";
+  }, [ad.status, ad.isActive]);
+
+  const adStatusLabel = adStatus.charAt(0).toUpperCase() + adStatus.slice(1);
 
   const statusClass =
-    adStatus === "Active" ? "text-green-600" : "text-gray-500";
+    adStatus === "active"
+      ? "text-green-600"
+      : adStatus === "pending"
+        ? "text-amber-600"
+        : adStatus === "expired"
+          ? "text-red-600"
+          : "text-gray-500";
 
   const badgeClass =
-    adStatus === "Active" ? "bg-green-500" : "bg-gray-500";
+    adStatus === "active"
+      ? "bg-green-500"
+      : adStatus === "pending"
+        ? "bg-amber-500"
+        : adStatus === "expired"
+          ? "bg-red-500"
+          : "bg-gray-500";
 
   return (
     <div
@@ -159,7 +177,7 @@ export function AdCard({
         <div
           className={`absolute top-2 right-2 px-2 py-1 text-white text-xs font-medium rounded-full shadow-lg ${badgeClass}`}
         >
-          {adStatus}
+          {adStatusLabel}
         </div>
       </div>
 
@@ -174,7 +192,7 @@ export function AdCard({
             <span>{ad.clicks || 0} clicks</span>
           </div>
           <span className="text-gray-300">•</span>
-          <span className={statusClass}>{adStatus}</span>
+          <span className={statusClass}>{adStatusLabel}</span>
         </div>
 
         <div className="space-y-2 mb-4 flex-1">

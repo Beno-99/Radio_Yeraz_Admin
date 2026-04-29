@@ -39,4 +39,8 @@ export class UpdateAdDto extends PartialType(CreateAdDto) {
   @IsOptional()
   @IsString()
   image?: string;
+
+  @IsOptional()
+  @IsString()
+  removeImage?: string;
 }

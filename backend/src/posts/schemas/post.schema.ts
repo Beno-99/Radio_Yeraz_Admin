@@ -60,10 +60,7 @@ export class Post {
   @Prop({ default: Date.now })
   updatedAt: Date;
 
-  @Prop({
-    type: Date,
-    default: () => new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
-  })
+  @Prop({ type: Date, default: null })
   expiresAt: Date;
 
   @Prop({ type: Date, default: null })

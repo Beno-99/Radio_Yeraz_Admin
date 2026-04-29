@@ -17,6 +17,8 @@ export default function EditAdPage() {
   const [saving, setSaving] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [currentImagePath, setCurrentImagePath] = useState("");
+  const [removeCurrentImage, setRemoveCurrentImage] = useState(false);
+  const [imageFieldError, setImageFieldError] = useState("");
   const [formData, setFormData] = useState({
     name: "",
     targetUrl: "",
@@ -24,6 +26,9 @@ export default function EditAdPage() {
     endDate: "",
     isActive: true,
   });
+  const [serverStatus, setServerStatus] = useState<
+    "pending" | "active" | "inactive" | "expired" | ""
+  >("");
 
   const mediaUrl =
     process.env.NEXT_PUBLIC_MEDIA_GET_URL || "http://localhost:8000";
@@ -41,6 +46,7 @@ export default function EditAdPage() {
           endDate: ad.endDate?.split("T")[0] || "",
           isActive: ad.isActive ?? true,
         });
+        setServerStatus((ad.status || "").toLowerCase());
 
         if (ad.image && ad.image !== "[object Object]") {
           setCurrentImagePath(ad.image);
@@ -56,11 +62,29 @@ export default function EditAdPage() {
   }, [adId]);
 
   const adStatus = useMemo(() => {
-    return formData.isActive ? "Active" : "Inactive";
-  }, [formData.isActive]);
+    const now = new Date();
+    const start = formData.startDate ? new Date(formData.startDate) : null;
+    const end = formData.endDate ? new Date(formData.endDate) : null;
+
+    if (end && !Number.isNaN(end.getTime()) && now > end) return "expired";
+    if (start && !Number.isNaN(start.getTime()) && now < start) return "pending";
+    return formData.isActive ? "active" : "inactive";
+  }, [formData.startDate, formData.endDate, formData.isActive]);
+
+  const adStatusLabel = adStatus.charAt(0).toUpperCase() + adStatus.slice(1);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setImageFieldError("");
+
+    const hasCurrentImage = Boolean(currentImagePath) && !removeCurrentImage;
+    const hasNewImage = Boolean(selectedFile);
+
+    if (!hasCurrentImage && !hasNewImage) {
+      setImageFieldError("Image is required");
+      return;
+    }
+
     setSaving(true);
 
     const formDataToSend = new FormData();
@@ -72,6 +96,9 @@ export default function EditAdPage() {
 
     if (selectedFile) {
       formDataToSend.append("image", selectedFile);
+    }
+    if (removeCurrentImage && !selectedFile) {
+      formDataToSend.append("removeImage", "true");
     }
 
     try {
@@ -126,7 +153,13 @@ export default function EditAdPage() {
     : undefined;
 
   const badgeClass =
-    adStatus === "Active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700";
+    adStatus === "active"
+      ? "bg-green-100 text-green-700"
+      : adStatus === "pending"
+        ? "bg-amber-100 text-amber-700"
+        : adStatus === "expired"
+          ? "bg-red-100 text-red-700"
+          : "bg-gray-100 text-gray-700";
 
   return (
     <div className="max-w-3xl mx-auto p-6">
@@ -141,15 +174,47 @@ export default function EditAdPage() {
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold">Edit Ad</h1>
           <span className={`px-3 py-1 rounded-full text-xs font-medium ${badgeClass}`}>
-            {adStatus}
+            {adStatusLabel}
           </span>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <AdImageUpload
-            onImageSelect={setSelectedFile}
-            currentImage={currentImageUrl}
+            onImageSelect={(file) => {
+              setSelectedFile(file);
+              setImageFieldError("");
+              if (file) setRemoveCurrentImage(false);
+            }}
+            onImageRemove={() => {
+              setSelectedFile(null);
+              setRemoveCurrentImage(true);
+            }}
+            currentImage={removeCurrentImage ? undefined : currentImageUrl}
           />
+
+          {imageFieldError && (
+            <p className="text-sm text-red-600">{imageFieldError}</p>
+          )}
+
+          {currentImageUrl && !selectedFile && (
+            <button
+              type="button"
+              onClick={() => setRemoveCurrentImage((prev) => !prev)}
+              className={`px-3 py-2 rounded-lg text-sm font-medium border ${
+                removeCurrentImage
+                  ? "bg-red-50 text-red-700 border-red-200"
+                  : "bg-white text-gray-700 border-gray-300"
+              }`}
+            >
+              {removeCurrentImage ? "Undo Remove Image" : "Remove Current Image"}
+            </button>
+          )}
+
+          {removeCurrentImage && !selectedFile && (
+            <div className="bg-red-50 p-3 rounded-lg text-sm text-red-700">
+              Current image will be removed when you save.
+            </div>
+          )}
 
           {selectedFile && (
             <div className="bg-green-50 p-3 rounded-lg text-sm text-green-700">
@@ -228,14 +293,25 @@ export default function EditAdPage() {
             </label>
             <span
               className={`ml-auto px-3 py-1 rounded-full text-xs font-medium ${
-                formData.isActive
+                adStatus === "active"
                   ? "bg-green-100 text-green-700"
-                  : "bg-gray-100 text-gray-700"
+                  : adStatus === "pending"
+                    ? "bg-amber-100 text-amber-700"
+                    : adStatus === "expired"
+                      ? "bg-red-100 text-red-700"
+                      : "bg-gray-100 text-gray-700"
               }`}
             >
-              {adStatus}
+              {adStatusLabel}
             </span>
           </div>
+
+          {serverStatus && serverStatus !== adStatus && (
+            <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+              Saved status: <strong>{serverStatus}</strong>. It will sync to{" "}
+              <strong>{adStatus}</strong> when you save (or by daily cron).
+            </div>
+          )}
 
           <button
             type="submit"
