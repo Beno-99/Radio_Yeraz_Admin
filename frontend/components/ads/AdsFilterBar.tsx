@@ -2,12 +2,14 @@
 import { Filter } from "lucide-react";
 
 interface AdsFilterBarProps {
-  filter: "all" | "active" | "inactive";
+  filter: "all" | "active" | "inactive" | "pending" | "expired";
   page: number;
   total: number;
   totalAds: number;
   selectedAds: number;
-  onFilterChange: (filter: "all" | "active" | "inactive") => void;
+  onFilterChange: (
+    filter: "all" | "active" | "inactive" | "pending" | "expired",
+  ) => void;
   onClearSelection: () => void;
 }
 
@@ -22,17 +24,20 @@ export function AdsFilterBar({
 }: AdsFilterBarProps) {
   const PAGE_LIMIT = 12;
 
+  const filters = ["all", "active", "inactive", "pending", "expired"] as const;
+
   return (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-white rounded-xl border border-gray-200">
       <div className="flex items-center gap-2">
         <Filter size={18} className="text-gray-500" />
         <span className="text-sm text-gray-700">Filter by:</span>
-        <div className="flex gap-2">
-          {["all", "active", "inactive"].map((filterType) => (
+
+        <div className="flex flex-wrap gap-2">
+          {filters.map((filterType) => (
             <button
               key={filterType}
               onClick={() => {
-                onFilterChange(filterType as any);
+                onFilterChange(filterType);
                 onClearSelection();
               }}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
@@ -41,7 +46,11 @@ export function AdsFilterBar({
                     ? "bg-purple-100 text-purple-700"
                     : filterType === "active"
                       ? "bg-green-100 text-green-700"
-                      : "bg-gray-100 text-gray-700"
+                      : filterType === "pending"
+                        ? "bg-amber-100 text-amber-700"
+                        : filterType === "expired"
+                          ? "bg-red-100 text-red-700"
+                          : "bg-gray-100 text-gray-700"
                   : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >

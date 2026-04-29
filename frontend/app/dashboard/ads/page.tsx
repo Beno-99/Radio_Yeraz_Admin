@@ -17,12 +17,12 @@ interface Ad {
   name: string;
   image?: string;
   isActive: boolean;
+  status?: "pending" | "active" | "inactive" | "expired";
   clicks: number;
   startDate?: string;
   endDate?: string;
   targetUrl?: string;
   author?: {
-    // ← update this
     _id: string;
     username: string;
     displayName: string;
@@ -33,30 +33,55 @@ export default function AdsPage() {
   const [ads, setAds] = useState<Ad[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const [filter, setFilter] = useState<"all" | "active" | "inactive">("all");
+  const [filter, setFilter] = useState<
+    "all" | "active" | "inactive" | "pending" | "expired"
+  >("all");
   const [selectedAds, setSelectedAds] = useState<string[]>([]);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [totalPages, setTotalPages] = useState(1);
   const [totalAds, setTotalAds] = useState(0);
+  const [statusCounts, setStatusCounts] = useState({
+    active: 0,
+    inactive: 0,
+    pending: 0,
+    expired: 0,
+  });
 
   const mediaUrl =
     process.env.NEXT_PUBLIC_MEDIA_GET_URL || "http://localhost:8000";
 
   const fetchAds = async () => {
     try {
-      const response = await adsAPI.getAllAds({
-        page,
-        limit: PAGE_LIMIT,
-        isActive: filter !== "all" ? filter === "active" : undefined,
-      });
+      const [response, activeRes, inactiveRes, pendingRes, expiredRes] =
+        await Promise.all([
+          adsAPI.getAllAds({
+            page,
+            limit: PAGE_LIMIT,
+            status: filter !== "all" ? filter : undefined,
+          }),
+          adsAPI.getAllAds({ page: 1, limit: 1, status: "active" }),
+          adsAPI.getAllAds({ page: 1, limit: 1, status: "inactive" }),
+          adsAPI.getAllAds({ page: 1, limit: 1, status: "pending" }),
+          adsAPI.getAllAds({ page: 1, limit: 1, status: "expired" }),
+        ]);
 
       const responseData = response.data;
+      const activeData = activeRes.data;
+      const inactiveData = inactiveRes.data;
+      const pendingData = pendingRes.data;
+      const expiredData = expiredRes.data;
 
       if (responseData.success) {
         setAds(responseData.data || []);
         setTotalPages(responseData.pages || 1);
         setTotalAds(responseData.total || 0);
+        setStatusCounts({
+          active: activeData?.total || 0,
+          inactive: inactiveData?.total || 0,
+          pending: pendingData?.total || 0,
+          expired: expiredData?.total || 0,
+        });
       } else {
         setAds(Array.isArray(responseData) ? responseData : []);
       }
@@ -116,11 +141,6 @@ export default function AdsPage() {
     setSelectedAds(selectedIds);
   };
 
-  // Calculate stats
-  const activeAds = ads.filter((ad) => ad.isActive).length;
-  const inactiveAds = ads.filter((ad) => !ad.isActive).length;
-  const totalClicks = ads.reduce((sum, ad) => sum + (ad.clicks || 0), 0);
-
   return (
     <div className="space-y-8">
       <AdsHeader
@@ -135,9 +155,10 @@ export default function AdsPage() {
         filter={filter}
         totalAds={totalAds}
         totalPages={totalPages}
-        activeAds={activeAds}
-        inactiveAds={inactiveAds}
-        totalClicks={totalClicks}
+        activeAds={statusCounts.active}
+        inactiveAds={statusCounts.inactive}
+        pendingAds={statusCounts.pending}
+        expiredAds={statusCounts.expired}
       />
 
       <AdsFilterBar

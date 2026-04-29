@@ -27,6 +27,7 @@ export class PostsScheduler {
         {
           $set: {
             isPublished: false,
+            isLive: false,
             status: 'expired',
             updatedAt: now,
           },

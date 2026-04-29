@@ -20,9 +20,9 @@ const PAGE_LIMIT = 12;
 
 export default function PostsPage() {
   const [page, setPage] = useState(1);
-  const [filter, setFilter] = useState<"all" | "published" | "draft" | "live">(
-    "all",
-  );
+  const [filter, setFilter] = useState<
+    "all" | "published" | "draft" | "live" | "expired"
+  >("all");
 
   // Use custom hooks
   const {
@@ -44,8 +44,8 @@ export default function PostsPage() {
     page,
   );
   const [authorsMap, setAuthorsMap] = useState<Record<string, any>>({});
-  const { livePosts, publishedPosts, postsWithMedia } =
-    usePostsStats(paginatedPosts);
+  const { livePosts, publishedPosts, draftPosts, postsWithMedia, expiredPosts } =
+    usePostsStats(allPosts);
 
   const mediaUrl =
     process.env.NEXT_PUBLIC_MEDIA_GET_URL || "http://localhost:8000";
@@ -184,8 +184,10 @@ export default function PostsPage() {
         totalPosts={pagination.total}
         totalPages={pagination.totalPages}
         publishedPosts={publishedPosts}
+        draftPosts={draftPosts}
         livePosts={livePosts}
         postsWithMedia={postsWithMedia}
+        expiredPosts={expiredPosts}
       />
 
       <PostsFilterBar

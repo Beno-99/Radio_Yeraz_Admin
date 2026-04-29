@@ -22,6 +22,53 @@ export class PostsService {
     private notificationGateway: NotificationGateway,
   ) {}
 
+  private calculateExpiryFromEventDate(eventDate?: string | Date): Date | null {
+    if (!eventDate) return null;
+    const event = new Date(eventDate);
+    if (Number.isNaN(event.getTime())) return null;
+    return new Date(event.getTime() + 5 * 24 * 60 * 60 * 1000);
+  }
+
+  private deleteMediaFileIfExists(filePath?: string): void {
+    if (!filePath || filePath.trim() === '') return;
+
+    const possiblePaths = [
+      filePath,
+      filePath.startsWith('/uploads') ? filePath : `/uploads${filePath}`,
+      filePath.startsWith('/') ? filePath : `/${filePath}`,
+    ];
+
+    for (const candidate of possiblePaths) {
+      const fullPath = path.join(process.cwd(), candidate);
+      if (fs.existsSync(fullPath)) {
+        fs.unlinkSync(fullPath);
+        break;
+      }
+    }
+  }
+
+  private async expirePostsPastEventWindow(): Promise<number> {
+    const now = new Date();
+    const cutoff = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
+
+    const result = await this.postModel.updateMany(
+      {
+        eventDate: { $exists: true, $ne: null, $lte: cutoff },
+        isPublished: true,
+      },
+      {
+        $set: {
+          isPublished: false,
+          isLive: false,
+          status: 'expired',
+          updatedAt: now,
+        },
+      },
+    );
+
+    return result.modifiedCount;
+  }
+
   async create(
     createPostDto: CreatePostDto & { author: string },
     authorId: string,
@@ -33,15 +80,21 @@ export class PostsService {
       const isPublishedValue = Boolean(createPostDto.isPublished);
 const isLiveValue = Boolean(createPostDto.isLive);
 
+      const calculatedExpiresAt = this.calculateExpiryFromEventDate(
+        createPostDto.eventDate,
+      );
+
       const post = new this.postModel({
-  ...createPostDto,
-  author: authorId,
-  postedDate: new Date(),
-  expiresAt: new Date(Date.now() + 1 * 60 * 1000),
-  status: isPublishedValue ? 'published' : 'draft',
-  isPublished: isPublishedValue,
-  isLive: isLiveValue,
-});
+        ...createPostDto,
+        author: authorId,
+        postedDate: new Date(),
+        expiresAt:
+          calculatedExpiresAt ||
+          new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+        status: isPublishedValue ? 'published' : 'draft',
+        isPublished: isPublishedValue,
+        isLive: isLiveValue,
+      });
 
       const savedPost = await post.save();
 
@@ -76,6 +129,8 @@ const isLiveValue = Boolean(createPostDto.isLive);
     page: number;
     pages: number;
   }> {
+    await this.expirePostsPastEventWindow();
+
     const skip = (page - 1) * limit;
     const query: any = { ...filters };
 
@@ -112,6 +167,8 @@ const isLiveValue = Boolean(createPostDto.isLive);
   }
 
   async findById(id: string): Promise<PostDocument> {
+    await this.expirePostsPastEventWindow();
+
     if (!isValidObjectId(id)) {
       throw new BadRequestException('Invalid post id');
     }
@@ -126,6 +183,8 @@ const isLiveValue = Boolean(createPostDto.isLive);
   }
 
   async findByAuthor(authorId: string): Promise<PostDocument[]> {
+    await this.expirePostsPastEventWindow();
+
     return this.postModel
       .find({ author: new Types.ObjectId(authorId) })
       .populate('author', 'username displayName role')
@@ -134,12 +193,20 @@ const isLiveValue = Boolean(createPostDto.isLive);
   }
 
   async findLivePosts() {
+    await this.expirePostsPastEventWindow();
+
+    const cutoff = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+
     return this.postModel
       .find({
         isLive: true,
         isPublished: true,
         status: 'published',
-        expiresAt: { $gte: new Date() },
+        $or: [
+          { eventDate: { $exists: false } },
+          { eventDate: null },
+          { eventDate: { $gt: cutoff } },
+        ],
       })
       .populate('author', 'username displayName')
       .sort({ postedDate: -1 })
@@ -147,11 +214,19 @@ const isLiveValue = Boolean(createPostDto.isLive);
   }
 
   async findRecentPosts(limit: number = 5) {
+    await this.expirePostsPastEventWindow();
+
+    const cutoff = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+
     return this.postModel
       .find({
         isPublished: true,
         status: 'published',
-        expiresAt: { $gte: new Date() },
+        $or: [
+          { eventDate: { $exists: false } },
+          { eventDate: null },
+          { eventDate: { $gt: cutoff } },
+        ],
       })
       .populate('author', 'username displayName')
       .sort({ postedDate: -1 })
@@ -160,15 +235,29 @@ const isLiveValue = Boolean(createPostDto.isLive);
   }
 
   async searchPosts(query: string, limit: number = 20) {
+    await this.expirePostsPastEventWindow();
+
+    const cutoff = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+
     return this.postModel
       .find({
         isPublished: true,
         status: 'published',
-        expiresAt: { $gte: new Date() },
-        $or: [
-          { title: { $regex: query, $options: 'i' } },
-          { description: { $regex: query, $options: 'i' } },
-          { location: { $regex: query, $options: 'i' } },
+        $and: [
+          {
+            $or: [
+              { eventDate: { $exists: false } },
+              { eventDate: null },
+              { eventDate: { $gt: cutoff } },
+            ],
+          },
+          {
+            $or: [
+              { title: { $regex: query, $options: 'i' } },
+              { description: { $regex: query, $options: 'i' } },
+              { location: { $regex: query, $options: 'i' } },
+            ],
+          },
         ],
       })
       .populate('author', 'username displayName')
@@ -182,6 +271,10 @@ const isLiveValue = Boolean(createPostDto.isLive);
     updatePostDto: UpdatePostDto,
   ): Promise<PostDocument> {
     const oldPost = await this.postModel.findById(id).exec();
+    if (!oldPost) throw new NotFoundException('Post not found');
+
+    const oldMainImage = oldPost.mainImage || '';
+    const oldVideo = oldPost.video || '';
 
     const updateData: any = { ...updatePostDto };
     Object.keys(updateData).forEach(
@@ -209,9 +302,33 @@ const isLiveValue = Boolean(createPostDto.isLive);
       }
     }
 
+    if (updateData.eventDate !== undefined) {
+      const recalculatedExpiresAt = this.calculateExpiryFromEventDate(
+        updateData.eventDate,
+      );
+      if (recalculatedExpiresAt) {
+        updateData.expiresAt = recalculatedExpiresAt;
+      }
+    }
+
     if (updateData.isPublished !== undefined) {
       updateData.status = updateData.isPublished ? 'published' : 'draft';
     }
+
+    const shouldRemoveImage = updateData.removeImage === 'true';
+    const shouldRemoveVideo = updateData.removeVideo === 'true';
+    const hasNewImage = !!updateData.mainImage;
+    const hasNewVideo = !!updateData.video;
+
+    if (shouldRemoveImage) {
+      updateData.mainImage = '';
+    }
+    if (shouldRemoveVideo) {
+      updateData.video = '';
+    }
+
+    delete updateData.removeImage;
+    delete updateData.removeVideo;
 
     const post = await this.postModel
       .findByIdAndUpdate(id, updateData, { new: true, runValidators: true })
@@ -220,11 +337,34 @@ const isLiveValue = Boolean(createPostDto.isLive);
     if (!post) throw new NotFoundException('Post not found');
 
     try {
+      if ((shouldRemoveImage || hasNewImage) && oldMainImage.trim() !== '') {
+        const replacedWithDifferentImage =
+          hasNewImage && oldMainImage !== post.mainImage;
+        if (shouldRemoveImage || replacedWithDifferentImage) {
+          this.deleteMediaFileIfExists(oldMainImage);
+        }
+      }
+
+      if ((shouldRemoveVideo || hasNewVideo) && oldVideo.trim() !== '') {
+        const replacedWithDifferentVideo = hasNewVideo && oldVideo !== post.video;
+        if (shouldRemoveVideo || replacedWithDifferentVideo) {
+          this.deleteMediaFileIfExists(oldVideo);
+        }
+      }
+    } catch (fileError) {
+      console.error('⚠️ Failed to delete replaced/removed media file:', fileError);
+    }
+
+    try {
       const author = await this.adminModel.findById(post.author);
       const authorName =
         author?.displayName || author?.username || author?.email || 'Admin';
 
-      if (!oldPost?.isPublished && post.isPublished) {
+      const becamePublished =
+        (!oldPost?.isPublished && post.isPublished) ||
+        (oldPost?.status !== 'published' && post.status === 'published');
+
+      if (becamePublished) {
         await this.notificationGateway.emitNewPost(post, authorName);
       } else {
         await this.notificationGateway.emitPostUpdated(post, authorName);

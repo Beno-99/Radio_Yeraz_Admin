@@ -4,6 +4,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Ad, AdDocument } from './schemas/ad.schema';
+import { AdsService } from './ads.service';
 import { NotificationGateway } from '../notifications/notification.gateway';
 import { NotificationService } from '../notifications/notification.service';
 
@@ -13,41 +14,17 @@ export class AdsScheduler {
 
   constructor(
     @InjectModel(Ad.name) private adModel: Model<AdDocument>,
+    private readonly adsService: AdsService,
     private notificationGateway: NotificationGateway,
     private notificationService: NotificationService,
   ) {}
 
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT, {
+    timeZone: 'Asia/Damascus',
+  })
   async syncAdStatuses() {
-    const now = new Date();
-
-    const activateResult = await this.adModel.updateMany(
-      {
-        startDate: { $lte: now },
-        endDate: { $gte: now },
-        isActive: { $ne: true },
-      },
-      {
-        $set: { isActive: true, updatedAt: now },
-      },
-    );
-
-    const deactivateResult = await this.adModel.updateMany(
-      {
-        $or: [
-          { startDate: { $gt: now } },
-          { endDate: { $gt: now } },
-        ],
-        isActive: { $ne: false },
-      },
-      {
-        $set: { isActive: false, updatedAt: now },
-      },
-    );
-
-    this.logger.log(
-      `Ads synced. Activated: ${activateResult.modifiedCount}, Deactivated: ${deactivateResult.modifiedCount}`,
-    );
+    await this.adsService.syncLifecycleStatuses();
+    this.logger.log('Ads lifecycle statuses synced successfully.');
   }
 
   @Cron('0 9 * * *')

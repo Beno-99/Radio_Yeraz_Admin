@@ -2,12 +2,14 @@
 import { Filter } from "lucide-react";
 
 interface PostsFilterBarProps {
-  filter: "all" | "published" | "draft" | "live";
+  filter: "all" | "published" | "draft" | "live" | "expired";
   page: number;
   total: number;
   totalPosts: number;
   selectedPosts: number;
-  onFilterChange: (filter: "all" | "published" | "draft" | "live") => void;
+  onFilterChange: (
+    filter: "all" | "published" | "draft" | "live" | "expired",
+  ) => void;
   onClearSelection: () => void;
 }
 
@@ -28,7 +30,7 @@ export function PostsFilterBar({
         <Filter size={18} className="text-gray-500" />
         <span className="text-sm text-gray-700">Filter by:</span>
         <div className="flex gap-2">
-          {["all", "published", "draft", "live"].map((filterType) => (
+          {["all", "published", "draft", "live", "expired"].map((filterType) => (
             <button
               key={filterType}
               onClick={() => {
@@ -43,7 +45,9 @@ export function PostsFilterBar({
                       ? "bg-green-100 text-green-700"
                       : filterType === "draft"
                         ? "bg-gray-100 text-gray-700"
-                        : "bg-red-100 text-red-700"
+                        : filterType === "live"
+                          ? "bg-red-100 text-red-700"
+                          : "bg-slate-200 text-slate-700"
                   : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
