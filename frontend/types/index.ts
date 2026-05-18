@@ -75,3 +75,24 @@ export interface FilterOption {
   type: "select" | "date" | "boolean" | "text";
   options?: { value: string; label: string }[];
 }
+
+export interface StreamLink {
+  _id: string;
+  title: string;
+  url: string;
+  description?: string;
+  isActive: boolean;
+  createdAt: string | Date;
+  updatedAt: string | Date;
+}
+
+// Optional: Type for creating new link (without _id and timestamps)
+export interface CreateStreamLinkDto {
+  title: string;
+  url: string;
+  description?: string;
+  isActive?: boolean;
+}
+
+// Optional: Type for updating
+export interface UpdateStreamLinkDto extends Partial<CreateStreamLinkDto> {}

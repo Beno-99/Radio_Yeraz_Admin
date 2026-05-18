@@ -10,6 +10,7 @@ import { UploadModule } from './upload/upload.module';
 import { NotificationModule } from './notifications/notification.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { FirebaseModule } from './firebase/firebase.module';
+import { StreamLinkModule } from './stream-link/stream-link.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { FirebaseModule } from './firebase/firebase.module';
     AdsModule,
     NotificationModule,
     FirebaseModule,
+    StreamLinkModule,
     ScheduleModule.forRoot(),
   ],
 })

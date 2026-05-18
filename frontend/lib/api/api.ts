@@ -256,4 +256,34 @@ export const adsAPI = {
   toggleActive: (id: string) => api.put(`/ads/${id}/toggle-active`),
 };
 
+export const streamLinksAPI = {
+  // Get all stream links
+  getAll: () => api.get('/stream-links'),
+
+  // Get only active stream links
+  getActive: () => api.get('/stream-links/active'),
+
+  // Get single stream link
+  getById: (id: string) => api.get(`/stream-links/${id}`),
+
+  // Create new stream link
+  create: (data: {
+    title: string;
+    url: string;
+    description?: string;
+    isActive?: boolean;
+  }) => api.post('/stream-links', data),
+
+  // Update stream link
+  update: (id: string, data: {
+    title?: string;
+    url?: string;
+    description?: string;
+    isActive?: boolean;
+  }) => api.patch(`/stream-links/${id}`, data),
+
+  // Delete stream link
+  delete: (id: string) => api.delete(`/stream-links/${id}`),
+};
+
 export default api;

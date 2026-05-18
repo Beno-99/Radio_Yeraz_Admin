@@ -15,6 +15,7 @@ import {
   X,
   User,
   Shield,
+  Radio,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -28,6 +29,7 @@ const navigation = [
   { name: "Admins", href: "/dashboard/admin", icon: Users },
   { name: "Posts", href: "/dashboard/posts", icon: FileText },
   { name: "Ads", href: "/dashboard/ads", icon: Megaphone },
+  { name: "Stream Links", href: "/dashboard/streamLinks", icon: Radio },
 ];
 
 export default function Sidebar({ isOpen, onClose, user }: SidebarProps) {
