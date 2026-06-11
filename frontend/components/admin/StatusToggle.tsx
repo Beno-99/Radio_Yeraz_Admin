@@ -1,8 +1,7 @@
-// src/components/admin/StatusToggle.tsx
 "use client";
 
 import { useState } from "react";
-import { Power, Loader2, Check, X } from "lucide-react";
+import { Loader2, Check, X } from "lucide-react";
 import { adminAPI } from "@/lib/api/api";
 
 interface StatusToggleProps {
@@ -11,6 +10,14 @@ interface StatusToggleProps {
   onStatusChange?: (newStatus: boolean) => void;
   showLabel?: boolean;
   size?: "sm" | "md" | "lg";
+}
+
+interface ApiError {
+  response?: {
+    data?: {
+      message?: string;
+    };
+  };
 }
 
 export function StatusToggle({
@@ -30,42 +37,46 @@ export function StatusToggle({
     lg: "h-8 w-16 text-base",
   };
 
-  const iconSize = {
-    sm: 10,
-    md: 12,
-    lg: 14,
-  };
-
   const handleToggle = async () => {
     const newStatus = !status;
     setLoading(true);
     setError(null);
 
     try {
-      await adminAPI.updateAdmin(adminId, { isActive: newStatus });
+      await adminAPI.updateAdmin(adminId, {
+        isActive: newStatus,
+      });
 
       setStatus(newStatus);
 
-      if (onStatusChange) {
-        onStatusChange(newStatus);
-      }
+      onStatusChange?.(newStatus);
 
-      // Show success feedback
       showToast(
         `Admin ${newStatus ? "activated" : "deactivated"} successfully`,
-        "success"
+        "success",
       );
-    } catch (err: any) {
-      setError(err.response?.data?.message || "Failed to update status");
+    } catch (err: unknown) {
+      const error = err as ApiError;
+
+      setError(
+        error.response?.data?.message ||
+          "Failed to update status",
+      );
+
       showToast("Failed to update status", "error");
     } finally {
       setLoading(false);
     }
   };
 
-  const showToast = (message: string, type: "success" | "error") => {
-    // You can replace this with your toast system
-    console.log(`${type === "success" ? "✅" : "❌"} ${message}`);
+  const showToast = (
+    message: string,
+    type: "success" | "error",
+  ) => {
+    // Replace with real toast system if needed
+    console.log(
+      `${type === "success" ? "✅" : "❌"} ${message}`,
+    );
   };
 
   return (
@@ -82,35 +93,43 @@ export function StatusToggle({
                 ? "bg-green-500 hover:bg-green-600"
                 : "bg-gray-300 hover:bg-gray-400"
             }
-            ${loading ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}
+            ${
+              loading
+                ? "cursor-not-allowed opacity-50"
+                : "cursor-pointer"
+            }
           `}
-          aria-label={status ? "Deactivate admin" : "Activate admin"}
+          aria-label={
+            status ? "Deactivate admin" : "Activate admin"
+          }
         >
           <span
             className={`
               inline-block transform rounded-full bg-white shadow-lg transition-all duration-300
               ${
                 status
-                  ? `translate-x-${
-                      size === "sm" ? "6" : size === "md" ? "8" : "10"
-                    }`
+                  ? size === "sm"
+                    ? "translate-x-6"
+                    : size === "md"
+                      ? "translate-x-8"
+                      : "translate-x-10"
                   : "translate-x-1"
               }
               ${
                 size === "sm"
                   ? "h-4 w-4"
                   : size === "md"
-                  ? "h-5 w-5"
-                  : "h-6 w-6"
+                    ? "h-5 w-5"
+                    : "h-6 w-6"
               }
             `}
           >
             {loading ? (
-              <Loader2 className="h-full w-full animate-spin text-gray-500 p-0.5" />
+              <Loader2 className="h-full w-full animate-spin p-0.5 text-gray-500" />
             ) : status ? (
-              <Check className="h-full w-full text-green-500 p-0.5" />
+              <Check className="h-full w-full p-0.5 text-green-500" />
             ) : (
-              <X className="h-full w-full text-gray-400 p-0.5" />
+              <X className="h-full w-full p-0.5 text-gray-400" />
             )}
           </span>
         </button>
@@ -124,7 +143,9 @@ export function StatusToggle({
       </div>
 
       {error && (
-        <p className="text-xs text-red-600 bg-red-50 p-2 rounded">⚠️ {error}</p>
+        <p className="rounded bg-red-50 p-2 text-xs text-red-600">
+          ⚠️ {error}
+        </p>
       )}
     </div>
   );

@@ -2,8 +2,24 @@
 import { AdCard } from "./AdCard";
 import { Check } from "lucide-react";
 
+export interface Ad {
+  _id: string;
+  name: string;
+  image?: string;
+  isActive?: boolean;
+  status?: string;
+  clicks?: number;
+  startDate?: string;
+  endDate?: string;
+  targetUrl?: string;
+  author?: {
+    username?: string;
+    displayName?: string;
+  };
+}
+
 interface AdsGridProps {
-  ads: any[];
+  ads: Ad[];
   mediaUrl: string;
   onAdDeleted: () => void;
   loading: boolean;
@@ -47,15 +63,10 @@ export function AdsGrid({
             key={index}
             className="bg-white rounded-lg border border-gray-200 overflow-hidden animate-pulse"
           >
-            <div className="h-48 bg-gray-200"></div>
+            <div className="h-48 bg-gray-200" />
             <div className="p-5 space-y-3">
-              <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-              <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-              <div className="flex gap-2 pt-4">
-                <div className="h-8 w-8 bg-gray-200 rounded-lg"></div>
-                <div className="h-8 w-8 bg-gray-200 rounded-lg"></div>
-                <div className="h-8 w-8 bg-gray-200 rounded-lg ml-auto"></div>
-              </div>
+              <div className="h-4 bg-gray-200 rounded w-3/4" />
+              <div className="h-4 bg-gray-200 rounded w-1/2" />
             </div>
           </div>
         ))}
@@ -71,8 +82,7 @@ export function AdsGrid({
           No ads found
         </h3>
         <p className="text-gray-500 max-w-md mx-auto">
-          Create your first ad to get started. Click the "Create Ad" button
-          above.
+          Create your first ad to get started. Click the {"Create Ad"} button above.
         </p>
       </div>
     );
@@ -88,10 +98,10 @@ export function AdsGrid({
               <Check className="w-4 h-4 text-white" />
             </div>
             <span className="font-medium text-purple-800">
-              {selectedAds.length} ad{selectedAds.length !== 1 ? "s" : ""}{" "}
-              selected
+              {selectedAds.length} ad{selectedAds.length !== 1 ? "s" : ""} selected
             </span>
           </div>
+
           <button
             onClick={handleSelectAll}
             className="text-sm text-purple-600 hover:text-purple-800 font-medium"

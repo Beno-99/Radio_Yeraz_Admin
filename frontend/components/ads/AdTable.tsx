@@ -1,94 +1,147 @@
 import { Ad } from "@/types";
-import { DataTable } from "@/components/data/DataTable";
-import { AdColumns } from "../../lib/utils/adColumns";
-import { Play, Target, Plus } from "lucide-react";
+import { format } from "date-fns";
+import {
+  Monitor,
+  Smartphone,
+  Globe,
+  DollarSign,
+  Video,
+  Image as ImageIcon,
+} from "lucide-react";
+import Image from "next/image";
 
-interface AdTableProps {
-  ads: Ad[];
-  loading: boolean;
-  pagination: {
-    page: number;
-    totalPages: number;
-    totalItems: number;
-  };
-  selectedAds: string[];
-  onPageChange: (page: number) => void;
-  onSelectChange: (ids: string[]) => void;
-  onEdit: (ad: Ad) => void;
-  onDelete: (ad: Ad) => void;
-  onToggleStatus: (ad: Ad) => void;
-  onView: (ad: Ad) => void;
-  onCreateAd?: () => void; // Add this
-}
 
-export default function AdTable({
-  ads,
-  loading,
-  pagination,
-  selectedAds,
-  onPageChange,
-  onSelectChange,
-  onEdit,
-  onDelete,
-  onToggleStatus,
-  onView,
-  onCreateAd,
-}: AdTableProps) {
-  const columns = AdColumns();
+import type { Column } from "@/components/data/DataTable";
 
-  const customActions = [
-    {
-      label: "Toggle Status",
-      icon: <Play className="h-4 w-4" />,
-      onClick: onToggleStatus,
-      variant: "success" as const,
+export const AdColumns = (): Column<Ad>[] => [
+  {
+    key: "imageUrl",
+    header: "Ad Preview",
+    render: (value: unknown, ad: Ad) => (
+      <div className="h-16 w-24 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
+        {typeof value === "string" && value ? (
+          <div className="relative h-full w-full">
+            <Image
+              src={value}
+              alt={ad.title}
+              fill
+              className="object-cover"
+            />
+          </div>
+        ) : ad.videoUrl ? (
+          <Video className="h-6 w-6 text-gray-400" />
+        ) : (
+          <ImageIcon className="h-6 w-6 text-gray-400" />
+        )}
+      </div>
+    ),
+    width: "100px",
+  },
+  {
+    key: "title",
+    header: "Campaign",
+    render: (value: unknown, ad: Ad) => (
+      <div>
+        <div className="font-medium text-gray-900 line-clamp-1">{String(value ?? "")}</div>
+        <div className="text-sm text-gray-500 line-clamp-1">
+          {ad.advertiserName}
+        </div>
+      </div>
+    ),
+    sortable: true,
+  },
+  {
+    key: "platform",
+    header: "Platform",
+    render: (value: unknown) => {
+      const Icon =
+        value === "web" ? Monitor : value === "mobile" ? Smartphone : Globe;
+
+      const iconColor =
+        value === "web"
+          ? "text-blue-500"
+          : value === "mobile"
+          ? "text-green-500"
+          : "text-purple-500";
+
+      return (
+        <div className="flex items-center">
+          <Icon className={`h-4 w-4 ${iconColor} mr-1`} />
+          <span className="text-sm capitalize">{String(value ?? "")}</span>
+        </div>
+      );
     },
-  ];
+    sortable: true,
+  },
+  {
+    key: "isActive",
+    header: "Status",
+    render: (value: unknown) => {
+      const status = value ? "Active" : "Inactive";
+      const bgColor = value ? "bg-green-100" : "bg-gray-100";
+      const textColor = value ? "text-green-800" : "text-gray-800";
 
-  // Create the empty state element
-  const emptyStateElement = (
-    <div className="text-center py-12">
-      <Target className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-      <h3 className="text-lg font-medium text-gray-900 mb-2">
-        No ad campaigns found
-      </h3>
-      <p className="text-gray-600 mb-6">
-        Create your first ad campaign to get started
-      </p>
-      {onCreateAd && (
-        <button
-          onClick={onCreateAd}
-          className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+      return (
+        <span
+          className={`px-2 py-1 rounded-full text-xs font-medium ${bgColor} ${textColor}`}
         >
-          <Plus className="h-4 w-4 mr-2" />
-          Create Ad Campaign
-        </button>
-      )}
-    </div>
-  );
-
-  return (
-    <DataTable<Ad>
-      data={ads}
-      columns={columns}
-      loading={loading}
-      pagination={{
-        page: pagination.page,
-        totalPages: pagination.totalPages,
-        totalItems: pagination.totalItems,
-        onPageChange,
-      }}
-      selection={{
-        selectedIds: selectedAds,
-        onSelectionChange: onSelectChange,
-      }}
-      actions={{
-        onView,
-        onEdit,
-        onDelete,
-        customActions,
-      }}
-      emptyState={emptyStateElement} // Pass the element directly
-    />
-  );
-}
+          {status}
+        </span>
+      );
+    },
+    sortable: true,
+  },
+  {
+    key: "budget",
+    header: "Budget",
+    render: (value: unknown) => (
+      <div className="flex items-center">
+        <DollarSign className="h-3 w-3 text-gray-400 mr-1" />
+        <span className="text-sm font-medium">
+          ${typeof value === "number" ? value.toLocaleString() : "0"}
+        </span>
+      </div>
+    ),
+    sortable: true,
+  },
+  {
+    key: "impressions",
+    header: "Impressions",
+    render: (value: unknown) => (
+      <div className="text-sm text-gray-700 font-medium">
+        {typeof value === "number" ? value.toLocaleString() : "0"}
+      </div>
+    ),
+    sortable: true,
+  },
+  {
+    key: "clicks",
+    header: "Clicks",
+    render: (value: unknown, ad: Ad) => {
+      const clicks = typeof value === "number" ? value : 0;
+      const ctr = ad.impressions ? (clicks / ad.impressions) * 100 : 0;
+      return (
+        <div>
+          <div className="text-sm font-medium text-gray-900">
+            {clicks.toLocaleString()}
+          </div>
+          <div className="text-xs text-gray-500">{ctr.toFixed(2)}% CTR</div>
+        </div>
+      );
+    },
+    sortable: true,
+  },
+  {
+    key: "startDate",
+    header: "Schedule",
+    render: (value: unknown, ad: Ad) => (
+      <div className="text-sm text-gray-500">
+        {typeof value === "string" && value
+          ? format(new Date(value), "MMM d")
+          : "No start"}
+        {ad.endDate && ` - ${format(new Date(ad.endDate), "MMM d")}`}
+      </div>
+    ),
+    sortable: true,
+  },
+];

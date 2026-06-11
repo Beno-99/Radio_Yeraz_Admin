@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   Eye,
   Pencil,
@@ -19,6 +20,14 @@ interface PostCardProps {
   post: Post;
   mediaUrl: string;
   onDelete: () => void;
+}
+
+// Define the author type based on what the Post type expects
+interface Author {
+  username?: string;
+  displayName?: string;
+  profileName?: string;
+  name?: string;
 }
 
 export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
@@ -41,7 +50,9 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
       await postsAPI.deletePost(`${post._id}`);
       toast.success("Post deleted successfully");
       onDelete();
-    } catch (error) {
+    } catch (err) {
+      // Changed from 'error' to 'err' and added console.error to use the variable
+      console.error("Delete error:", err);
       toast.error("Failed to delete post");
     } finally {
       setIsDeleting(false);
@@ -119,11 +130,15 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
 
       return (
         <div className="relative w-full h-72 bg-gray-100 rounded-t-lg overflow-hidden">
-          <img
+          {/* Replace img with Next.js Image component */}
+          <Image
             src={imageUrl}
             alt={post.title}
-            className="absolute inset-0 w-full h-full object-cover"
+            fill
+            className="object-cover"
+            sizes="(max-width: 768px) 100vw, 400px"
             loading="lazy"
+            unoptimized={imageUrl.startsWith('http://localhost')}
           />
         </div>
       );
@@ -137,11 +152,12 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
     );
   };
 
+  // Fix: Replace 'any' with proper Author type
   const getAuthorName = () => {
     if (!post.author) return "Admin";
 
     if (typeof post.author === "object") {
-      const author = post.author as any;
+      const author = post.author as Author;
       return (
         author.username ||
         author.displayName ||

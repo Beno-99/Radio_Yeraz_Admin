@@ -1,18 +1,31 @@
-import { useLocalStorageUser } from "@/hooks/useLocalStorageUser";
-import {
-  CalendarDays,
-  MapPin,
-  User,
-  ExternalLink,
-  Globe,
-  Clock,
-  Eye,
-  ArrowLeft,
-} from "lucide-react";
+import { CalendarDays, MapPin, User, ExternalLink, Globe, Clock, Eye, ArrowLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
 
+// Define proper types instead of any
+interface Author {
+  username?: string;
+  displayName?: string;
+  profileName?: string;
+  name?: string;
+}
+
+interface Post {
+  _id?: string;
+  title: string;
+  description?: string;
+  eventDate?: string;
+  location?: string;
+  profileName?: string;
+  link?: string;
+  visibility?: "public" | "private";
+  createdAt?: string;
+  updatedAt?: string;
+  views?: number;
+  author?: string | Author;
+}
+
 interface PostDetailsProps {
-  post: any;
+  post: Post;
 }
 
 export function PostDetails({ post }: PostDetailsProps) {
@@ -26,7 +39,11 @@ export function PostDetails({ post }: PostDetailsProps) {
   );
 }
 
-function TitleSection({ post }: { post: any }) {
+interface TitleSectionProps {
+  post: Post;
+}
+
+function TitleSection({ post }: TitleSectionProps) {
   return (
     <div className="space-y-4">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -69,7 +86,11 @@ function TitleSection({ post }: { post: any }) {
   );
 }
 
-function DescriptionSection({ description }: { description?: string }) {
+interface DescriptionSectionProps {
+  description?: string;
+}
+
+function DescriptionSection({ description }: DescriptionSectionProps) {
   return (
     <div className="space-y-3">
       <h3 className="text-lg font-semibold text-gray-800">Description</h3>
@@ -82,16 +103,21 @@ function DescriptionSection({ description }: { description?: string }) {
   );
 }
 
-function DetailsGrid({ post }: { post: any }) {
-  const getAuthorName = () => {
+interface DetailsGridProps {
+  post: Post;
+}
+
+function DetailsGrid({ post }: DetailsGridProps) {
+  const getAuthorName = (): string | null => {
     if (!post.author) return null;
 
     if (typeof post.author === "object") {
+      const author = post.author as Author;
       return (
-        post.author.username ||
-        post.author.displayName ||
-        post.author.profileName ||
-        post.author.name ||
+        author.username ||
+        author.displayName ||
+        author.profileName ||
+        author.name ||
         null
       );
     }
@@ -155,7 +181,7 @@ function DetailsGrid({ post }: { post: any }) {
       {authorName && (
         <DetailItem
           icon={User}
-          iconBg="bg-purple-100" // Different color to distinguish
+          iconBg="bg-purple-100"
           iconColor="text-purple-600"
           bgColor="bg-purple-50"
           label="Author"
@@ -164,6 +190,20 @@ function DetailsGrid({ post }: { post: any }) {
       )}
     </div>
   );
+}
+
+// Define icon component type
+type IconComponent = React.ComponentType<{ size?: number; className?: string }>;
+
+interface DetailItemProps {
+  icon: IconComponent;
+  iconBg: string;
+  iconColor: string;
+  bgColor: string;
+  label: string;
+  value: string;
+  isLink?: boolean;
+  link?: string;
 }
 
 function DetailItem({
@@ -175,16 +215,7 @@ function DetailItem({
   value,
   isLink = false,
   link = "",
-}: {
-  icon: any;
-  iconBg: string;
-  iconColor: string;
-  bgColor: string;
-  label: string;
-  value: string;
-  isLink?: boolean;
-  link?: string;
-}) {
+}: DetailItemProps) {
   const content = isLink ? (
     <a
       href={link}
@@ -211,7 +242,11 @@ function DetailItem({
   );
 }
 
-function ActionButtons({ link }: { link?: string }) {
+interface ActionButtonsProps {
+  link?: string;
+}
+
+function ActionButtons({ link }: ActionButtonsProps) {
   const router = useRouter();
 
   return (

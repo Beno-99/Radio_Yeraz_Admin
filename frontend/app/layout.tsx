@@ -8,6 +8,8 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Radio Yeraz Admin Dashboard",
+  icons: [
+    {url: '/icon.jpg', sizes: '48x48'}],
   description: "Admin dashboard for Radio Yeraz management",
 };
 

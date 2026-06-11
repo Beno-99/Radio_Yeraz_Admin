@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { X } from 'lucide-react';
 import { StreamLink, CreateStreamLinkDto } from '@/types';
 import { streamLinksAPI } from '@/lib/api/api';
-import { ConfirmationDialog } from '@/components/ConfirmationDialog'; // Adjust path if needed
+import { ConfirmationDialog } from '@/components/ConfirmationDialog';
 
 interface StreamLinkModalProps {
   isOpen: boolean;
@@ -27,20 +27,28 @@ export function StreamLinkModal({ isOpen, onClose, initialData }: StreamLinkModa
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
 
-  // Reset form
-  useEffect(() => {
+  // Fix: Use useMemo to compute initial form data without side effects
+  const initialFormData = useMemo(() => {
     if (initialData) {
-      setFormData({
+      return {
         title: initialData.title,
         url: initialData.url,
         description: initialData.description || '',
         isActive: initialData.isActive,
-      });
-    } else {
-      setFormData({ title: '', url: '', description: '', isActive: true });
+      };
     }
-    setErrors({});
-  }, [initialData, isOpen]);
+    return { title: '', url: '', description: '', isActive: true };
+  }, [initialData]);
+
+  // Fix: Use setTimeout to avoid synchronous setState in useEffect
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setFormData(initialFormData);
+      setErrors({});
+    }, 0);
+    
+    return () => clearTimeout(timer);
+  }, [initialFormData, isOpen]);
 
   const validateForm = (): boolean => {
     const newErrors: Partial<CreateStreamLinkDto> = {};
@@ -53,6 +61,15 @@ export function StreamLinkModal({ isOpen, onClose, initialData }: StreamLinkModa
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
+
+  // Define error type
+  interface ApiError {
+    response?: {
+      data?: {
+        message?: string;
+      };
+    };
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,18 +87,19 @@ export function StreamLinkModal({ isOpen, onClose, initialData }: StreamLinkModa
 
       setShowSuccessDialog(true);
       onClose(); // Close the form modal
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
-      const errorMsg = error.response?.data?.message || 'Failed to save stream link';
-      alert(errorMsg); // Keep simple alert for errors (or you can make error dialog too)
+      const err = error as ApiError;
+      const errorMsg = err.response?.data?.message || 'Failed to save stream link';
+      alert(errorMsg); // Keep simple alert for errors
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSuccessClose = () => {
+  const handleSuccessClose = useCallback(() => {
     setShowSuccessDialog(false);
-  };
+  }, []);
 
   if (!isOpen && !showSuccessDialog) return null;
 
@@ -101,7 +119,6 @@ export function StreamLinkModal({ isOpen, onClose, initialData }: StreamLinkModa
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
-              {/* Form fields remain the same */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Title <span className="text-red-500">*</span>

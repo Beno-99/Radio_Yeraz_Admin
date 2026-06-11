@@ -9,7 +9,6 @@ const nextConfig: NextConfig = {
         port: "8000",
         pathname: "/uploads/**",
       },
-      // Add more if you have other domains
       {
         protocol: "https",
         hostname: "yourdomain.com",

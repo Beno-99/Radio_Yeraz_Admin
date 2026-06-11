@@ -1,7 +1,7 @@
-// app/dashboard/ads/page.tsx
+
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { AdsHeader } from "@/components/ads/AdsHeader";
 import { AdsStats } from "@/components/ads/AdsStats";
 import { AdsFilterBar } from "@/components/ads/AdsFilterBar";
@@ -38,9 +38,13 @@ export default function AdsPage() {
   >("all");
   const [selectedAds, setSelectedAds] = useState<string[]>([]);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isUpdating, setIsUpdating] = useState(false);
+
+  // kept because AdsHeader expects it
+  const isUpdating = false;
+
   const [totalPages, setTotalPages] = useState(1);
   const [totalAds, setTotalAds] = useState(0);
+
   const [statusCounts, setStatusCounts] = useState({
     active: 0,
     inactive: 0,
@@ -51,7 +55,7 @@ export default function AdsPage() {
   const mediaUrl =
     process.env.NEXT_PUBLIC_MEDIA_GET_URL || "http://localhost:8000";
 
-  const fetchAds = async () => {
+  const fetchAds = useCallback(async () => {
     try {
       const [response, activeRes, inactiveRes, pendingRes, expiredRes] =
         await Promise.all([
@@ -60,10 +64,26 @@ export default function AdsPage() {
             limit: PAGE_LIMIT,
             status: filter !== "all" ? filter : undefined,
           }),
-          adsAPI.getAllAds({ page: 1, limit: 1, status: "active" }),
-          adsAPI.getAllAds({ page: 1, limit: 1, status: "inactive" }),
-          adsAPI.getAllAds({ page: 1, limit: 1, status: "pending" }),
-          adsAPI.getAllAds({ page: 1, limit: 1, status: "expired" }),
+          adsAPI.getAllAds({
+            page: 1,
+            limit: 1,
+            status: "active",
+          }),
+          adsAPI.getAllAds({
+            page: 1,
+            limit: 1,
+            status: "inactive",
+          }),
+          adsAPI.getAllAds({
+            page: 1,
+            limit: 1,
+            status: "pending",
+          }),
+          adsAPI.getAllAds({
+            page: 1,
+            limit: 1,
+            status: "expired",
+          }),
         ]);
 
       const responseData = response.data;
@@ -76,6 +96,7 @@ export default function AdsPage() {
         setAds(responseData.data || []);
         setTotalPages(responseData.pages || 1);
         setTotalAds(responseData.total || 0);
+
         setStatusCounts({
           active: activeData?.total || 0,
           inactive: inactiveData?.total || 0,
@@ -91,22 +112,23 @@ export default function AdsPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchAds();
   }, [page, filter]);
 
   useEffect(() => {
-    setPage(1);
-    setSelectedAds([]);
-  }, [filter]);
+  const timer = setTimeout(() => {
+    void fetchAds();
+  }, 0);
+
+  return () => clearTimeout(timer);
+}, [fetchAds]);
 
   const handleBulkDelete = async () => {
     if (selectedAds.length === 0) return;
 
     const result = await Swal.fire({
-      title: `Delete ${selectedAds.length} ad${selectedAds.length > 1 ? "s" : ""}?`,
+      title: `Delete ${selectedAds.length} ad${
+        selectedAds.length > 1 ? "s" : ""
+      }?`,
       text: "This action cannot be undone!",
       icon: "warning",
       showCancelButton: true,
@@ -118,15 +140,22 @@ export default function AdsPage() {
     if (!result.isConfirmed) return;
 
     setIsDeleting(true);
+
     try {
       const adsToDelete = [...selectedAds];
+
       setSelectedAds([]);
 
-      await Promise.all(adsToDelete.map((id) => adsAPI.deleteAd(id)));
+      await Promise.all(
+        adsToDelete.map((id) => adsAPI.deleteAd(id))
+      );
 
       await fetchAds();
-      toast.success(`Successfully deleted ${adsToDelete.length} ad(s)`);
-    } catch (error) {
+
+      toast.success(
+        `Successfully deleted ${adsToDelete.length} ad(s)`
+      );
+    } catch {
       toast.error("Failed to delete some ads");
     } finally {
       setIsDeleting(false);
@@ -139,6 +168,14 @@ export default function AdsPage() {
 
   const handleSelectionChange = (selectedIds: string[]) => {
     setSelectedAds(selectedIds);
+  };
+
+  const handleFilterChange = (
+    newFilter: "all" | "active" | "inactive" | "pending" | "expired"
+  ) => {
+    setFilter(newFilter);
+    setPage(1);
+    setSelectedAds([]);
   };
 
   return (
@@ -167,7 +204,7 @@ export default function AdsPage() {
         total={totalAds}
         totalAds={ads.length}
         selectedAds={selectedAds.length}
-        onFilterChange={setFilter}
+        onFilterChange={handleFilterChange}
         onClearSelection={clearSelection}
       />
 

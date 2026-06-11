@@ -1,10 +1,15 @@
-// components/admin/PasswordFields.tsx
 import { Key } from "lucide-react";
 import { FieldError } from "./FieldError";
+import { UseFormRegister, FieldErrors } from "react-hook-form";
+
+export interface AdminFormData {
+  password: string;
+  confirmPassword: string;
+}
 
 interface PasswordFieldsProps {
-  register: any;
-  errors: any;
+  register: UseFormRegister<AdminFormData>;
+  errors: FieldErrors<AdminFormData>;
 }
 
 export function PasswordFields({ register, errors }: PasswordFieldsProps) {
@@ -15,12 +20,15 @@ export function PasswordFields({ register, errors }: PasswordFieldsProps) {
       </h2>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Password */}
         <div className="space-y-2">
           <label className="block text-sm font-medium text-gray-700">
             Password <span className="text-red-500">*</span>
           </label>
+
           <div className="relative">
             <Key className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+
             <input
               {...register("password")}
               type="password"
@@ -30,21 +38,27 @@ export function PasswordFields({ register, errors }: PasswordFieldsProps) {
               placeholder="Enter password"
             />
           </div>
+
           <FieldError error={errors.password} />
         </div>
 
+        {/* Confirm Password */}
         <div className="space-y-2">
           <label className="block text-sm font-medium text-gray-700">
             Confirm Password <span className="text-red-500">*</span>
           </label>
+
           <input
             {...register("confirmPassword")}
             type="password"
             className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
-              errors.confirmPassword ? "border-red-300" : "border-gray-300"
+              errors.confirmPassword
+                ? "border-red-300"
+                : "border-gray-300"
             }`}
             placeholder="Confirm password"
           />
+
           <FieldError error={errors.confirmPassword} />
         </div>
       </div>

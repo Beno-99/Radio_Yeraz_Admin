@@ -26,8 +26,18 @@ export default function LoginPage() {
         localStorage.setItem("user", JSON.stringify(response.data.data.admin));
         router.push("/dashboard");
       }
-    } catch (err: any) {
-      setError(err.response?.data?.message || "Login failed");
+    } catch (err: unknown) {
+      // Safely handle error without using `any`
+      let errorMessage = "Login failed";
+
+      if (err && typeof err === "object" && "response" in err) {
+        const axiosError = err as { response?: { data?: { message?: string } } };
+        errorMessage = axiosError.response?.data?.message || errorMessage;
+      } else if (err instanceof Error) {
+        errorMessage = err.message;
+      }
+
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

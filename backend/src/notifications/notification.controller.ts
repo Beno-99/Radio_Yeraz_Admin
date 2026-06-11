@@ -50,6 +50,12 @@ export class NotificationController {
     await this.notificationService.deleteAll();
     return { success: true, message: 'All notifications deleted' };
   }
+  
+  @Delete(':id')
+async deleteOne(@Param('id') id: string) {
+  await this.notificationService.deleteOne(id);
+  return { success: true, message: 'Notification deleted successfully' };
+}
 
   @Post('test/device')
   async testDeviceNotification(

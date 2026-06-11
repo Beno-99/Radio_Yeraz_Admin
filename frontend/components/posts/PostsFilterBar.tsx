@@ -1,15 +1,15 @@
 // components/posts/PostsFilterBar.tsx
 import { Filter } from "lucide-react";
 
+type FilterType = "all" | "published" | "draft" | "live" | "expired";
+
 interface PostsFilterBarProps {
-  filter: "all" | "published" | "draft" | "live" | "expired";
+  filter: FilterType;
   page: number;
   total: number;
   totalPosts: number;
   selectedPosts: number;
-  onFilterChange: (
-    filter: "all" | "published" | "draft" | "live" | "expired",
-  ) => void;
+  onFilterChange: (filter: FilterType) => void;
   onClearSelection: () => void;
 }
 
@@ -24,6 +24,11 @@ export function PostsFilterBar({
 }: PostsFilterBarProps) {
   const PAGE_LIMIT = 12;
 
+  const handleFilterChange = (filterType: FilterType) => {
+    onFilterChange(filterType);
+    onClearSelection();
+  };
+
   return (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-white rounded-xl border border-gray-200">
       <div className="flex items-center gap-2">
@@ -33,10 +38,7 @@ export function PostsFilterBar({
           {["all", "published", "draft", "live", "expired"].map((filterType) => (
             <button
               key={filterType}
-              onClick={() => {
-                onFilterChange(filterType as any);
-                onClearSelection();
-              }}
+              onClick={() => handleFilterChange(filterType as FilterType)}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                 filter === filterType
                   ? filterType === "all"

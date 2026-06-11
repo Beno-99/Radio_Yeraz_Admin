@@ -131,15 +131,33 @@ export default function EditAdPage() {
           text: response.data.message || "Update failed",
         });
       }
-    } catch (error: any) {
-      Swal.close();
+    } catch (error: unknown) {
+  Swal.close();
 
-      Swal.fire({
-        icon: "error",
-        title: "Something went wrong",
-        text: error.response?.data?.message || "Failed to update ad",
-      });
-    } finally {
+  let message = "Failed to update ad";
+
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error
+  ) {
+    const err = error as {
+      response?: {
+        data?: {
+          message?: string;
+        };
+      };
+    };
+
+    message = err.response?.data?.message || message;
+  }
+
+  Swal.fire({
+    icon: "error",
+    title: "Something went wrong",
+    text: message,
+  });
+} finally {
       setSaving(false);
     }
   };

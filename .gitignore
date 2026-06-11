@@ -21,3 +21,11 @@ Thumbs.db
 
 # IDE
 .vscode/
+
+# Ignore all video files
+backend/uploads/
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm

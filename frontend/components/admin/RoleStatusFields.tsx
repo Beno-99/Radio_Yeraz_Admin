@@ -1,11 +1,15 @@
-// components/admin/RoleStatusFields.tsx
 import { Shield } from "lucide-react";
-import { Controller } from "react-hook-form";
+import { Controller, UseFormRegister, UseFormWatch, Control } from "react-hook-form";
+
+export interface AdminFormData {
+  role: "ADMIN" | "SUPER_ADMIN";
+  isActive: boolean;
+}
 
 interface RoleStatusFieldsProps {
-  register: any;
-  watch: any;
-  control: any;
+  register: UseFormRegister<AdminFormData>;
+  watch: UseFormWatch<AdminFormData>;
+  control: Control<AdminFormData>;
 }
 
 export function RoleStatusFields({
@@ -14,7 +18,6 @@ export function RoleStatusFields({
   control,
 }: RoleStatusFieldsProps) {
   const watchRole = watch("role");
-  const watchIsActive = watch("isActive");
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -28,6 +31,7 @@ export function RoleStatusFields({
           <label className="block text-sm font-medium text-gray-700">
             Role <span className="text-red-500">*</span>
           </label>
+
           <div className="space-y-2">
             <label className="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
               <input
@@ -64,6 +68,7 @@ export function RoleStatusFields({
           <label className="block text-sm font-medium text-gray-700">
             Account Status
           </label>
+
           <div className="flex items-center justify-between p-3 border rounded-lg">
             <div>
               <span className="font-medium">Active Account</span>
@@ -71,6 +76,7 @@ export function RoleStatusFields({
                 User can login and access the system
               </p>
             </div>
+
             <Controller
               name="isActive"
               control={control}
@@ -95,12 +101,16 @@ export function RoleStatusFields({
       </div>
 
       {/* Summary Card */}
-      <div className="mt-6 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4">
+      <div className="mt-6 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
         <div className="flex items-start gap-3">
-          <Shield className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+          <Shield className="mt-0.5 h-5 w-5 flex-shrink-0 text-blue-600" />
+
           <div>
-            <h3 className="font-medium text-blue-800">Account Summary</h3>
-            <p className="text-sm text-blue-700 mt-1">
+            <h3 className="font-medium text-blue-800">
+              Account Summary
+            </h3>
+
+            <p className="mt-1 text-sm text-blue-700">
               {watchRole === "SUPER_ADMIN"
                 ? "Super Admin accounts have full system access."
                 : "Admin accounts can manage content with limited system access."}

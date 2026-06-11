@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Post } from "@/types";
 import { PostCard } from "./PostCard";
 import { Check } from "lucide-react";
@@ -20,13 +19,7 @@ export function PostsGrid({
   loading,
   selectedPosts = [], // Now using prop instead of local state
 }: PostsGridProps) {
-  // REMOVE local state - use the prop directly
-  // const [selectedPosts, setSelectedPosts] = useState<string[]>([]); // DELETE THIS LINE
-
-  // You already have this function - it's correct
-  const isChecked = (postId: string) => selectedPosts.includes(postId);
-
-  // This function is correct but you're not using it consistently
+  // This function is correct
   const handleCheckboxChange = (postId: string, checked: boolean) => {
     let newSelection;
     if (checked) {
@@ -42,13 +35,6 @@ export function PostsGrid({
     // Use the existing logic
     const isCurrentlySelected = selectedPosts.includes(postId);
     handleCheckboxChange(postId, !isCurrentlySelected);
-
-    // OLD CODE - REMOVE THIS:
-    // const newSelected = selectedPosts.includes(postId)
-    //   ? selectedPosts.filter((id) => id !== postId)
-    //   : [...selectedPosts, postId];
-    // setSelectedPosts(newSelected);
-    // onSelectionChange?.(newSelected);
   };
 
   // FIX THIS FUNCTION TOO
@@ -61,16 +47,6 @@ export function PostsGrid({
       const allIds = posts.map((post) => post._id);
       onSelectionChange(allIds);
     }
-
-    // OLD CODE - REMOVE THIS:
-    // if (selectedPosts.length === posts.length) {
-    //   setSelectedPosts([]);
-    //   onSelectionChange?.([]);
-    // } else {
-    //   const allIds = posts.map((post) => post._id);
-    //   setSelectedPosts(allIds);
-    //   onSelectionChange?.(allIds);
-    // }
   };
 
   // The rest of your component is correct...
@@ -107,7 +83,7 @@ export function PostsGrid({
           No posts found
         </h3>
         <p className="text-gray-500 max-w-md mx-auto">
-          Create your first post to get started. Click the "Create Post" button
+          Create your first post to get started. Click the &quot;Create Post&quot; button
           above.
         </p>
       </div>

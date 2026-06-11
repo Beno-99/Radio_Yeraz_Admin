@@ -4,15 +4,14 @@ import Link from "next/link";
 import {
   Home,
   Search,
-  RefreshCw,
-  ArrowLeft,
   Compass,
   Navigation,
 } from "lucide-react";
-import { useRouter } from "next/navigation"; // ADD THIS
+import { useRouter } from "next/navigation";
 
 export default function NotFound() {
-  const router = useRouter(); // ADD THIS
+  const router = useRouter();
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white flex items-center justify-center p-4">
       <div className="max-w-lg w-full text-center">
@@ -35,7 +34,7 @@ export default function NotFound() {
           </div>
         </div>
 
-        {/* Illustration with Tailwind animation */}
+        {/* Illustration */}
         <div className="mb-10">
           <div className="relative w-48 h-48 mx-auto">
             <div className="absolute inset-0 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full animate-pulse"></div>
@@ -58,8 +57,8 @@ export default function NotFound() {
           Lost in Space?
         </h1>
         <p className="text-gray-600 mb-10 text-lg">
-          The page you're looking for seems to have drifted into the unknown.
-          Don't worry, we'll help you navigate back.
+          The page you&apos;re looking for seems to have drifted into the unknown. 
+          Don&apos;t worry, we&apos;ll help you navigate back.
         </p>
 
         {/* Actions */}

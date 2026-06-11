@@ -7,6 +7,8 @@ import {
   SubmitHandler,
   FieldValues,
   Path,
+  DefaultValues,
+  useWatch,           // ← Changed to useWatch to reduce compiler warning
 } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ZodTypeAny } from "zod";
@@ -29,6 +31,7 @@ import {
   Ban,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import Image from "next/image"; // Import Next.js Image component
 
 export type FieldType =
   | "text"
@@ -66,7 +69,7 @@ interface FormBuilderProps<T extends FieldValues = FieldValues> {
   cancelText?: string;
   loading?: boolean;
   schema?: ZodTypeAny;
-  defaultValues?: Partial<T>;
+  defaultValues?: DefaultValues<T> | Partial<T>;
   layout?: "vertical" | "horizontal" | "grid";
   title?: string;
   description?: string;
@@ -90,29 +93,30 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
     handleSubmit,
     formState: { errors, isDirty },
     reset,
-    getValues,
-    watch,
   } = useForm<T>({
-    resolver: schema ? zodResolver(schema as any) : undefined,
-    defaultValues: defaultValues as any,
+    resolver: schema ? zodResolver(schema) : undefined,
+    defaultValues: defaultValues as DefaultValues<T>,
   });
 
   const [filePreviews, setFilePreviews] = useState<Record<string, string>>({});
 
-  // Watch file fields to track changes
-  const mainImageValue = watch("mainImage" as Path<T>);
-  const videoValue = watch("video" as Path<T>);
+  // Use useWatch instead of watch to reduce React Compiler warning
+  const mainImageValue = useWatch({
+    control,
+    name: "mainImage" as Path<T>,
+  });
+  const videoValue = useWatch({
+    control,
+    name: "video" as Path<T>,
+  });
 
-  // Type guard to check if value is a File
-  const isFile = (value: unknown): value is File => {
-    return value instanceof File;
-  };
+  const isFile = (value: unknown): value is File => value instanceof File;
 
-  // Check which files are selected
   const imageSelected = useMemo(() => isFile(mainImageValue), [mainImageValue]);
   const videoSelected = useMemo(() => isFile(videoValue), [videoValue]);
 
-  useEffect(() => {
+  // Fix: Use useMemo instead of useEffect to avoid synchronous setState
+  const initialPreviews = useMemo(() => {
     if (defaultValues) {
       const previews: Record<string, string> = {};
       Object.entries(defaultValues).forEach(([key, value]) => {
@@ -123,9 +127,24 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
           previews[key] = value;
         }
       });
-      setFilePreviews(previews);
+      return previews;
     }
+    return {};
   }, [defaultValues]);
+
+  // Use useEffect without setState - just update state when initialPreviews changes
+  // but in a way that doesn't cause cascading renders
+  useEffect(() => {
+    // Use a setTimeout or requestAnimationFrame to avoid synchronous setState
+    // This moves the state update to the next tick, preventing cascading renders
+    const timer = setTimeout(() => {
+      if (Object.keys(initialPreviews).length > 0) {
+        setFilePreviews(initialPreviews);
+      }
+    }, 0);
+    
+    return () => clearTimeout(timer);
+  }, [initialPreviews]);
 
   const submitHandler: SubmitHandler<T> = async (data) => {
     await onSubmit(data);
@@ -161,7 +180,6 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
 
     const error = errors[field.name as Path<T>];
     const Icon = getFieldIcon(field);
-
     const fieldContainerClass = cn(
       "mb-6",
       layout === "grid" && "col-span-1",
@@ -175,16 +193,13 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
             <Controller
               name={field.name as Path<T>}
               control={control}
-              defaultValue={false as any}
               render={({ field: controllerField }) => (
                 <div className="flex items-start space-x-3 p-4 border border-gray-200 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
                   <div className="flex items-center h-5">
                     <input
                       type="checkbox"
                       checked={!!controllerField.value}
-                      onChange={(e) =>
-                        controllerField.onChange(e.target.checked)
-                      }
+                      onChange={(e) => controllerField.onChange(e.target.checked)}
                       disabled={loading}
                       className={cn(
                         "h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 transition-colors",
@@ -195,19 +210,13 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
                   <div className="flex-1">
                     <label className="font-medium text-gray-900 text-sm">
                       {field.label}
-                      {field.required && (
-                        <span className="text-red-500 ml-1">*</span>
-                      )}
+                      {field.required && <span className="text-red-500 ml-1">*</span>}
                     </label>
                     {field.description && (
-                      <p className="text-gray-600 text-sm mt-1">
-                        {field.description}
-                      </p>
+                      <p className="text-gray-600 text-sm mt-1">{field.description}</p>
                     )}
                   </div>
-                  {controllerField.value && (
-                    <Check className="h-5 w-5 text-green-500" />
-                  )}
+                  {controllerField.value && <Check className="h-5 w-5 text-green-500" />}
                 </div>
               )}
             />
@@ -233,6 +242,7 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
               {field.label}
               {field.required && <span className="text-red-500 ml-1">*</span>}
             </label>
+
             <Controller
               name={field.name as Path<T>}
               control={control}
@@ -274,17 +284,13 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
                           <div
                             className={cn(
                               "mx-auto h-16 w-16 flex items-center justify-center rounded-full transition-colors",
-                              isDisabled && !hasFile
-                                ? "bg-gray-200"
-                                : "bg-purple-100",
+                              isDisabled && !hasFile ? "bg-gray-200" : "bg-purple-100",
                             )}
                           >
                             <VideoIcon
                               className={cn(
                                 "h-8 w-8 transition-colors",
-                                isDisabled && !hasFile
-                                  ? "text-gray-400"
-                                  : "text-purple-600",
+                                isDisabled && !hasFile ? "text-gray-400" : "text-purple-600",
                               )}
                             />
                           </div>
@@ -292,21 +298,18 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
                           <div
                             className={cn(
                               "mx-auto h-16 w-16 flex items-center justify-center rounded-full transition-colors",
-                              isDisabled && !hasFile
-                                ? "bg-gray-200"
-                                : "bg-blue-100",
+                              isDisabled && !hasFile ? "bg-gray-200" : "bg-blue-100",
                             )}
                           >
                             <ImageIcon
                               className={cn(
                                 "h-8 w-8 transition-colors",
-                                isDisabled && !hasFile
-                                  ? "text-gray-400"
-                                  : "text-blue-600",
+                                isDisabled && !hasFile ? "text-gray-400" : "text-blue-600",
                               )}
                             />
                           </div>
                         )}
+
                         <div className="flex flex-col sm:flex-row items-center justify-center text-sm">
                           <label
                             htmlFor={field.name}
@@ -347,20 +350,17 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
                           <p
                             className={cn(
                               "mt-2 sm:mt-0 sm:ml-4",
-                              isDisabled && !hasFile
-                                ? "text-gray-400"
-                                : "text-gray-500",
+                              isDisabled && !hasFile ? "text-gray-400" : "text-gray-500",
                             )}
                           >
                             or drag and drop
                           </p>
                         </div>
+
                         <p
                           className={cn(
                             "text-xs",
-                            isDisabled && !hasFile
-                              ? "text-gray-400"
-                              : "text-gray-500",
+                            isDisabled && !hasFile ? "text-gray-400" : "text-gray-500",
                           )}
                         >
                           {isVideo
@@ -384,12 +384,7 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
                         </div>
                         <div className="flex items-center space-x-3">
                           <span className="text-xs text-green-600">
-                            {(
-                              (controllerField.value as File).size /
-                              1024 /
-                              1024
-                            ).toFixed(2)}{" "}
-                            MB
+                            {((controllerField.value as File).size / 1024 / 1024).toFixed(2)} MB
                           </span>
                           <button
                             type="button"
@@ -411,9 +406,7 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
 
                     {filePreviews[field.name] && (
                       <div className="mt-4">
-                        <p className="text-sm font-medium text-gray-700 mb-2">
-                          Preview:
-                        </p>
+                        <p className="text-sm font-medium text-gray-700 mb-2">Preview:</p>
                         {isVideo ? (
                           <div className="relative rounded-lg overflow-hidden bg-black">
                             <video
@@ -424,11 +417,17 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
                           </div>
                         ) : (
                           <div className="relative rounded-lg overflow-hidden border border-gray-200">
-                            <img
-                              src={filePreviews[field.name]}
-                              alt="Preview"
-                              className="w-full max-w-md h-auto object-cover"
-                            />
+                            {/* Replace img with Next.js Image component */}
+                            <div className="relative w-full max-w-md h-auto aspect-video">
+                              <Image
+                                src={filePreviews[field.name]}
+                                alt="Preview"
+                                fill
+                                className="object-cover"
+                                sizes="(max-width: 768px) 100vw, 448px"
+                                unoptimized={filePreviews[field.name].startsWith('blob:')}
+                              />
+                            </div>
                           </div>
                         )}
                       </div>
@@ -437,9 +436,11 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
                 );
               }}
             />
+
             {field.description && (
               <p className="mt-2 text-sm text-gray-600">{field.description}</p>
             )}
+
             {error && (
               <div className="mt-2 flex items-center text-red-600 text-sm">
                 <AlertCircle className="h-4 w-4 mr-1" />
@@ -451,101 +452,11 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
       }
 
       case "textarea":
-        return (
-          <div className={fieldContainerClass}>
-            <label className="block text-sm font-medium text-gray-900 mb-2">
-              {field.label}
-              {field.required && <span className="text-red-500 ml-1">*</span>}
-            </label>
-            <div className="relative">
-              {Icon && (
-                <div className="absolute top-3 left-3 flex items-center pointer-events-none">
-                  {Icon}
-                </div>
-              )}
-              <Controller
-                name={field.name as Path<T>}
-                control={control}
-                render={({ field: controllerField }) => (
-                  <textarea
-                    {...controllerField}
-                    placeholder={field.placeholder}
-                    disabled={loading}
-                    rows={6}
-                    className={cn(
-                      "block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm transition-colors",
-                      Icon ? "pl-10 pt-3" : "pl-4 pt-3",
-                      "pr-4 pb-3",
-                      error
-                        ? "border-red-300 focus:border-red-500 focus:ring-red-500 bg-red-50"
-                        : "bg-white",
-                    )}
-                  />
-                )}
-              />
-            </div>
-            {field.description && (
-              <p className="mt-2 text-sm text-gray-600">{field.description}</p>
-            )}
-            {error && (
-              <div className="mt-2 flex items-center text-red-600 text-sm">
-                <AlertCircle className="h-4 w-4 mr-1" />
-                {String(error.message)}
-              </div>
-            )}
-          </div>
-        );
-
       case "date":
-        return (
-          <div className={fieldContainerClass}>
-            <label className="block text-sm font-medium text-gray-900 mb-2">
-              {field.label}
-              {field.required && <span className="text-red-500 ml-1">*</span>}
-            </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Calendar className="h-5 w-5 text-gray-400" />
-              </div>
-              <Controller
-                name={field.name as Path<T>}
-                control={control}
-                render={({ field: controllerField }) => (
-                  <input
-                    {...controllerField}
-                    type="date"
-                    value={controllerField.value ?? ""}
-                    placeholder={field.placeholder}
-                    disabled={loading}
-                    className={cn(
-                      "block w-full rounded-lg border-gray-300 pl-10 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm transition-colors",
-                      "pr-4 py-3",
-                      error
-                        ? "border-red-300 focus:border-red-500 focus:ring-red-500 bg-red-50"
-                        : "bg-white",
-                    )}
-                    onChange={(e) => {
-                      // Ensure value is always a valid YYYY-MM-DD string
-                      const val = e.target.value;
-                      controllerField.onChange(val || undefined); // allow clearing if needed
-                    }}
-                  />
-                )}
-              />
-            </div>
-            {field.description && (
-              <p className="mt-2 text-sm text-gray-600">{field.description}</p>
-            )}
-            {error && (
-              <div className="mt-2 flex items-center text-red-600 text-sm">
-                <AlertCircle className="h-4 w-4 mr-1" />
-                {String(error.message)}
-              </div>
-            )}
-          </div>
-        );
-
       default:
+        const isTextarea = field.type === "textarea";
+        const isDate = field.type === "date";
+
         return (
           <div className={fieldContainerClass}>
             <label className="block text-sm font-medium text-gray-900 mb-2">
@@ -561,23 +472,62 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
               <Controller
                 name={field.name as Path<T>}
                 control={control}
-                render={({ field: controllerField }) => (
-                  <input
-                    {...controllerField}
-                    value={controllerField.value ?? ""}
-                    type={field.type}
-                    placeholder={field.placeholder}
-                    disabled={loading}
-                    className={cn(
-                      "block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm transition-colors",
-                      Icon ? "pl-10" : "pl-4",
-                      "pr-4 py-3",
-                      error
-                        ? "border-red-300 focus:border-red-500 focus:ring-red-500 bg-red-50"
-                        : "bg-white",
-                    )}
-                  />
-                )}
+                render={({ field: controllerField }) => {
+                  if (isTextarea) {
+                    return (
+                      <textarea
+                        {...controllerField}
+                        placeholder={field.placeholder}
+                        disabled={loading}
+                        rows={6}
+                        className={cn(
+                          "block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm transition-colors",
+                          Icon ? "pl-10 pt-3" : "pl-4 pt-3",
+                          "pr-4 pb-3",
+                          error
+                            ? "border-red-300 focus:border-red-500 focus:ring-red-500 bg-red-50"
+                            : "bg-white",
+                        )}
+                      />
+                    );
+                  }
+                  if (isDate) {
+                    return (
+                      <input
+                        {...controllerField}
+                        type="date"
+                        value={controllerField.value ?? ""}
+                        placeholder={field.placeholder}
+                        disabled={loading}
+                        className={cn(
+                          "block w-full rounded-lg border-gray-300 pl-10 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm transition-colors",
+                          "pr-4 py-3",
+                          error
+                            ? "border-red-300 focus:border-red-500 focus:ring-red-500 bg-red-50"
+                            : "bg-white",
+                        )}
+                        onChange={(e) => controllerField.onChange(e.target.value || undefined)}
+                      />
+                    );
+                  }
+                  return (
+                    <input
+                      {...controllerField}
+                      value={controllerField.value ?? ""}
+                      type={field.type}
+                      placeholder={field.placeholder}
+                      disabled={loading}
+                      className={cn(
+                        "block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm transition-colors",
+                        Icon ? "pl-10" : "pl-4",
+                        "pr-4 py-3",
+                        error
+                          ? "border-red-300 focus:border-red-500 focus:ring-red-500 bg-red-50"
+                          : "bg-white",
+                      )}
+                    />
+                  );
+                }}
               />
             </div>
             {field.description && (
@@ -598,12 +548,8 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
     <div className="bg-white shadow-xl rounded-2xl overflow-hidden border border-gray-100">
       {(title || description) && (
         <div className="px-8 py-6 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
-          {title && (
-            <h2 className="text-2xl font-bold text-gray-900">{title}</h2>
-          )}
-          {description && (
-            <p className="mt-2 text-sm text-gray-600">{description}</p>
-          )}
+          {title && <h2 className="text-2xl font-bold text-gray-900">{title}</h2>}
+          {description && <p className="mt-2 text-sm text-gray-600">{description}</p>}
         </div>
       )}
 
@@ -637,6 +583,7 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
                 {cancelText}
               </button>
             )}
+
             <button
               type="submit"
               disabled={loading || (!isDirty && Object.keys(errors).length > 0)}
@@ -648,12 +595,12 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
               {loading ? (
                 <>
                   <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" />
-                  <span className="font-semibold">Processing...</span>
+                  Processing...
                 </>
               ) : (
                 <>
                   <Save className="-ml-1 mr-2 h-4 w-4" />
-                  <span className="font-semibold">{submitText}</span>
+                  {submitText}
                 </>
               )}
             </button>

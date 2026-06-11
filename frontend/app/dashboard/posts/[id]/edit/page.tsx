@@ -191,14 +191,34 @@ export default function EditPostPage() {
           text: response.message || "Something went wrong",
         });
       }
-    } catch (error: any) {
-      Swal.close();
-      Swal.fire({
-        icon: "error",
-        title: "Error",
-        text: error.response?.data?.message || "Failed to update post",
-      });
-    } finally {
+    } catch (error: unknown) {
+  Swal.close();
+
+  let errorMessage = "Failed to update post";
+
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error
+  ) {
+    const err = error as {
+      response?: {
+        data?: {
+          message?: string;
+        };
+      };
+    };
+
+    errorMessage =
+      err.response?.data?.message || errorMessage;
+  }
+
+  Swal.fire({
+    icon: "error",
+    title: "Error",
+    text: errorMessage,
+  });
+} finally {
       setSaving(false);
     }
   };
