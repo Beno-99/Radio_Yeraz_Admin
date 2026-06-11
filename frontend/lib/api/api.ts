@@ -1,4 +1,4 @@
-import axios from "axios";
+import axios, { AxiosRequestConfig } from "axios";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL ||
@@ -11,20 +11,6 @@ const api = axios.create({
     "Content-Type": "application/json",
   },
 });
-
-let isRefreshing = false;
-let failedQueue: any[] = [];
-
-const processQueue = (error: any, token: string | null = null) => {
-  failedQueue.forEach((prom) => {
-    if (error) {
-      prom.reject(error);
-    } else {
-      prom.resolve(token);
-    }
-  });
-  failedQueue = [];
-};
 
 // ✅ Attach token to every request
 api.interceptors.request.use((config) => {
@@ -40,8 +26,9 @@ api.interceptors.request.use((config) => {
 // ✅ Response Interceptor
 api.interceptors.response.use(
   (response) => response,
-  async (error) => {
-    const originalRequest = error.config;
+  async (error: unknown) => {
+    const axiosError = error as { config?: AxiosRequestConfig & { _retry?: boolean; url?: string }; response?: { status: number } };
+    const originalRequest = axiosError.config;
 
     // ✅ DO NOT INTERCEPT LOGIN REQUESTS
     if (
@@ -52,11 +39,13 @@ api.interceptors.response.use(
     }
 
     // ❌ If not 401 → reject normally
-    if (error.response?.status !== 401 || originalRequest._retry) {
+    if (axiosError.response?.status !== 401 || originalRequest?._retry) {
       return Promise.reject(error);
     }
 
-    originalRequest._retry = true;
+    if (originalRequest) {
+      originalRequest._retry = true;
+    }
 
     try {
       const refreshToken = localStorage.getItem("refresh_token");
@@ -69,7 +58,10 @@ api.interceptors.response.use(
         refreshToken,
       });
 
-      const { access_token, refresh_token } = response.data;
+      const { access_token, refresh_token } = response.data as {
+        access_token: string;
+        refresh_token?: string;
+      };
 
       localStorage.setItem("access_token", access_token);
       if (refresh_token) {
@@ -77,10 +69,12 @@ api.interceptors.response.use(
       }
 
       api.defaults.headers.common.Authorization = `Bearer ${access_token}`;
-      originalRequest.headers.Authorization = `Bearer ${access_token}`;
+      if (originalRequest?.headers) {
+        (originalRequest.headers as Record<string, string>).Authorization = `Bearer ${access_token}`;
+      }
 
-      return api(originalRequest);
-    } catch (refreshError: any) {
+      return api(originalRequest as AxiosRequestConfig);
+    } catch (refreshError: unknown) {
       localStorage.removeItem("access_token");
       localStorage.removeItem("refresh_token");
 
@@ -103,18 +97,52 @@ export const authAPI = {
     api.post("/auth/change-password", data),
 };
 
+interface AdminParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  [key: string]: string | number | boolean | undefined;
+}
+
+interface AdminData {
+  username?: string;
+  email?: string;
+  password?: string;
+  role?: string;
+  isActive?: boolean;
+  [key: string]: string | boolean | undefined;
+}
+
 export const adminAPI = {
   getProfile: () => api.get("/admin/profile"),
   getAdmin: (id: string) => api.get(`/admin/${id}`),
-  getAllAdmins: (params?: any) => api.get("/admin", { params }),
-  createAdmin: (data: any) => api.post("/admin", data),
-  updateAdmin: (id: string, data: any) => api.put(`/admin/${id}`, data),
+  getAllAdmins: (params?: AdminParams) => api.get("/admin", { params }),
+  createAdmin: (data: AdminData) => api.post("/admin", data),
+  updateAdmin: (id: string, data: AdminData) => api.put(`/admin/${id}`, data),
   deleteAdmin: (id: string) => api.delete(`/admin/${id}`),
   toggleActive: (id: string) => api.put(`/admin/${id}/toggle-active`),
 };
 
+interface PostParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  [key: string]: string | number | boolean | undefined;
+}
+
+interface PostData {
+  _id?: string;
+  author?: string;
+  [key: string]: string | boolean | undefined;
+}
+
+interface AuthorDetails {
+  data?: unknown;
+  [key: string]: unknown;
+}
+
 export const postsAPI = {
-  getAllPosts: (params?: any) => api.get("/posts", { params }),
+  getAllPosts: (params?: PostParams) => api.get("/posts", { params }),
 
   getPost: (id: string) => api.get(`/posts/${id}`),
   getStats: async () => {
@@ -153,10 +181,8 @@ export const postsAPI = {
   updatePost: async (id: string, formData: FormData) => {
     console.log("API: updatePost called with FormData");
 
-    // ✅ Don't set Content-Type here - let axios handle it
     const response = await api.put(`/posts/${id}`, formData, {
       headers: {
-        // Override the default Content-Type for this request
         "Content-Type": "multipart/form-data",
       },
     });
@@ -175,13 +201,11 @@ export const postsAPI = {
   // Get post with author details
   getPostWithAuthor: async (postId: string) => {
     try {
-      // First get the post
       const postResponse = await postsAPI.getPost(postId);
-      const post = postResponse.data;
+      const post = postResponse.data as PostData;
 
-      // Then get the author details using the author ID from the post
       if (post.author) {
-        const authorResponse = await postsAPI.getAuthorById(post.author);
+        const authorResponse = await postsAPI.getAuthorById(post.author) as AuthorDetails;
         return {
           ...post,
           authorDetails: authorResponse.data || authorResponse,
@@ -196,17 +220,16 @@ export const postsAPI = {
   },
 
   // Get all posts with author details
-  getAllPostsWithAuthors: async (params?: any) => {
+  getAllPostsWithAuthors: async (params?: PostParams) => {
     try {
       const postsResponse = await api.get("/posts", { params });
-      const posts = postsResponse.data;
+      const posts = postsResponse.data as PostData[];
 
-      // Get author details for each post
       const postsWithAuthors = await Promise.all(
-        posts.map(async (post: any) => {
+        posts.map(async (post: PostData) => {
           if (post.author) {
             try {
-              const authorResponse = await postsAPI.getAuthorById(post.author);
+              const authorResponse = await postsAPI.getAuthorById(post.author) as AuthorDetails;
               return {
                 ...post,
                 authorDetails: authorResponse.data || authorResponse,
@@ -234,11 +257,16 @@ export const postsAPI = {
   },
 };
 
+interface AdParams {
+  page?: number;
+  limit?: number;
+  [key: string]: string | number | boolean | undefined;
+}
+
 export const adsAPI = {
-  getAllAds: (params?: any) => api.get("/ads", { params }),
+  getAllAds: (params?: AdParams) => api.get("/ads", { params }),
   getAdById: (id: string) => api.get(`/ads/${id}`),
   createAd: (data: FormData) => {
-    // ✅ Use the api instance but let it handle headers
     return api.post("/ads", data, {
       headers: {
         "Content-Type": "multipart/form-data",
@@ -254,6 +282,38 @@ export const adsAPI = {
   },
   deleteAd: (id: string) => api.delete(`/ads/${id}`),
   toggleActive: (id: string) => api.put(`/ads/${id}/toggle-active`),
+};
+
+export const streamLinksAPI = {
+  getAll: () => api.get('/stream-links'),
+  getActive: () => api.get('/stream-links/active'),
+  getById: (id: string) => api.get(`/stream-links/${id}`),
+  create: (data: {
+    title: string;
+    url: string;
+    description?: string;
+    isActive?: boolean;
+  }) => api.post('/stream-links', data),
+  update: (id: string, data: {
+    title?: string;
+    url?: string;
+    description?: string;
+    isActive?: boolean;
+  }) => api.patch(`/stream-links/${id}`, data),
+  delete: (id: string) => api.delete(`/stream-links/${id}`),
+};
+
+export const notificationAPI = {
+  getAll: (limit: number = 20) =>
+    api.get(`/notifications?limit=${limit}`),
+  getUnreadCount: () =>
+    api.get('/notifications/unread-count'),
+  markAsRead: (id: string) =>
+    api.put(`/notifications/${id}/read`),
+  markAllAsRead: () =>
+    api.put('/notifications/mark-all-read'),
+  deleteAll: () =>
+    api.delete('/notifications/all'),
 };
 
 export default api;

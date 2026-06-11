@@ -125,8 +125,8 @@ export default function NotificationBell() {
             ) : (
               notifications.map((n: AdminNotification) => (
                 <div
-                  key={n.id || n._id || Math.random().toString()}
-                  onClick={() => markRead(n.id || n._id || "")}
+                  key={n._id}
+onClick={() => markRead(n._id)}
                   className={`flex items-start gap-3 px-4 py-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors ${
                     !n.isRead ? "bg-red-50" : ""
                   }`}

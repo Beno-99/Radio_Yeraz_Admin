@@ -1,4 +1,3 @@
-// src/posts/posts.service.ts
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Post, PostDocument } from './schemas/post.schema';
@@ -6,7 +5,11 @@ import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
 import { Admin, Role } from '../admin/schemas/admin.schema';
 import { NotificationGateway } from '../notifications/notification.gateway';
-import { BadRequestException, NotFoundException,Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  NotFoundException,
+  Injectable,
+} from '@nestjs/common';
 import { isValidObjectId } from 'mongoose';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -19,59 +22,101 @@ export class PostsService {
     private notificationGateway: NotificationGateway,
   ) {}
 
-  // ============ CREATE ============
+  private calculateExpiryFromEventDate(eventDate?: string | Date): Date | null {
+    if (!eventDate) return null;
+    const event = new Date(eventDate);
+    if (Number.isNaN(event.getTime())) return null;
+    return new Date(event.getTime() + 5 * 24 * 60 * 60 * 1000);
+  }
+
+  private deleteMediaFileIfExists(filePath?: string): void {
+    if (!filePath || filePath.trim() === '') return;
+
+    const possiblePaths = [
+      filePath,
+      filePath.startsWith('/uploads') ? filePath : `/uploads${filePath}`,
+      filePath.startsWith('/') ? filePath : `/${filePath}`,
+    ];
+
+    for (const candidate of possiblePaths) {
+      const fullPath = path.join(process.cwd(), candidate);
+      if (fs.existsSync(fullPath)) {
+        fs.unlinkSync(fullPath);
+        break;
+      }
+    }
+  }
+
+  private async expirePostsPastEventWindow(): Promise<number> {
+    const now = new Date();
+    const cutoff = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
+
+    const result = await this.postModel.updateMany(
+      {
+        eventDate: { $exists: true, $ne: null, $lte: cutoff },
+        isPublished: true,
+      },
+      {
+        $set: {
+          isPublished: false,
+          isLive: false,
+          status: 'expired',
+          updatedAt: now,
+        },
+      },
+    );
+
+    return result.modifiedCount;
+  }
+
   async create(
     createPostDto: CreatePostDto & { author: string },
     authorId: string,
   ): Promise<PostDocument> {
-    console.log('=== SERVICE CREATE POST ===');
-    console.log('DTO:', createPostDto);
-    console.log('Author ID:', authorId);
-
     try {
       const author = await this.adminModel.findById(authorId);
-      if (!author) {
-        console.log('Author not found:', authorId);
-        throw new NotFoundException('Author not found');
-      }
+      if (!author) throw new NotFoundException('Author not found');
+
+      const isPublishedValue = Boolean(createPostDto.isPublished);
+const isLiveValue = Boolean(createPostDto.isLive);
+
+      const calculatedExpiresAt = this.calculateExpiryFromEventDate(
+        createPostDto.eventDate,
+      );
 
       const post = new this.postModel({
         ...createPostDto,
         author: authorId,
         postedDate: new Date(),
+        expiresAt:
+          calculatedExpiresAt ||
+          new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+        status: isPublishedValue ? 'published' : 'draft',
+        isPublished: isPublishedValue,
+        isLive: isLiveValue,
       });
 
       const savedPost = await post.save();
-      console.log('Post saved:', savedPost._id);
 
-      // ── Notification logic ───────────────────────────────────────
       try {
         const authorName =
           author.displayName || author.username || author.email || 'Admin';
 
         if (savedPost.isPublished) {
-          // Published → notify everyone (mobile + admin)
           await this.notificationGateway.emitNewPost(savedPost, authorName);
-          console.log('✅ Published notification emitted to everyone');
         } else {
-          // Draft → notify admin dashboard only
           await this.notificationGateway.emitNewDraft(savedPost, authorName);
-          console.log('✅ Draft notification emitted to admin only');
         }
       } catch (notifError) {
         console.error('⚠️ Notification emit failed:', (notifError as Error).message);
       }
-      // ────────────────────────────────────────────────────────────
 
       return savedPost.populate('author', 'username displayName role');
     } catch (error) {
-      console.error('Service create error:', error);
-      console.error('Error stack:', (error as Error).stack);
       throw error;
     }
   }
 
-  // ============ READ ============
   async findAll(
     page: number = 1,
     limit: number = 10,
@@ -84,6 +129,8 @@ export class PostsService {
     page: number;
     pages: number;
   }> {
+    await this.expirePostsPastEventWindow();
+
     const skip = (page - 1) * limit;
     const query: any = { ...filters };
 
@@ -120,9 +167,12 @@ export class PostsService {
   }
 
   async findById(id: string): Promise<PostDocument> {
+    await this.expirePostsPastEventWindow();
+
     if (!isValidObjectId(id)) {
-    throw new BadRequestException('Invalid post id');
-  }
+      throw new BadRequestException('Invalid post id');
+    }
+
     const post = await this.postModel
       .findById(id)
       .populate('author', 'username displayName role')
@@ -133,6 +183,8 @@ export class PostsService {
   }
 
   async findByAuthor(authorId: string): Promise<PostDocument[]> {
+    await this.expirePostsPastEventWindow();
+
     return this.postModel
       .find({ author: new Types.ObjectId(authorId) })
       .populate('author', 'username displayName role')
@@ -141,30 +193,39 @@ export class PostsService {
   }
 
   async findLivePosts() {
+    await this.expirePostsPastEventWindow();
+
+    const cutoff = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+
     return this.postModel
-      .find({ isLive: true, isPublished: true })
+      .find({
+        isLive: true,
+        isPublished: true,
+        status: 'published',
+        $or: [
+          { eventDate: { $exists: false } },
+          { eventDate: null },
+          { eventDate: { $gt: cutoff } },
+        ],
+      })
       .populate('author', 'username displayName')
       .sort({ postedDate: -1 })
       .exec();
   }
 
   async findRecentPosts(limit: number = 5) {
-    return this.postModel
-      .find({ isPublished: true })
-      .populate('author', 'username displayName')
-      .sort({ postedDate: -1 })
-      .limit(limit)
-      .exec();
-  }
+    await this.expirePostsPastEventWindow();
 
-  async searchPosts(query: string, limit: number = 20) {
+    const cutoff = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+
     return this.postModel
       .find({
         isPublished: true,
+        status: 'published',
         $or: [
-          { title: { $regex: query, $options: 'i' } },
-          { description: { $regex: query, $options: 'i' } },
-          { location: { $regex: query, $options: 'i' } },
+          { eventDate: { $exists: false } },
+          { eventDate: null },
+          { eventDate: { $gt: cutoff } },
         ],
       })
       .populate('author', 'username displayName')
@@ -173,13 +234,47 @@ export class PostsService {
       .exec();
   }
 
-  // ============ UPDATE ============
+  async searchPosts(query: string, limit: number = 20) {
+    await this.expirePostsPastEventWindow();
+
+    const cutoff = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+
+    return this.postModel
+      .find({
+        isPublished: true,
+        status: 'published',
+        $and: [
+          {
+            $or: [
+              { eventDate: { $exists: false } },
+              { eventDate: null },
+              { eventDate: { $gt: cutoff } },
+            ],
+          },
+          {
+            $or: [
+              { title: { $regex: query, $options: 'i' } },
+              { description: { $regex: query, $options: 'i' } },
+              { location: { $regex: query, $options: 'i' } },
+            ],
+          },
+        ],
+      })
+      .populate('author', 'username displayName')
+      .sort({ postedDate: -1 })
+      .limit(limit)
+      .exec();
+  }
+
   async update(
     id: string,
     updatePostDto: UpdatePostDto,
   ): Promise<PostDocument> {
-    // Get old post to check if isPublished changed
     const oldPost = await this.postModel.findById(id).exec();
+    if (!oldPost) throw new NotFoundException('Post not found');
+
+    const oldMainImage = oldPost.mainImage || '';
+    const oldVideo = oldPost.video || '';
 
     const updateData: any = { ...updatePostDto };
     Object.keys(updateData).forEach(
@@ -187,31 +282,99 @@ export class PostsService {
     );
     updateData.updatedAt = new Date();
 
+    if (updateData.isPublished !== undefined) {
+      updateData.isPublished =
+        updateData.isPublished === true || updateData.isPublished === 'true';
+    }
+
+    if (updateData.isLive !== undefined) {
+      updateData.isLive =
+        updateData.isLive === true || updateData.isLive === 'true';
+    }
+
+    if (updateData.eventDate !== undefined && oldPost?.eventDate) {
+      const oldEventDate = new Date(oldPost.eventDate).getTime();
+      const newEventDate = new Date(updateData.eventDate).getTime();
+
+      if (!Number.isNaN(newEventDate) && oldEventDate !== newEventDate) {
+        updateData.isPublished = true;
+        updateData.status = 'published';
+      }
+    }
+
+    if (updateData.eventDate !== undefined) {
+      const recalculatedExpiresAt = this.calculateExpiryFromEventDate(
+        updateData.eventDate,
+      );
+      if (recalculatedExpiresAt) {
+        updateData.expiresAt = recalculatedExpiresAt;
+      }
+    }
+
+    if (updateData.isPublished !== undefined) {
+      updateData.status = updateData.isPublished ? 'published' : 'draft';
+    }
+
+    const shouldRemoveImage = updateData.removeImage === 'true';
+    const shouldRemoveVideo = updateData.removeVideo === 'true';
+    const hasNewImage = !!updateData.mainImage;
+    const hasNewVideo = !!updateData.video;
+
+    if (shouldRemoveImage) {
+      updateData.mainImage = '';
+    }
+    if (shouldRemoveVideo) {
+      updateData.video = '';
+    }
+
+    delete updateData.removeImage;
+    delete updateData.removeVideo;
+
     const post = await this.postModel
       .findByIdAndUpdate(id, updateData, { new: true, runValidators: true })
       .exec();
 
     if (!post) throw new NotFoundException('Post not found');
 
-    // ── Notification logic ───────────────────────────────────────
+    try {
+      if ((shouldRemoveImage || hasNewImage) && oldMainImage.trim() !== '') {
+        const replacedWithDifferentImage =
+          hasNewImage && oldMainImage !== post.mainImage;
+        if (shouldRemoveImage || replacedWithDifferentImage) {
+          this.deleteMediaFileIfExists(oldMainImage);
+        }
+      }
+
+      if ((shouldRemoveVideo || hasNewVideo) && oldVideo.trim() !== '') {
+        const replacedWithDifferentVideo = hasNewVideo && oldVideo !== post.video;
+        if (shouldRemoveVideo || replacedWithDifferentVideo) {
+          this.deleteMediaFileIfExists(oldVideo);
+        }
+      }
+    } catch (fileError) {
+      console.error('⚠️ Failed to delete replaced/removed media file:', fileError);
+    }
+
     try {
       const author = await this.adminModel.findById(post.author);
       const authorName =
         author?.displayName || author?.username || author?.email || 'Admin';
 
-      if (!oldPost?.isPublished && post.isPublished) {
-        // Was draft → now published: notify everyone (mobile + admin)
+      const becamePublished =
+        (!oldPost?.isPublished && post.isPublished) ||
+        (oldPost?.status !== 'published' && post.status === 'published');
+
+      if (becamePublished) {
         await this.notificationGateway.emitNewPost(post, authorName);
-        console.log('✅ Post published — notification sent to everyone');
       } else {
-        // Just updated → notify admin only
         await this.notificationGateway.emitPostUpdated(post, authorName);
-        console.log('✅ Post updated — notification sent to admin only');
       }
     } catch (notifError) {
-      console.error('⚠️ Notification emit failed:', notifError instanceof Error ? notifError.message : String(notifError));
+      console.error(
+        '⚠️ Notification emit failed:',
+        notifError instanceof Error ? notifError.message : String(notifError),
+      );
     }
-    // ────────────────────────────────────────────────────────────
 
     return post;
   }
@@ -232,22 +395,33 @@ export class PostsService {
         await this.notificationGateway.emitPostPublished(post, authorName);
       }
     } catch (notifError) {
-      console.error('⚠️ Notification emit failed:', notifError instanceof Error ? notifError.message : String(notifError));
+      console.error(
+        '⚠️ Notification emit failed:',
+        notifError instanceof Error ? notifError.message : String(notifError),
+      );
     }
 
     return post.populate('author', 'username displayName role');
   }
 
-  // ============ DELETE WITH MEDIA CLEANUP ============
-  async delete(id: string): Promise<PostDocument> {
-    console.log('=== DELETING POST WITH MEDIA CLEANUP ===');
-
-    const post = await this.postModel.findById(id).exec();
+  async republish(id: string): Promise<PostDocument> {
+    const post = await this.postModel.findById(id);
     if (!post) throw new NotFoundException('Post not found');
 
-    console.log('🗑️ Deleting post:', post.title);
-    console.log('📸 mainImage:', post.mainImage || 'none');
-    console.log('🎥 video:', post.video || 'none');
+    post.status = 'published';
+    post.isPublished = true;
+    post.isLive = true;
+    post.postedDate = new Date();
+    post.expiresAt = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
+    post.updatedAt = new Date();
+
+    await post.save();
+    return post.populate('author', 'username displayName role');
+  }
+
+  async delete(id: string): Promise<PostDocument> {
+    const post = await this.postModel.findById(id).exec();
+    if (!post) throw new NotFoundException('Post not found');
 
     try {
       if (post.mainImage && post.mainImage.trim() !== '') {
@@ -265,7 +439,6 @@ export class PostsService {
           const fullPath = path.join(process.cwd(), filePath);
           if (fs.existsSync(fullPath)) {
             fs.unlinkSync(fullPath);
-            console.log('✅ Image deleted successfully');
             break;
           }
         }
@@ -284,7 +457,6 @@ export class PostsService {
           const fullPath = path.join(process.cwd(), filePath);
           if (fs.existsSync(fullPath)) {
             fs.unlinkSync(fullPath);
-            console.log('✅ Video deleted successfully');
             break;
           }
         }
@@ -293,14 +465,16 @@ export class PostsService {
       console.error('❌ Error deleting media files:', error);
     }
 
-    // Admin only notification for delete
     try {
       const author = await this.adminModel.findById(post.author);
       const authorName =
         author?.displayName || author?.username || author?.email || 'Admin';
       await this.notificationGateway.emitPostDeleted(post.title, authorName);
     } catch (notifError) {
-      console.error('⚠️ Notification emit failed:', notifError instanceof Error ? notifError.message : String(notifError));
+      console.error(
+        '⚠️ Notification emit failed:',
+        notifError instanceof Error ? notifError.message : String(notifError),
+      );
     }
 
     const deletedPost = await this.postModel
@@ -308,11 +482,9 @@ export class PostsService {
       .populate('author', 'username displayName role')
       .exec();
 
-    console.log('✅ Post document deleted successfully from MongoDB');
     return deletedPost;
   }
 
-  // ============ AUTHORIZATION ============
   async canAdminEditPost(
     postId: string,
     adminId: string,
@@ -337,7 +509,6 @@ export class PostsService {
     return false;
   }
 
-  // ============ STATISTICS ============
   async getStatistics(): Promise<any> {
     const [total, live, byAuthor, recentPosts, postsByMonth] =
       await Promise.all([
@@ -379,7 +550,6 @@ export class PostsService {
     };
   }
 
-  // ============ BULK OPERATIONS ============
   async bulkUpdateIsLive(ids: string[], isLive: boolean): Promise<number> {
     const result = await this.postModel.updateMany(
       { _id: { $in: ids } },
@@ -389,13 +559,9 @@ export class PostsService {
   }
 
   async deleteByAuthor(authorId: string): Promise<number> {
-    console.log('=== BULK DELETE BY AUTHOR ===');
-
     const posts = await this.postModel
       .find({ author: new Types.ObjectId(authorId) })
       .exec();
-
-    console.log(`Found ${posts.length} posts to delete`);
 
     let mediaFilesDeleted = 0;
     posts.forEach((post) => {
@@ -419,13 +585,10 @@ export class PostsService {
       }
     });
 
-    console.log(`Deleted ${mediaFilesDeleted} media files`);
-
     const result = await this.postModel.deleteMany({
       author: new Types.ObjectId(authorId),
     });
 
-    console.log(`Deleted ${result.deletedCount} post documents`);
     return result.deletedCount;
   }
 }

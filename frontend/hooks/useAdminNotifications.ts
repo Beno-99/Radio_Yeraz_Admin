@@ -4,12 +4,11 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { io, Socket } from "socket.io-client";
 
 export interface AdminNotification {
-  id: string;
-  _id?: string;
+  _id: string;
   title: string;
   message: string;
   type: string;
-  data?: any;
+  data?: unknown;
   createdAt: string;
   isRead: boolean;
 }
@@ -40,18 +39,21 @@ const getLocalReadIds = (): Set<string> => {
 const saveLocalReadIds = (ids: Set<string>) => {
   try {
     localStorage.setItem(getStorageKey(), JSON.stringify([...ids]));
-  } catch {}
+  } catch {
+    // ignore localStorage errors
+  }
 };
 
 export function useAdminNotifications() {
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+
   const socketRef = useRef<Socket | null>(null);
   const readIdsRef = useRef<Set<string>>(new Set());
 
   const calculateUnread = useCallback(
     (notifs: AdminNotification[], readIds: Set<string>) => {
-      return notifs.filter((n) => !readIds.has(n.id || n._id || "")).length;
+      return notifs.filter((n) => !readIds.has(n._id)).length;
     },
     [],
   );
@@ -60,24 +62,32 @@ export function useAdminNotifications() {
     (notifs: AdminNotification[], readIds: Set<string>) => {
       return notifs.map((n) => ({
         ...n,
-        isRead: readIds.has(n.id || n._id || ""),
+        isRead: readIds.has(n._id),
       }));
     },
     [],
   );
 
-  // Shared handler for both new_notification and admin_notification
   const handleIncomingNotification = useCallback(
     (data: AdminNotification) => {
-      const id = data.id || data._id || "";
-      const isAlreadyRead = readIdsRef.current.has(id);
-      const notifWithReadState = { ...data, isRead: isAlreadyRead };
+      const id = data._id;
+
+      const notifWithReadState = {
+        ...data,
+        isRead: readIdsRef.current.has(id),
+      };
 
       setNotifications((prev) => {
-        // ← prevent duplicates
-        if (prev.some((n) => (n.id || n._id) === id)) return prev;
+        if (prev.some((n) => n._id === id)) {
+          return prev;
+        }
+
         const updated = [notifWithReadState, ...prev].slice(0, 50);
-        setUnreadCount(calculateUnread(updated, readIdsRef.current));
+
+        setUnreadCount(
+          calculateUnread(updated, readIdsRef.current),
+        );
+
         return updated;
       });
     },
@@ -85,18 +95,11 @@ export function useAdminNotifications() {
   );
 
   useEffect(() => {
-    console.log("🔌 BACKEND_URL:", BACKEND_URL);
-    console.log("🔌 ENV VAR:", process.env.NEXT_PUBLIC_BACKEND_URL);
-
     if (socketRef.current?.connected) {
-      console.log("⚡ Already connected, skipping");
       return;
     }
+
     readIdsRef.current = getLocalReadIds();
-
-    if (socketRef.current?.connected) return;
-
-    console.log("🔌 Connecting to:", BACKEND_URL);
 
     const socket = io(BACKEND_URL, {
       path: "/socket.io",
@@ -121,57 +124,84 @@ export function useAdminNotifications() {
       console.log("❌ Socket connect error:", err.message);
     });
 
-    // Initial list
     socket.on(
       "notifications_list",
-      (data: { notifications: AdminNotification[]; unreadCount: number }) => {
+      (data: {
+        notifications: AdminNotification[];
+        unreadCount: number;
+      }) => {
         const readIds = readIdsRef.current;
+
         const withLocalRead = applyLocalReadState(
           data.notifications || [],
           readIds,
         );
+
         setNotifications(withLocalRead);
-        setUnreadCount(calculateUnread(withLocalRead, readIds));
+
+        setUnreadCount(
+          calculateUnread(withLocalRead, readIds),
+        );
       },
     );
 
-    // Mobile + admin (published posts)
     socket.on("new_notification", handleIncomingNotification);
-
-    // Admin only (draft, updated, deleted)
     socket.on("admin_notification", handleIncomingNotification);
 
     return () => {
       socket.disconnect();
+      socketRef.current = null;
     };
-  }, [applyLocalReadState, calculateUnread, handleIncomingNotification]);
+  }, [
+    applyLocalReadState,
+    calculateUnread,
+    handleIncomingNotification,
+  ]);
 
   const markAllRead = useCallback(() => {
     setNotifications((prev) => {
-      const allIds = new Set(prev.map((n) => n.id || n._id || ""));
+      const allIds = new Set(prev.map((n) => n._id));
+
       readIdsRef.current = allIds;
       saveLocalReadIds(allIds);
+
       setUnreadCount(0);
-      return prev.map((n) => ({ ...n, isRead: true }));
+
+      return prev.map((n) => ({
+        ...n,
+        isRead: true,
+      }));
     });
   }, []);
 
   const markRead = useCallback(
     (id: string) => {
       if (!id) return;
+
       readIdsRef.current.add(id);
       saveLocalReadIds(readIdsRef.current);
 
       setNotifications((prev) => {
         const updated = prev.map((n) =>
-          n.id === id || n._id === id ? { ...n, isRead: true } : n,
+          n._id === id
+            ? { ...n, isRead: true }
+            : n,
         );
-        setUnreadCount(calculateUnread(updated, readIdsRef.current));
+
+        setUnreadCount(
+          calculateUnread(updated, readIdsRef.current),
+        );
+
         return updated;
       });
     },
     [calculateUnread],
   );
 
-  return { notifications, unreadCount, markAllRead, markRead };
+  return {
+    notifications,
+    unreadCount,
+    markAllRead,
+    markRead,
+  };
 }

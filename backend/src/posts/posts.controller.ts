@@ -252,11 +252,27 @@ async getPostById(@Param('id') id: string) {
       console.log('Post isLive:', post.isLive);
       console.log('Post isPublished:', post.isPublished);
 
-      var notification = await this.firebaseService.sendToTopic("client","A New Post Added",post.title,{
-        postId: post._id.toString(),
-      });
+      if (post.isPublished) {
+        try {
+          const notificationId = await this.firebaseService.sendToTopic(
+            'client',
+            'A New Post Added',
+            post.title,
+            {
+              postId: post._id.toString(),
+            },
+          );
 
-      console.log(notification);
+          console.log('FCM topic notification sent:', notificationId);
+        } catch (notifError) {
+          console.error(
+            'FCM topic notification failed:',
+            notifError instanceof Error
+              ? notifError.message
+              : String(notifError),
+          );
+        }
+      }
 
       return {
         success: true,
@@ -275,63 +291,86 @@ async getPostById(@Param('id') id: string) {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   @UseInterceptors(
-    FileInterceptor('mainImage', {
-      storage: diskStorage({
-        destination: './uploads/posts/images',
-        filename: (req, file, callback) => {
-          // ✅ Add lots of logging to debug
-          console.log('📸 Generating filename for:', file.originalname);
-
-          const uniqueSuffix =
-            Date.now() + '-' + Math.round(Math.random() * 1e9);
-          const ext = extname(file.originalname);
-          const filename = `mainImage-${uniqueSuffix}${ext}`;
-
-          console.log('✅ Generated filename:', filename);
-          callback(null, filename);
-        },
-      }),
-      fileFilter: (req, file, cb) => {
-        console.log('📸 File received:', file.originalname, file.mimetype);
-        cb(null, true);
+    FileFieldsInterceptor(
+      [
+        { name: 'mainImage', maxCount: 1 },
+        { name: 'video', maxCount: 1 },
+      ],
+      {
+        storage: diskStorage({
+          destination: (req, file, cb) => {
+            const uploadPath =
+              file.fieldname === 'video'
+                ? './uploads/posts/videos'
+                : './uploads/posts/images';
+            if (!fs.existsSync(uploadPath)) {
+              fs.mkdirSync(uploadPath, { recursive: true });
+            }
+            cb(null, uploadPath);
+          },
+          filename: (req, file, callback) => {
+            const uniqueSuffix =
+              Date.now() + '-' + Math.round(Math.random() * 1e9);
+            const ext = extname(file.originalname);
+            const filename = `${file.fieldname}-${uniqueSuffix}${ext}`;
+            callback(null, filename);
+          },
+        }),
       },
-    }),
+    ),
   )
   async updatePost(
     @Param('id') id: string,
     @Body() updatePostDto: UpdatePostDto,
-    @UploadedFile() file?: Express.Multer.File,
+    @UploadedFiles()
+    files?: {
+      mainImage?: Express.Multer.File[];
+      video?: Express.Multer.File[];
+    },
   ) {
-    console.log('=== UPDATE POST ===');
-    console.log(
-      'Received file:',
-      file
-        ? {
-            originalname: file.originalname,
-            filename: file.filename, // ✅ Check if this exists
-            size: file.size,
-          }
-        : 'No file',
-    );
+    const previousPost = await this.postsService.findById(id);
 
     if (!updatePostDto) {
       throw new BadRequestException('No data provided');
     }
 
-    // ✅ FIX: Set the image path
-    if (file) {
-      // Make sure file.filename exists
-      if (!file.filename) {
-        console.error('❌ file.filename is undefined!');
-        throw new BadRequestException('File upload failed');
-      }
-
-      updatePostDto.mainImage = `/uploads/posts/images/${file.filename}`;
-      console.log('✅ Image path set:', updatePostDto.mainImage);
+    if (files?.mainImage?.[0]) {
+      updatePostDto.mainImage = `/uploads/posts/images/${files.mainImage[0].filename}`;
+    }
+    if (files?.video?.[0]) {
+      updatePostDto.video = `/uploads/posts/videos/${files.video[0].filename}`;
     }
 
     // Update the post
     const updatedPost = await this.postsService.update(id, updatePostDto);
+
+    const becamePublished =
+      (!previousPost?.isPublished && updatedPost.isPublished) ||
+      (previousPost?.status !== 'published' &&
+        updatedPost.status === 'published');
+
+    if (becamePublished) {
+      try {
+        const notificationId = await this.firebaseService.sendToTopic(
+          'client',
+          'A New Post Added',
+          updatedPost.title,
+          {
+            postId: updatedPost._id.toString(),
+          },
+        );
+
+        console.log(
+          'FCM topic notification sent on publish transition:',
+          notificationId,
+        );
+      } catch (notifError) {
+        console.error(
+          'FCM topic notification failed on publish transition:',
+          notifError instanceof Error ? notifError.message : String(notifError),
+        );
+      }
+    }
 
     return {
       success: true,
@@ -395,6 +434,35 @@ async getPostById(@Param('id') id: string) {
       data: post,
     };
   }
+
+  @Put(':id/republish')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(Role.SUPER_ADMIN, Role.ADMIN)
+async republishPost(@Param('id') id: string, @Req() req: Request) {
+  const adminId = req.user['sub'];
+  const adminRole = req.user['role'] as Role;
+
+  const canEdit = await this.postsService.canAdminEditPost(
+    id,
+    adminId,
+    adminRole,
+  );
+
+  if (!canEdit) {
+    return {
+      success: false,
+      message: 'You are not authorized to modify this post',
+    };
+  }
+
+  const post = await this.postsService.republish(id);
+
+  return {
+    success: true,
+    message: 'Post republished successfully',
+    data: post,
+  };
+}
 
   // ============ AUTHOR SPECIFIC ENDPOINTS ============
   @Get('author/my-posts')

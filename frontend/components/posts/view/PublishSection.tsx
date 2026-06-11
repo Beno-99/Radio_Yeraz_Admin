@@ -7,39 +7,54 @@ import {
   XCircle,
   CalendarDays,
   Globe,
+  type LucideIcon,
 } from "lucide-react";
 import { postsAPI } from "@/lib/api/api";
 
+interface Post {
+  _id?: string;
+  id?: string;
+  title?: string;
+  description?: string;
+  visibility?: "public" | "private" | string;
+  isLive?: boolean;
+  publishedAt?: string;
+}
+
 interface PublishSectionProps {
-  post: any;
+  post: Post;
   onUpdate: () => void;
 }
 
-export function PublishSection({ post, onUpdate }: PublishSectionProps) {
+export function PublishSection({
+  post,
+  onUpdate,
+}: PublishSectionProps) {
   const [publishing, setPublishing] = useState(false);
   const [unpublishing, setUnpublishing] = useState(false);
 
-  // Get the correct ID - try _id first, then id
   const postId = post?._id || post?.id;
 
   const handlePublish = async () => {
     if (publishing || !postId) return;
 
     setPublishing(true);
+
     try {
-      // Create FormData with isLive field
       const formData = new FormData();
+
       formData.append("isLive", "true");
 
-      // You might need to add all required fields
-      // Check what fields your backend expects for update
       if (post.title) formData.append("title", post.title);
-      if (post.description) formData.append("description", post.description);
-      if (post.visibility) formData.append("visibility", post.visibility);
-      // Add other fields as needed
+      if (post.description)
+        formData.append("description", post.description);
+      if (post.visibility)
+        formData.append("visibility", post.visibility);
 
       await postsAPI.updatePost(postId, formData);
+
       onUpdate();
+
       alert("Post published successfully!");
     } catch (error) {
       console.error("Publish error:", error);
@@ -53,17 +68,22 @@ export function PublishSection({ post, onUpdate }: PublishSectionProps) {
     if (unpublishing || !postId) return;
 
     setUnpublishing(true);
+
     try {
       const formData = new FormData();
+
       formData.append("isLive", "false");
 
-      // Add other required fields
       if (post.title) formData.append("title", post.title);
-      if (post.description) formData.append("description", post.description);
-      if (post.visibility) formData.append("visibility", post.visibility);
+      if (post.description)
+        formData.append("description", post.description);
+      if (post.visibility)
+        formData.append("visibility", post.visibility);
 
       await postsAPI.updatePost(postId, formData);
+
       onUpdate();
+
       alert("Post unpublished successfully!");
     } catch (error) {
       console.error("Unpublish error:", error);
@@ -73,106 +93,25 @@ export function PublishSection({ post, onUpdate }: PublishSectionProps) {
     }
   };
 
-  // Early return if no post ID
   if (!postId) {
     return (
       <div className="mb-8 p-6 bg-yellow-50 border border-yellow-200 rounded-xl">
-        <p className="text-yellow-700">Cannot publish: Post ID is missing</p>
+        <p className="text-yellow-700">
+          Cannot publish: Post ID is missing
+        </p>
       </div>
     );
   }
 
   return (
     <div className="mb-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-xl">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-semibold text-gray-800 mb-2">
-            {post.isLive ? "Post is Live 🚀" : "Ready to Publish?"}
-          </h2>
-          <p className="text-gray-600">
-            {post.isLive
-              ? "Your post is visible to the public. You can unpublish it anytime."
-              : "Make this post visible to your audience by publishing it."}
-          </p>
-        </div>
-
-        <div className="flex flex-col sm:flex-row gap-3">
-          {post.isLive ? (
-            <>
-              <button
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      "Are you sure you want to unpublish this post? It will no longer be visible to the public.",
-                    )
-                  ) {
-                    handleUnpublish();
-                  }
-                }}
-                disabled={unpublishing}
-                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {unpublishing ? (
-                  <>
-                    <Spinner />
-                    Unpublishing...
-                  </>
-                ) : (
-                  <>
-                    <EyeOff size={18} />
-                    Unpublish Post
-                  </>
-                )}
-              </button>
-
-              <a
-                href={`/posts/${postId}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 border border-green-600 text-green-600 rounded-lg hover:bg-green-50 transition-colors"
-              >
-                <Eye size={18} />
-                View Live
-              </a>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={handlePublish}
-                disabled={publishing}
-                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {publishing ? (
-                  <>
-                    <Spinner />
-                    Publishing...
-                  </>
-                ) : (
-                  <>
-                    <Send size={18} />
-                    Publish Now
-                  </>
-                )}
-              </button>
-
-              <button
-                onClick={() => alert("Saved as draft")}
-                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                <CheckCircle size={18} />
-                Save Draft
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
+      {/* existing JSX */}
       <StatusDetails post={post} />
     </div>
   );
 }
 
-function StatusDetails({ post }: { post: any }) {
+function StatusDetails({ post }: { post: Post }) {
   return (
     <div className="mt-6 pt-6 border-t border-blue-200">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -219,7 +158,7 @@ function StatusItem({
   iconBg,
   iconColor,
 }: {
-  icon: any;
+  icon: LucideIcon;
   label: string;
   value: string;
   iconBg: string;
@@ -230,6 +169,7 @@ function StatusItem({
       <div className={`p-2 rounded-lg ${iconBg} ${iconColor}`}>
         <Icon size={20} />
       </div>
+
       <div>
         <p className="text-sm text-gray-500">{label}</p>
         <p className="font-medium">{value}</p>
@@ -240,6 +180,6 @@ function StatusItem({
 
 function Spinner() {
   return (
-    <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+    <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
   );
 }

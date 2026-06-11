@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -8,19 +7,20 @@ import {
   Users,
   FileText,
   Megaphone,
-  Settings,
-  BarChart3,
   LogOut,
-  Menu,
   X,
   User,
-  Shield,
+  Radio,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 
 interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
-  user: any;
+  user: {
+    displayName: string;
+    role: string;
+  };
 }
 
 const navigation = [
@@ -28,10 +28,16 @@ const navigation = [
   { name: "Admins", href: "/dashboard/admin", icon: Users },
   { name: "Posts", href: "/dashboard/posts", icon: FileText },
   { name: "Ads", href: "/dashboard/ads", icon: Megaphone },
+  { name: "Stream Links", href: "/dashboard/streamLinks", icon: Radio },
 ];
 
 export default function Sidebar({ isOpen, onClose, user }: SidebarProps) {
   const pathname = usePathname();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem("access_token");
@@ -39,12 +45,9 @@ export default function Sidebar({ isOpen, onClose, user }: SidebarProps) {
     window.location.href = "/login";
   };
 
-  const token = localStorage.getItem("access_token");
-
   return (
     <>
-      {/* Mobile overlay */}
-      {isOpen && (
+      {mounted && isOpen && (
         <div
           className="fixed inset-0 z-40 bg-gray-600 bg-opacity-75 lg:hidden"
           onClick={onClose}
@@ -53,7 +56,7 @@ export default function Sidebar({ isOpen, onClose, user }: SidebarProps) {
 
       <aside
         className={`fixed inset-y-0 left-0 z-50 w-64 bg-gray-900 transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 ${
-          isOpen ? "translate-x-0" : "-translate-x-full"
+          mounted && isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         <div className="flex items-center justify-between h-16 px-4 border-b border-gray-800">
@@ -63,10 +66,12 @@ export default function Sidebar({ isOpen, onClose, user }: SidebarProps) {
               alt="logo"
               className="h-10 w-10 rounded-full"
             />
+
             <span className="ml-3 text-xl font-bold text-white">
               Radio Yeraz
             </span>
           </div>
+
           <button
             onClick={onClose}
             className="lg:hidden text-gray-400 hover:text-white"
@@ -75,22 +80,22 @@ export default function Sidebar({ isOpen, onClose, user }: SidebarProps) {
           </button>
         </div>
 
-        {/* User Profile */}
         <div className="p-4 border-b border-gray-800">
           <div className="flex items-center">
             <div className="h-10 w-10 rounded-full bg-blue-600 flex items-center justify-center">
               <User className="h-6 w-6 text-white" />
             </div>
+
             <div className="ml-3">
               <p className="text-sm font-medium text-white">
                 {user.displayName}
               </p>
+
               <p className="text-xs text-gray-400">{user.role}</p>
             </div>
           </div>
         </div>
 
-        {/* Navigation */}
         <nav className="p-4">
           <div className="space-y-1">
             {navigation.map((item) => {
@@ -101,12 +106,12 @@ export default function Sidebar({ isOpen, onClose, user }: SidebarProps) {
                 <Link
                   key={item.name}
                   href={item.href}
+                  onClick={onClose}
                   className={`flex items-center px-3 py-2 text-sm font-medium rounded-md transition ${
                     isActive
                       ? "bg-blue-600 text-white"
                       : "text-gray-300 hover:bg-gray-800 hover:text-white"
                   }`}
-                  onClick={onClose}
                 >
                   <Icon
                     className={`mr-3 h-5 w-5 ${
@@ -120,7 +125,6 @@ export default function Sidebar({ isOpen, onClose, user }: SidebarProps) {
           </div>
         </nav>
 
-        {/* Logout */}
         <div className="absolute bottom-0 w-full p-4 border-t border-gray-800">
           <button
             onClick={handleLogout}

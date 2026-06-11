@@ -1,34 +1,32 @@
-// components/ui/AdImageUpload.tsx
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { Upload, X, Image as ImageIcon } from "lucide-react";
+import { useState, useRef } from "react";
+import { Upload, X } from "lucide-react";
 
 interface AdImageUploadProps {
-  onImageSelect: (file: File) => void; // Make sure this matches
+  onImageSelect: (file: File) => void;
   onImageRemove?: () => void;
   currentImage?: string;
 }
 
+const MEDIA_URL =
+  process.env.NEXT_PUBLIC_MEDIA_GET_URL || "http://localhost:8000";
+
 export function AdImageUpload({
-  onImageSelect, // This must match the interface
+  onImageSelect,
   onImageRemove,
   currentImage,
 }: AdImageUploadProps) {
   const [preview, setPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const mediaUrl =
-    process.env.NEXT_PUBLIC_MEDIA_GET_URL || "http://localhost:8000";
 
-  useEffect(() => {
-    if (currentImage && !preview) {
-      setPreview(
-        currentImage.startsWith("http")
-          ? currentImage
-          : `${mediaUrl}${currentImage}`,
-      );
-    }
-  }, [currentImage, mediaUrl, preview]);
+  const displayImage =
+    preview ||
+    (currentImage
+      ? currentImage.startsWith("http")
+        ? currentImage
+        : `${MEDIA_URL}${currentImage}`
+      : null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -50,22 +48,18 @@ export function AdImageUpload({
     };
     reader.readAsDataURL(file);
 
-    // Call the prop with the file
     onImageSelect(file);
   };
 
   const handleRemove = () => {
     setPreview(null);
+
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
-    if (onImageRemove) {
-      onImageRemove();
-    }
-  };
 
-  const displayImage =
-    preview || (currentImage ? `${mediaUrl}${currentImage}` : null);
+    onImageRemove?.();
+  };
 
   return (
     <div className="space-y-2">
@@ -84,6 +78,7 @@ export function AdImageUpload({
               alt="Ad preview"
               className="w-full h-48 object-cover rounded-lg"
             />
+
             <button
               type="button"
               onClick={(e) => {

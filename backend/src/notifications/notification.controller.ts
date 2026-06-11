@@ -1,10 +1,23 @@
 // src/notifications/notification.controller.ts
-import { Controller, Get, Put, Param, Delete, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
 import { NotificationService } from './notification.service';
+import { FirebaseService } from '../firebase/firebase.service';
 
 @Controller('notifications')
 export class NotificationController {
-  constructor(private readonly notificationService: NotificationService) {}
+  constructor(
+    private readonly notificationService: NotificationService,
+    private readonly firebaseService: FirebaseService,
+  ) {}
 
   @Get()
   async getAll(@Query('limit') limit: string = '20') {
@@ -36,5 +49,51 @@ export class NotificationController {
   async deleteAll() {
     await this.notificationService.deleteAll();
     return { success: true, message: 'All notifications deleted' };
+  }
+  
+  @Delete(':id')
+async deleteOne(@Param('id') id: string) {
+  await this.notificationService.deleteOne(id);
+  return { success: true, message: 'Notification deleted successfully' };
+}
+
+  @Post('test/device')
+  async testDeviceNotification(
+    @Body()
+    body: { token: string; title?: string; body?: string; postId?: string },
+  ) {
+    const messageId = await this.firebaseService.sendToDevice(
+      body.token,
+      body.title || 'Device Test',
+      body.body || 'Testing direct FCM delivery from backend',
+      { postId: body.postId || 'test-post-id' },
+    );
+
+    return { success: true, messageId };
+  }
+
+  @Post('test/topic')
+  async testTopicNotification(
+    @Body() body: { topic?: string; title?: string; body?: string; postId?: string },
+  ) {
+    const messageId = await this.firebaseService.sendToTopic(
+      body.topic || 'client',
+      body.title || 'Topic Test',
+      body.body || 'Testing topic FCM delivery from backend',
+      { postId: body.postId || 'test-post-id' },
+    );
+
+    return { success: true, messageId };
+  }
+
+  @Post('test/subscribe-topic')
+  async subscribeTokenToTopic(
+    @Body() body: { token: string; topic?: string },
+  ) {
+    const response = await this.firebaseService.subscribeTokenToTopic(
+      body.token,
+      body.topic || 'client',
+    );
+    return { success: true, ...response };
   }
 }

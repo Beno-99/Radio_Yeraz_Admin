@@ -41,9 +41,14 @@ export default function CreatePostPage() {
 
       await postsAPI.createPost(formData);
       router.push("/dashboard/posts");
-    } catch (err: any) {
-      setError(err.message || "Failed to create post");
-    } finally {
+    } catch (err: unknown) {
+  const message =
+    err instanceof Error
+      ? err.message
+      : "Failed to create post";
+
+  setError(message);
+} finally {
       setLoading(false);
     }
   };
@@ -139,12 +144,21 @@ export default function CreatePostPage() {
                   <li>Use a descriptive title that captures attention</li>
                   <li>Add high-quality images for better engagement</li>
                   <li>Include relevant links to external sources</li>
-                  <li>Set to "Publish" only when you're ready to publish</li>
-                  <li>Set to "Live" only when it is streaming event</li>
                   <li>
-                    <strong>Location:</strong> Always use format "City, Country"
-                    (e.g. Aleppo, Syria)
-                  </li>
+  Set to &quot;Publish&quot; only when you&apos;re ready to publish
+</li>
+
+<li>
+  Set to &quot;Live&quot; only when it is a streaming event
+</li>
+
+<li>
+  <strong>Location:</strong> Always use format
+  {" "}
+  &quot;City, Country&quot;
+  {" "}
+  (e.g. Aleppo, Syria)
+</li>
                 </ul>
               </div>
             </div>

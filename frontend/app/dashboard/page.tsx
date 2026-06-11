@@ -8,8 +8,6 @@ import {
   Users,
   PlusCircle,
   Upload,
-  BarChart3,
-  Settings,
   ArrowRight,
   AlertCircle,
 } from "lucide-react";
@@ -44,68 +42,70 @@ export default function DashboardPage() {
     return () => clearTimeout(forceStopLoading);
   }, []);
 
-  const fetchDashboardData = async () => {
+  async function fetchDashboardData() {
+  try {
+    setLoading(true);
+    setError(null);
+
+    console.log("📡 Fetching dashboard data...");
+
+    let adminsTotal = 0;
+    let postsTotal = 0;
+    let adsTotal = 0;
+    let activePosts = 0;
+    let clicksToday = 0;
+
     try {
-      setLoading(true);
-      setError(null);
-
-      console.log("📡 Fetching dashboard data...");
-
-      // Simple fetch with no complex timeout logic
-      let adminsTotal = 0;
-      let postsTotal = 0;
-      let adsTotal = 0;
-      let activePosts = 0;
-      let clicksToday = 0;
-
-      try {
-        const adminsRes = await adminAPI.getAllAdmins({ limit: 1 });
-        adminsTotal = adminsRes.data?.total || 0;
-        console.log("✅ Admins:", adminsTotal);
-      } catch (e) {
-        console.error("❌ Admins error:", e);
-      }
-
-      try {
-        const postsRes = await postsAPI.getAllPosts({ limit: 1 });
-        postsTotal = postsRes.data?.total || 0;
-        const posts = postsRes.data?.data || [];
-        activePosts = posts.filter((p: any) => p.isLive).length;
-        console.log("✅ Posts:", postsTotal);
-      } catch (e) {
-        console.error("❌ Posts error:", e);
-      }
-
-      try {
-        const adsRes = await adsAPI.getAllAds({ limit: 1 });
-        adsTotal = adsRes.data?.total || 0;
-        const ads = adsRes.data?.data || [];
-        clicksToday = ads.reduce(
-          (sum: number, ad: any) => sum + (ad.clicks || 0),
-          0,
-        );
-        console.log("✅ Ads:", adsTotal);
-      } catch (e) {
-        console.error("❌ Ads error:", e);
-      }
-
-      setStats({
-        totalAdmins: adminsTotal,
-        totalPosts: postsTotal,
-        totalAds: adsTotal,
-        activePosts: activePosts,
-        clicksToday: clicksToday,
-        upcomingEvents: 3,
-      });
-
-      console.log("✅ Dashboard data loaded");
-    } catch (error) {
-      console.error("❌ Fatal error:", error);
-      setError("Failed to load dashboard data");
-    } finally {
-      setLoading(false);
+      const adminsRes = await adminAPI.getAllAdmins({ limit: 1 });
+      adminsTotal = adminsRes.data?.total || 0;
+    } catch (e) {
+      console.error("❌ Admins error:", e);
     }
-  };
+
+    try {
+      const postsRes = await postsAPI.getAllPosts({ limit: 1 });
+      postsTotal = postsRes.data?.total || 0;
+
+      const posts = (postsRes.data?.data || []) as Array<{
+        isLive?: boolean;
+      }>;
+
+      activePosts = posts.filter((p) => p.isLive).length;
+    } catch (e) {
+      console.error("❌ Posts error:", e);
+    }
+
+    try {
+      const adsRes = await adsAPI.getAllAds({ limit: 1 });
+      adsTotal = adsRes.data?.total || 0;
+
+      const ads = (adsRes.data?.data || []) as Array<{
+        clicks?: number;
+      }>;
+
+      clicksToday = ads.reduce(
+        (sum, ad) => sum + (ad.clicks || 0),
+        0
+      );
+    } catch (e) {
+      console.error("❌ Ads error:", e);
+    }
+
+    setStats({
+      totalAdmins: adminsTotal,
+      totalPosts: postsTotal,
+      totalAds: adsTotal,
+      activePosts,
+      clicksToday,
+      upcomingEvents: 3,
+    });
+  } catch (error) {
+    console.error("❌ Fatal error:", error);
+    setError("Failed to load dashboard data");
+  } finally {
+    setLoading(false);
+  }
+}
 
   const quickActions = [
     {
@@ -197,8 +197,8 @@ export default function DashboardPage() {
             Dashboard
           </h1>
           <p className="mt-1 text-sm sm:text-base text-gray-600">
-            Welcome back! Here's what's happening with your platform.
-          </p>
+  Welcome back! Here&apos;s what&apos;s happening with your platform.
+</p>
         </div>
         <div className="flex-shrink-0">
           <button

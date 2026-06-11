@@ -50,7 +50,7 @@ export function usePostsData() {
 
 export function usePostsFilter(
   allPosts: Post[],
-  filter: "all" | "published" | "draft" | "live",
+  filter: "all" | "published" | "draft" | "live" | "expired",
 ) {
   return useMemo(() => {
     if (filter === "published") {
@@ -59,6 +59,8 @@ export function usePostsFilter(
       return allPosts.filter((p) => p.isPublished === false);
     } else if (filter === "live") {
       return allPosts.filter((p) => p.isLive === true);
+    } else if (filter === "expired") {
+      return allPosts.filter((p) => p.status === "expired");
     }
     return allPosts;
   }, [allPosts, filter]);
@@ -85,13 +87,15 @@ export function usePostsPagination(filteredPosts: Post[], page: number) {
   return { paginatedPosts, pagination };
 }
 
-export function usePostsStats(paginatedPosts: Post[]) {
+export function usePostsStats(allPosts: Post[]) {
   return useMemo(() => {
     return {
-      livePosts: paginatedPosts.filter((p) => p.isLive).length,
-      publishedPosts: paginatedPosts.filter((p) => p.isPublished).length,
-      postsWithMedia: paginatedPosts.filter((p) => p.video || p.mainImage)
+      livePosts: allPosts.filter((p) => p.isLive).length,
+      publishedPosts: allPosts.filter((p) => p.isPublished).length,
+      draftPosts: allPosts.filter((p) => p.status === "draft" || !p.isPublished)
         .length,
+      postsWithMedia: allPosts.filter((p) => p.video || p.mainImage).length,
+      expiredPosts: allPosts.filter((p: any) => p.status === "expired").length,
     };
-  }, [paginatedPosts]);
+  }, [allPosts]);
 }

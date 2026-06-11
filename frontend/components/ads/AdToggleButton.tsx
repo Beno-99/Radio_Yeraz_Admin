@@ -1,4 +1,3 @@
-// components/ads/AdToggleButton.tsx
 "use client";
 
 import { useState } from "react";
@@ -12,6 +11,15 @@ interface AdToggleButtonProps {
   onToggle?: (newStatus: boolean) => void;
 }
 
+// Safe API error type
+type ApiError = {
+  response?: {
+    data?: {
+      message?: string;
+    };
+  };
+};
+
 export function AdToggleButton({
   adId,
   initialActive,
@@ -22,24 +30,25 @@ export function AdToggleButton({
 
   const handleToggle = async () => {
     setLoading(true);
-    try {
-      // ✅ Use the toggleActive method from adsAPI
-      const response = await adsAPI.toggleActive(adId);
-      console.log("✅ Toggle response:", response.data);
 
-      // Get the new status from response
-      const newStatus = response.data.data?.isActive ?? !isActive;
+    try {
+      const response = await adsAPI.toggleActive(adId);
+
+      const newStatus =
+        response?.data?.data?.isActive ?? !isActive;
 
       setIsActive(newStatus);
-
-      if (onToggle) {
-        onToggle(newStatus);
-      }
+      onToggle?.(newStatus);
 
       toast.success(`Ad ${newStatus ? "activated" : "deactivated"}`);
-    } catch (error: any) {
-      console.error("❌ Toggle error:", error);
-      toast.error(error.response?.data?.message || "Failed to toggle status");
+    } catch (err: unknown) {
+      const error = err as ApiError;
+
+      const message =
+        error.response?.data?.message ?? "Failed to toggle status";
+
+      console.error("❌ Toggle error:", err);
+      toast.error(message);
     } finally {
       setLoading(false);
     }

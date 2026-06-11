@@ -1,10 +1,18 @@
 // components/admin/BasicInfoFields.tsx
 import { User, Mail } from "lucide-react";
 import { FieldError } from "./FieldError";
+import { UseFormRegister, FieldErrors } from "react-hook-form";
+
+// Define the shape of your form data (recommended)
+interface BasicInfoFormData {
+  username: string;
+  displayName: string;
+  email?: string;
+}
 
 interface BasicInfoFieldsProps {
-  register: any;
-  errors: any;
+  register: UseFormRegister<BasicInfoFormData>;
+  errors: FieldErrors<BasicInfoFormData>;
 }
 
 export function BasicInfoFields({ register, errors }: BasicInfoFieldsProps) {

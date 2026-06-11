@@ -31,18 +31,38 @@ export class AdsController {
   constructor(private readonly adsService: AdsService) {}
 
   @Get()
-  async getAllAds(@Query() query: any) {
-    const page = parseInt(query.page) || 1;
-    const limit = parseInt(query.limit) || 10;
+async getAllAds(@Query() query: any) {
+  const page = parseInt(query.page) || 1;
+  const limit = parseInt(query.limit) || 10;
 
-    const filters: any = {};
-    if (query.isActive !== undefined) {
-      filters.isActive = query.isActive === 'true';
-    }
-
-    const result = await this.adsService.findAll(page, limit, filters);
-    return { success: true, ...result };
+  const filters: any = {};
+  if (query.isActive !== undefined) {
+    filters.isActive = query.isActive === 'true';
   }
+  if (query.status) {
+    filters.status = query.status;
+  }
+
+  const result = await this.adsService.findAll(page, limit, filters);
+  return { success: true, ...result };
+}
+
+@Get('public')
+async getPublicAds(@Query() query: any) {
+  const page = parseInt(query.page) || 1;
+  const limit = parseInt(query.limit) || 10;
+  const now = new Date();
+
+  const filters: any = {
+    isActive: true,
+    status: 'active',
+    startDate: { $lte: now },
+    endDate: { $gte: now },
+  };
+
+  const result = await this.adsService.findAll(page, limit, filters);
+  return { success: true, ...result };
+}
 
   @Get(':id')
   async getAd(@Param('id') id: string) {

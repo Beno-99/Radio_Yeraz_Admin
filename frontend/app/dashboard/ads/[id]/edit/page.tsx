@@ -1,7 +1,6 @@
-// app/dashboard/ads/[id]/edit/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
@@ -18,6 +17,8 @@ export default function EditAdPage() {
   const [saving, setSaving] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [currentImagePath, setCurrentImagePath] = useState("");
+  const [removeCurrentImage, setRemoveCurrentImage] = useState(false);
+  const [imageFieldError, setImageFieldError] = useState("");
   const [formData, setFormData] = useState({
     name: "",
     targetUrl: "",
@@ -25,11 +26,13 @@ export default function EditAdPage() {
     endDate: "",
     isActive: true,
   });
+  const [serverStatus, setServerStatus] = useState<
+    "pending" | "active" | "inactive" | "expired" | ""
+  >("");
 
   const mediaUrl =
     process.env.NEXT_PUBLIC_MEDIA_GET_URL || "http://localhost:8000";
 
-  // Fetch ad data
   useEffect(() => {
     const fetchAd = async () => {
       try {
@@ -43,11 +46,12 @@ export default function EditAdPage() {
           endDate: ad.endDate?.split("T")[0] || "",
           isActive: ad.isActive ?? true,
         });
+        setServerStatus((ad.status || "").toLowerCase());
 
         if (ad.image && ad.image !== "[object Object]") {
           setCurrentImagePath(ad.image);
         }
-      } catch (error) {
+      } catch {
         toast.error("Failed to load ad");
       } finally {
         setLoading(false);
@@ -57,26 +61,47 @@ export default function EditAdPage() {
     fetchAd();
   }, [adId]);
 
+  const adStatus = useMemo(() => {
+    const now = new Date();
+    const start = formData.startDate ? new Date(formData.startDate) : null;
+    const end = formData.endDate ? new Date(formData.endDate) : null;
+
+    if (end && !Number.isNaN(end.getTime()) && now > end) return "expired";
+    if (start && !Number.isNaN(start.getTime()) && now < start) return "pending";
+    return formData.isActive ? "active" : "inactive";
+  }, [formData.startDate, formData.endDate, formData.isActive]);
+
+  const adStatusLabel = adStatus.charAt(0).toUpperCase() + adStatus.slice(1);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setImageFieldError("");
 
-    const checkbox = document.getElementById("isActive") as HTMLInputElement;
-    const isActiveValue = checkbox?.checked ?? false;
+    const hasCurrentImage = Boolean(currentImagePath) && !removeCurrentImage;
+    const hasNewImage = Boolean(selectedFile);
+
+    if (!hasCurrentImage && !hasNewImage) {
+      setImageFieldError("Image is required");
+      return;
+    }
+
+    setSaving(true);
 
     const formDataToSend = new FormData();
-
     formDataToSend.append("name", formData.name);
     formDataToSend.append("targetUrl", formData.targetUrl || "");
     formDataToSend.append("startDate", formData.startDate);
     formDataToSend.append("endDate", formData.endDate);
-    formDataToSend.append("isActive", String(isActiveValue));
+    formDataToSend.append("isActive", String(formData.isActive));
 
     if (selectedFile) {
       formDataToSend.append("image", selectedFile);
     }
+    if (removeCurrentImage && !selectedFile) {
+      formDataToSend.append("removeImage", "true");
+    }
 
     try {
-      // 🔄 Show loading alert
       Swal.fire({
         title: "Updating...",
         text: "Please wait",
@@ -106,18 +131,36 @@ export default function EditAdPage() {
           text: response.data.message || "Update failed",
         });
       }
-    } catch (error: any) {
-      Swal.close();
+    } catch (error: unknown) {
+  Swal.close();
 
-      Swal.fire({
-        icon: "error",
-        title: "Something went wrong",
-        text: error.response?.data?.message || "Failed to update ad",
-      });
+  let message = "Failed to update ad";
+
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error
+  ) {
+    const err = error as {
+      response?: {
+        data?: {
+          message?: string;
+        };
+      };
+    };
+
+    message = err.response?.data?.message || message;
+  }
+
+  Swal.fire({
+    icon: "error",
+    title: "Something went wrong",
+    text: message,
+  });
+} finally {
+      setSaving(false);
     }
   };
-
-
 
   if (loading) return <div className="text-center py-8">Loading...</div>;
 
@@ -126,6 +169,15 @@ export default function EditAdPage() {
       ? currentImagePath
       : `${mediaUrl}${currentImagePath}`
     : undefined;
+
+  const badgeClass =
+    adStatus === "active"
+      ? "bg-green-100 text-green-700"
+      : adStatus === "pending"
+        ? "bg-amber-100 text-amber-700"
+        : adStatus === "expired"
+          ? "bg-red-100 text-red-700"
+          : "bg-gray-100 text-gray-700";
 
   return (
     <div className="max-w-3xl mx-auto p-6">
@@ -137,13 +189,50 @@ export default function EditAdPage() {
       </button>
 
       <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <h1 className="text-2xl font-bold mb-6">Edit Ad</h1>
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold">Edit Ad</h1>
+          <span className={`px-3 py-1 rounded-full text-xs font-medium ${badgeClass}`}>
+            {adStatusLabel}
+          </span>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <AdImageUpload
-            onImageSelect={setSelectedFile}
-            currentImage={currentImageUrl}
+            onImageSelect={(file) => {
+              setSelectedFile(file);
+              setImageFieldError("");
+              if (file) setRemoveCurrentImage(false);
+            }}
+            onImageRemove={() => {
+              setSelectedFile(null);
+              setRemoveCurrentImage(true);
+            }}
+            currentImage={removeCurrentImage ? undefined : currentImageUrl}
           />
+
+          {imageFieldError && (
+            <p className="text-sm text-red-600">{imageFieldError}</p>
+          )}
+
+          {currentImageUrl && !selectedFile && (
+            <button
+              type="button"
+              onClick={() => setRemoveCurrentImage((prev) => !prev)}
+              className={`px-3 py-2 rounded-lg text-sm font-medium border ${
+                removeCurrentImage
+                  ? "bg-red-50 text-red-700 border-red-200"
+                  : "bg-white text-gray-700 border-gray-300"
+              }`}
+            >
+              {removeCurrentImage ? "Undo Remove Image" : "Remove Current Image"}
+            </button>
+          )}
+
+          {removeCurrentImage && !selectedFile && (
+            <div className="bg-red-50 p-3 rounded-lg text-sm text-red-700">
+              Current image will be removed when you save.
+            </div>
+          )}
 
           {selectedFile && (
             <div className="bg-green-50 p-3 rounded-lg text-sm text-green-700">
@@ -181,9 +270,7 @@ export default function EditAdPage() {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-2">
-                Start Date
-              </label>
+              <label className="block text-sm font-medium mb-2">Start Date</label>
               <input
                 type="date"
                 value={formData.startDate}
@@ -206,15 +293,14 @@ export default function EditAdPage() {
             </div>
           </div>
 
-          {/* Active Checkbox */}
           <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
             <input
               type="checkbox"
               id="isActive"
               checked={formData.isActive}
-              onChange={(e) => {
-                setFormData({ ...formData, isActive: e.target.checked });
-              }}
+              onChange={(e) =>
+                setFormData({ ...formData, isActive: e.target.checked })
+              }
               className="w-5 h-5 text-purple-600 rounded focus:ring-purple-500 cursor-pointer"
             />
             <label
@@ -225,14 +311,25 @@ export default function EditAdPage() {
             </label>
             <span
               className={`ml-auto px-3 py-1 rounded-full text-xs font-medium ${
-                formData.isActive
+                adStatus === "active"
                   ? "bg-green-100 text-green-700"
-                  : "bg-gray-100 text-gray-700"
+                  : adStatus === "pending"
+                    ? "bg-amber-100 text-amber-700"
+                    : adStatus === "expired"
+                      ? "bg-red-100 text-red-700"
+                      : "bg-gray-100 text-gray-700"
               }`}
             >
-              {formData.isActive ? "ACTIVE" : "INACTIVE"}
+              {adStatusLabel}
             </span>
           </div>
+
+          {serverStatus && serverStatus !== adStatus && (
+            <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+              Saved status: <strong>{serverStatus}</strong>. It will sync to{" "}
+              <strong>{adStatus}</strong> when you save (or by daily cron).
+            </div>
+          )}
 
           <button
             type="submit"

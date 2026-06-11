@@ -1,8 +1,9 @@
 // app/dashboard/posts/[id]/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect , useCallback} from "react";
 import { useRouter, useParams } from "next/navigation";
+import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -21,21 +22,37 @@ import { toast } from "sonner";
 import Swal from "sweetalert2";
 import { postsAPI } from "@/lib/api/api";
 
+interface Post {
+  _id: string;
+  title: string;
+  description?: string;
+  profileName?: string;
+  location?: string;
+  eventDate?: string;
+  postedDate?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  mainImage?: string;
+  video?: string;
+  isLive: boolean;
+  isPublished: boolean;
+}
+
 export default function PostDetailPage() {
   const router = useRouter();
   const params = useParams();
   const postId = params.id as string;
 
-  const [post, setPost] = useState<any>(null);
+  const [post, setPost] = useState<Post | null>(null);
   const [loading, setLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
-  const [imageTimestamp, setImageTimestamp] = useState(Date.now());
+  const [imageTimestamp, setImageTimestamp] = useState<number>(() => Date.now());
 
   const mediaUrl =
     process.env.NEXT_PUBLIC_MEDIA_GET_URL || "http://localhost:8000";
 
   // Fetch post data
-  const fetchPost = async () => {
+  const fetchPost = useCallback(async () => {
     try {
       setLoading(true);
       const response = await postsAPI.getPost(postId);
@@ -44,20 +61,39 @@ export default function PostDetailPage() {
       console.log("📥 Fetched post:", postData);
       setPost(postData);
       setImageTimestamp(Date.now()); // Force image refresh
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error fetching post:", error);
-      toast.error(error.response?.data?.message || "Failed to load post");
+      const message =
+  typeof error === "object" &&
+  error !== null &&
+  "response" in error
+    ? (
+        error as {
+          response?: {
+            data?: {
+              message?: string;
+            };
+          };
+        }
+      ).response?.data?.message || "Failed to load post"
+    : "Failed to load post";
+
+toast.error(message);
       router.push("/dashboard/posts");
     } finally {
       setLoading(false);
     }
+  }, [postId, router]);
+
+ useEffect(() => {
+  const loadPost = async () => {
+    await fetchPost();
   };
 
-  useEffect(() => {
-    if (postId) {
-      fetchPost();
-    }
-  }, [postId]);
+  void loadPost();
+}, [fetchPost]);
+
+  
 
   // Handle delete
   const handleDelete = async () => {
@@ -77,23 +113,32 @@ export default function PostDetailPage() {
       await postsAPI.deletePost(postId);
       toast.success("Post deleted successfully");
       router.push("/dashboard/posts");
-    } catch (error) {
+    } catch {
       toast.error("Failed to delete post");
     }
   };
 
   // Toggle live status
   const handleToggleLive = async () => {
-    try {
-      const response = await postsAPI.toggleLive(postId);
-      setPost({ ...post, isLive: !post.isLive });
-      toast.success(
-        `Post ${!post.isLive ? "marked as live" : "removed from live"}`,
-      );
-    } catch (error) {
-      toast.error("Failed to update live status");
-    }
-  };
+  try {
+    await postsAPI.toggleLive(postId);
+
+    setPost((prev): Post | null => {
+      if (!prev) return null;
+
+      const updatedPost: Post = {
+        ...prev,
+        isLive: !prev.isLive,
+      };
+
+      return updatedPost;
+    });
+
+    toast.success("Live status updated");
+  } catch {
+    toast.error("Failed to update live status");
+  }
+};
 
   // Format date
   const formatDate = (dateString?: string) => {
@@ -242,13 +287,14 @@ export default function PostDetailPage() {
             </div>
           ) : imageUrl ? (
             <div className="relative w-full max-h-[500px] overflow-hidden">
-              <img
-                key={imageUrl}
-                src={imageUrl}
-                alt={post.title}
-                className="w-full h-auto object-contain bg-gray-50"
-                onError={() => setImageError(true)}
-              />
+              <Image
+  src={imageUrl}
+  alt={post.title}
+  width={1200}
+  height={800}
+  className="w-full h-auto object-contain bg-gray-50"
+  onError={() => setImageError(true)}
+/>
               {post.isLive && (
                 <div className="absolute top-4 right-4 px-3 py-1.5 bg-red-500 text-white text-sm font-medium rounded-full flex items-center gap-1.5">
                   <span className="h-2 w-2 bg-white rounded-full animate-pulse"></span>

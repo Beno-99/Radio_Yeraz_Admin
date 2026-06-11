@@ -85,9 +85,12 @@ export class AdminService {
       const creatorName =
         creator.displayName || creator.username || 'Super Admin';
       await this.notificationGateway.emitAdminCreated(admin, creatorName);
-    } catch (e) {
-      console.error('⚠️ Admin notification failed:', e.message);
-    }
+    } catch (e: unknown) {
+  console.error(
+    '⚠️ Admin notification failed:',
+    e instanceof Error ? e.message : String(e),
+  );
+}
     // ─────────────────────────────────────────────────────────
 
     return admin;
@@ -174,9 +177,12 @@ export class AdminService {
     // ── Notify admins ─────────────────────────────────────────
     try {
       await this.notificationGateway.emitAdminUpdated(admin, updaterName);
-    } catch (e) {
-      console.error('⚠️ Admin notification failed:', e.message);
-    }
+    } catch (e: unknown) {
+  console.error(
+    '⚠️ Admin notification failed:',
+    e instanceof Error ? e.message : String(e),
+  );
+}
     // ─────────────────────────────────────────────────────────
 
     return admin;
@@ -195,9 +201,12 @@ export class AdminService {
         admin.displayName || admin.username,
         deleterName,
       );
-    } catch (e) {
-      console.error('⚠️ Admin notification failed:', e.message);
-    }
+    } catch (e: unknown) {
+  console.error(
+    '⚠️ Admin notification failed:',
+    e instanceof Error ? e.message : String(e),
+  );
+}
     // ─────────────────────────────────────────────────────────
 
     return admin;
@@ -238,9 +247,12 @@ export class AdminService {
     // ── Notify admins ─────────────────────────────────────────
     try {
       await this.notificationGateway.emitAdminToggled(admin, togglerName);
-    } catch (e) {
-      console.error('⚠️ Admin notification failed:', e.message);
-    }
+    } catch (e: unknown) {
+  console.error(
+    '⚠️ Admin notification failed:',
+    e instanceof Error ? e.message : String(e),
+  );
+}
     // ─────────────────────────────────────────────────────────
 
     return admin;

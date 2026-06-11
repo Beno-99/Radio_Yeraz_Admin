@@ -55,11 +55,11 @@ export default function CreateAdPage() {
       }
 
       // Send request
-      const token = localStorage.getItem("access_token");
+      // const token = localStorage.getItem("access_token");
 
       const response = await adsAPI.createAd(formDataToSend);
 
-      const data = await response.data;
+      const data = response.data;
 
       if (response.status === 201) {
         toast.success("Ad created successfully");

@@ -1,7 +1,6 @@
-// components/ConfirmationDialog.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { X, AlertTriangle, CheckCircle, Info } from "lucide-react";
 
 export type DialogType = "delete" | "warning" | "success" | "info";
@@ -31,16 +30,38 @@ export function ConfirmationDialog({
 }: ConfirmationDialogProps) {
   const [isClosing, setIsClosing] = useState(false);
 
-  // Handle escape key
+  const handleClose = useCallback(() => {
+    setIsClosing(true);
+
+    setTimeout(() => {
+      onClose();
+      setIsClosing(false);
+    }, 200);
+  }, [onClose]);
+
+  const handleConfirm = async () => {
+    try {
+      await onConfirm();
+      handleClose();
+    } catch {
+      // Error handling is done in parent component
+    }
+  };
+
+  // Handle Escape key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape" && isOpen) {
         handleClose();
       }
     };
+
     document.addEventListener("keydown", handleEscape);
-    return () => document.removeEventListener("keydown", handleEscape);
-  }, [isOpen]);
+
+    return () => {
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [isOpen, handleClose]);
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -49,29 +70,12 @@ export function ConfirmationDialog({
     } else {
       document.body.style.overflow = "unset";
     }
+
     return () => {
       document.body.style.overflow = "unset";
     };
   }, [isOpen]);
 
-  const handleClose = () => {
-    setIsClosing(true);
-    setTimeout(() => {
-      onClose();
-      setIsClosing(false);
-    }, 200);
-  };
-
-  const handleConfirm = async () => {
-    try {
-      await onConfirm();
-      handleClose();
-    } catch (error) {
-      // Error handling is done in parent component
-    }
-  };
-
-  // Configuration based on dialog type
   const typeConfig = {
     delete: {
       icon: AlertTriangle,
@@ -111,13 +115,15 @@ export function ConfirmationDialog({
   const Icon = config.icon;
   const finalConfirmText = confirmText || config.defaultConfirmText;
 
-  if (!isOpen && !isClosing) return null;
+  if (!isOpen && !isClosing) {
+    return null;
+  }
 
   return (
     <>
       {/* Backdrop */}
       <div
-        className={`fixed inset-0 z-50 bg-black/50 transition-opacity ${
+        className={`fixed inset-0 z-50 bg-black/50 transition-opacity duration-200 ${
           isClosing ? "opacity-0" : "opacity-100"
         }`}
         onClick={handleClose}
@@ -127,30 +133,38 @@ export function ConfirmationDialog({
       <div className="fixed inset-0 z-50 overflow-y-auto">
         <div className="flex min-h-full items-center justify-center p-4">
           <div
-            className={`relative w-full max-w-md transform transition-all ${
-              isClosing ? "opacity-0 scale-95" : "opacity-100 scale-100"
+            className={`relative w-full max-w-md transform transition-all duration-200 ${
+              isClosing
+                ? "opacity-0 scale-95"
+                : "opacity-100 scale-100"
             }`}
           >
             <div
-              className={`rounded-xl shadow-2xl overflow-hidden ${config.bgColor} ${config.borderColor} border`}
+              className={`overflow-hidden rounded-xl border shadow-2xl ${config.bgColor} ${config.borderColor}`}
             >
               {/* Header */}
               <div className="p-6">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-full ${config.bgColor}`}>
+                    <div className={`rounded-full p-2 ${config.bgColor}`}>
                       <Icon className={`h-6 w-6 ${config.iconColor}`} />
                     </div>
+
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900">
                         {title}
                       </h3>
-                      <p className="text-sm text-gray-600 mt-1">{message}</p>
+
+                      <p className="mt-1 text-sm text-gray-600">
+                        {message}
+                      </p>
                     </div>
                   </div>
+
                   <button
+                    type="button"
                     onClick={handleClose}
-                    className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition"
+                    className="rounded-lg p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
                   >
                     <X className="h-5 w-5" />
                   </button>
@@ -158,22 +172,26 @@ export function ConfirmationDialog({
               </div>
 
               {/* Actions */}
-              <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
+              <div className="flex justify-end gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4">
                 <button
+                  type="button"
                   onClick={handleClose}
                   disabled={loading}
-                  className="px-4 py-2 text-gray-700 hover:text-gray-900 font-medium disabled:opacity-50"
+                  className="px-4 py-2 font-medium text-gray-700 hover:text-gray-900 disabled:opacity-50"
                 >
                   {cancelText}
                 </button>
+
                 <button
+                  type="button"
                   onClick={handleConfirm}
                   disabled={loading}
-                  className={`px-4 py-2 text-white rounded-lg font-medium transition ${config.confirmColor} disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2`}
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2 font-medium text-white transition ${config.confirmColor} disabled:cursor-not-allowed disabled:opacity-50`}
                 >
                   {loading && (
-                    <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                   )}
+
                   {finalConfirmText}
                 </button>
               </div>

@@ -1,7 +1,7 @@
-// app/dashboard/ads/page.tsx
+
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { AdsHeader } from "@/components/ads/AdsHeader";
 import { AdsStats } from "@/components/ads/AdsStats";
 import { AdsFilterBar } from "@/components/ads/AdsFilterBar";
@@ -17,12 +17,12 @@ interface Ad {
   name: string;
   image?: string;
   isActive: boolean;
+  status?: "pending" | "active" | "inactive" | "expired";
   clicks: number;
   startDate?: string;
   endDate?: string;
   targetUrl?: string;
   author?: {
-    // ← update this
     _id: string;
     username: string;
     displayName: string;
@@ -33,30 +33,76 @@ export default function AdsPage() {
   const [ads, setAds] = useState<Ad[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const [filter, setFilter] = useState<"all" | "active" | "inactive">("all");
+  const [filter, setFilter] = useState<
+    "all" | "active" | "inactive" | "pending" | "expired"
+  >("all");
   const [selectedAds, setSelectedAds] = useState<string[]>([]);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isUpdating, setIsUpdating] = useState(false);
+
+  // kept because AdsHeader expects it
+  const isUpdating = false;
+
   const [totalPages, setTotalPages] = useState(1);
   const [totalAds, setTotalAds] = useState(0);
+
+  const [statusCounts, setStatusCounts] = useState({
+    active: 0,
+    inactive: 0,
+    pending: 0,
+    expired: 0,
+  });
 
   const mediaUrl =
     process.env.NEXT_PUBLIC_MEDIA_GET_URL || "http://localhost:8000";
 
-  const fetchAds = async () => {
+  const fetchAds = useCallback(async () => {
     try {
-      const response = await adsAPI.getAllAds({
-        page,
-        limit: PAGE_LIMIT,
-        isActive: filter !== "all" ? filter === "active" : undefined,
-      });
+      const [response, activeRes, inactiveRes, pendingRes, expiredRes] =
+        await Promise.all([
+          adsAPI.getAllAds({
+            page,
+            limit: PAGE_LIMIT,
+            status: filter !== "all" ? filter : undefined,
+          }),
+          adsAPI.getAllAds({
+            page: 1,
+            limit: 1,
+            status: "active",
+          }),
+          adsAPI.getAllAds({
+            page: 1,
+            limit: 1,
+            status: "inactive",
+          }),
+          adsAPI.getAllAds({
+            page: 1,
+            limit: 1,
+            status: "pending",
+          }),
+          adsAPI.getAllAds({
+            page: 1,
+            limit: 1,
+            status: "expired",
+          }),
+        ]);
 
       const responseData = response.data;
+      const activeData = activeRes.data;
+      const inactiveData = inactiveRes.data;
+      const pendingData = pendingRes.data;
+      const expiredData = expiredRes.data;
 
       if (responseData.success) {
         setAds(responseData.data || []);
         setTotalPages(responseData.pages || 1);
         setTotalAds(responseData.total || 0);
+
+        setStatusCounts({
+          active: activeData?.total || 0,
+          inactive: inactiveData?.total || 0,
+          pending: pendingData?.total || 0,
+          expired: expiredData?.total || 0,
+        });
       } else {
         setAds(Array.isArray(responseData) ? responseData : []);
       }
@@ -66,22 +112,23 @@ export default function AdsPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchAds();
   }, [page, filter]);
 
   useEffect(() => {
-    setPage(1);
-    setSelectedAds([]);
-  }, [filter]);
+  const timer = setTimeout(() => {
+    void fetchAds();
+  }, 0);
+
+  return () => clearTimeout(timer);
+}, [fetchAds]);
 
   const handleBulkDelete = async () => {
     if (selectedAds.length === 0) return;
 
     const result = await Swal.fire({
-      title: `Delete ${selectedAds.length} ad${selectedAds.length > 1 ? "s" : ""}?`,
+      title: `Delete ${selectedAds.length} ad${
+        selectedAds.length > 1 ? "s" : ""
+      }?`,
       text: "This action cannot be undone!",
       icon: "warning",
       showCancelButton: true,
@@ -93,15 +140,22 @@ export default function AdsPage() {
     if (!result.isConfirmed) return;
 
     setIsDeleting(true);
+
     try {
       const adsToDelete = [...selectedAds];
+
       setSelectedAds([]);
 
-      await Promise.all(adsToDelete.map((id) => adsAPI.deleteAd(id)));
+      await Promise.all(
+        adsToDelete.map((id) => adsAPI.deleteAd(id))
+      );
 
       await fetchAds();
-      toast.success(`Successfully deleted ${adsToDelete.length} ad(s)`);
-    } catch (error) {
+
+      toast.success(
+        `Successfully deleted ${adsToDelete.length} ad(s)`
+      );
+    } catch {
       toast.error("Failed to delete some ads");
     } finally {
       setIsDeleting(false);
@@ -116,10 +170,13 @@ export default function AdsPage() {
     setSelectedAds(selectedIds);
   };
 
-  // Calculate stats
-  const activeAds = ads.filter((ad) => ad.isActive).length;
-  const inactiveAds = ads.filter((ad) => !ad.isActive).length;
-  const totalClicks = ads.reduce((sum, ad) => sum + (ad.clicks || 0), 0);
+  const handleFilterChange = (
+    newFilter: "all" | "active" | "inactive" | "pending" | "expired"
+  ) => {
+    setFilter(newFilter);
+    setPage(1);
+    setSelectedAds([]);
+  };
 
   return (
     <div className="space-y-8">
@@ -135,9 +192,10 @@ export default function AdsPage() {
         filter={filter}
         totalAds={totalAds}
         totalPages={totalPages}
-        activeAds={activeAds}
-        inactiveAds={inactiveAds}
-        totalClicks={totalClicks}
+        activeAds={statusCounts.active}
+        inactiveAds={statusCounts.inactive}
+        pendingAds={statusCounts.pending}
+        expiredAds={statusCounts.expired}
       />
 
       <AdsFilterBar
@@ -146,7 +204,7 @@ export default function AdsPage() {
         total={totalAds}
         totalAds={ads.length}
         selectedAds={selectedAds.length}
-        onFilterChange={setFilter}
+        onFilterChange={handleFilterChange}
         onClearSelection={clearSelection}
       />
 

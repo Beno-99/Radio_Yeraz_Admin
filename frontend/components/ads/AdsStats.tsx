@@ -1,20 +1,15 @@
 // components/ads/AdsStats.tsx
-import {
-  BarChart,
-  Play,
-  Square,
-  MousePointerClick,
-  Layers,
-} from "lucide-react";
+import { Play, Square, Clock3, Layers, AlertCircle } from "lucide-react";
 import { StatCard } from "../../components/ui/StatCard";
 
 interface AdsStatsProps {
-  filter: "all" | "active" | "inactive";
+  filter: "all" | "active" | "inactive" | "pending" | "expired";
   totalAds: number;
   totalPages: number;
   activeAds: number;
   inactiveAds: number;
-  totalClicks: number;
+  pendingAds: number;
+  expiredAds: number;
 }
 
 export function AdsStats({
@@ -23,7 +18,8 @@ export function AdsStats({
   totalPages,
   activeAds,
   inactiveAds,
-  totalClicks,
+  pendingAds,
+  expiredAds,
 }: AdsStatsProps) {
   const getTitle = () => {
     switch (filter) {
@@ -31,6 +27,10 @@ export function AdsStats({
         return "Active Ads";
       case "inactive":
         return "Inactive Ads";
+      case "pending":
+        return "Pending Ads";
+      case "expired":
+        return "Expired Ads";
       default:
         return "Total Ads";
     }
@@ -41,7 +41,7 @@ export function AdsStats({
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
       <StatCard
         title={getTitle()}
         value={totalAds}
@@ -64,11 +64,18 @@ export function AdsStats({
         subtitle={filter === "inactive" ? "Filtered" : "Paused"}
       />
       <StatCard
-        title="Total Clicks"
-        value={totalClicks}
-        icon={<MousePointerClick className="w-5 h-5" />}
-        color="blue"
-        subtitle="All time"
+        title="Pending"
+        value={pendingAds}
+        icon={<Clock3 className="w-5 h-5" />}
+        color="yellow"
+        subtitle={filter === "pending" ? "Filtered" : "Waiting to start"}
+      />
+      <StatCard
+        title="Expired"
+        value={expiredAds}
+        icon={<AlertCircle className="w-5 h-5" />}
+        color="red"
+        subtitle={filter === "expired" ? "Filtered" : "Ended campaigns"}
       />
     </div>
   );

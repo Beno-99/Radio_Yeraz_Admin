@@ -1,15 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import {
-  ChevronLeft,
-  ChevronRight,
-  ChevronUp,
-  ChevronDown,
-  MoreVertical,
-  Filter,
-  Download,
-} from "lucide-react";
+import React from "react";
+import { Filter } from "lucide-react";
 import { Button } from "../ui/Button";
 import {
   Dialog,
@@ -19,12 +11,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
-import React from "react";
 
-type Column<T> = {
+export type Column<T> = {
   key: keyof T | string;
   header: string;
-  render?: (value: any, row: T) => React.ReactNode;
+  render?: (value: unknown, row: T) => React.ReactNode;
   sortable?: boolean;
   width?: string;
   align?: "left" | "center" | "right";
@@ -34,17 +25,20 @@ interface DataTableProps<T> {
   data: T[];
   columns: Column<T>[];
   loading?: boolean;
-  confirmDelete?: Boolean;
+  confirmDelete?: boolean;
+
   pagination?: {
     page: number;
     totalPages: number;
     totalItems: number;
     onPageChange: (page: number) => void;
   };
+
   selection?: {
     selectedIds: string[];
     onSelectionChange: (ids: string[]) => void;
   };
+
   actions?: {
     onEdit?: (item: T) => void;
     onDelete?: (item: T) => void;
@@ -56,43 +50,23 @@ interface DataTableProps<T> {
       variant?: "default" | "danger" | "success";
     }>;
   };
+
   filters?: React.ReactNode;
-  onSort?: (field: string, direction: "asc" | "desc") => void;
   emptyState?: React.ReactNode;
+  onSort?: (field: string, direction: "asc" | "desc") => void; 
 }
 
 export function DataTable<T extends { _id: string }>({
   data,
   columns,
   loading = false,
-  pagination,
-  selection,
   actions,
-  confirmDelete,
   filters,
-  onSort,
   emptyState,
+  onSort,
 }: DataTableProps<T>) {
-  const [sortField, setSortField] = useState<string>("");
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
-  const [expandedRow, setExpandedRow] = useState<string | null>(null);
-
   const [open, setOpen] = React.useState(false);
-  const [confirmed, setConfirmed] = React.useState<boolean | null>(null);
-  const [selectedItem, setSelectedItem] = React.useState<any>(null);
-
-  useEffect(() => {
-    console.log(data);
-    setExpandedRow(null); // Reset expanded row when data changes
-  }, [data]);
-
-  useEffect(() => {
-    if (confirmed === true && selectedItem && actions?.onDelete) {
-      actions.onDelete(selectedItem);
-      setConfirmed(null); // VERY IMPORTANT (reset)
-      setSelectedItem(null);
-    }
-  }, [confirmed, selectedItem, actions]);
+  const [selectedItem, setSelectedItem] = React.useState<T | null>(null);
 
   if (loading) {
     return (
@@ -125,11 +99,21 @@ export function DataTable<T extends { _id: string }>({
     );
   }
 
+  const handleConfirmDelete = () => {
+    if (selectedItem && actions?.onDelete) {
+      actions.onDelete(selectedItem);
+    }
+    setOpen(false);
+    setSelectedItem(null);
+  };
+
   return (
     <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
       {/* Filters */}
       {filters && (
-        <div className="p-4 border-b border-gray-200 bg-gray-50">{filters}</div>
+        <div className="p-4 border-b border-gray-200 bg-gray-50">
+          {filters}
+        </div>
       )}
 
       {/* Table */}
@@ -153,6 +137,7 @@ export function DataTable<T extends { _id: string }>({
                   </div>
                 </th>
               ))}
+
               {actions && (
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">
                   Actions
@@ -160,6 +145,7 @@ export function DataTable<T extends { _id: string }>({
               )}
             </tr>
           </thead>
+
           <tbody className="bg-white divide-y divide-gray-200">
             {data.map((item) => (
               <tr key={item._id} className="hover:bg-gray-50">
@@ -175,10 +161,14 @@ export function DataTable<T extends { _id: string }>({
                     }`}
                   >
                     {column.render
-                      ? column.render(item[column.key as keyof T], item)
-                      : String(item[column.key as keyof T] || "")}
+                      ? column.render(
+                          item[column.key as keyof T],
+                          item
+                        )
+                      : String(item[column.key as keyof T] ?? "")}
                   </td>
                 ))}
+
                 {actions && (
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center space-x-2">
@@ -186,21 +176,20 @@ export function DataTable<T extends { _id: string }>({
                         <Button
                           onClick={() => actions.onView!(item)}
                           className="text-white bg-blue-600 hover:bg-blue-800 cursor-pointer"
-                          title="View"
-                          aria-label="view"
                         >
                           View
                         </Button>
                       )}
+
                       {actions.onEdit && (
                         <Button
                           onClick={() => actions.onEdit!(item)}
                           className="text-white bg-green-600 hover:bg-green-800 cursor-pointer"
-                          title="Edit"
                         >
                           Edit
                         </Button>
                       )}
+
                       {actions.onDelete && (
                         <Button
                           onClick={() => {
@@ -208,7 +197,6 @@ export function DataTable<T extends { _id: string }>({
                             setOpen(true);
                           }}
                           className="text-white bg-red-600 hover:bg-red-800 cursor-pointer"
-                          title="Delete"
                         >
                           Delete
                         </Button>
@@ -221,6 +209,8 @@ export function DataTable<T extends { _id: string }>({
           </tbody>
         </table>
       </div>
+
+      {/* Confirm Dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
@@ -235,7 +225,7 @@ export function DataTable<T extends { _id: string }>({
               variant="outline"
               onClick={() => {
                 setOpen(false);
-                setConfirmed(false);
+                setSelectedItem(null);
               }}
             >
               Cancel
@@ -243,10 +233,7 @@ export function DataTable<T extends { _id: string }>({
 
             <Button
               variant="destructive"
-              onClick={() => {
-                setOpen(false);
-                setConfirmed(true);
-              }}
+              onClick={handleConfirmDelete}
             >
               Confirm
             </Button>

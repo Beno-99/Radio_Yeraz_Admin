@@ -1,5 +1,12 @@
+interface Post {
+  id: string | number;
+  title: string;
+  published: boolean;
+  createdAt: string;
+}
+
 interface PostTableProps {
-  posts: any[];
+  posts: Post[];
 }
 
 export function PostTable({ posts }: PostTableProps) {

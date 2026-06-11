@@ -1,7 +1,6 @@
-// components/posts/PostCard.tsx
-import { useState } from "react";
-import Image from "next/image";
+import { useMemo, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   Eye,
   Pencil,
@@ -14,7 +13,7 @@ import {
 } from "lucide-react";
 import { Post } from "@/types";
 import { toast } from "sonner";
-import api, { postsAPI } from "@/lib/api/api";
+import { postsAPI } from "@/lib/api/api";
 import Swal from "sweetalert2";
 
 interface PostCardProps {
@@ -23,10 +22,16 @@ interface PostCardProps {
   onDelete: () => void;
 }
 
+// Define the author type based on what the Post type expects
+interface Author {
+  username?: string;
+  displayName?: string;
+  profileName?: string;
+  name?: string;
+}
+
 export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isLive, setIsLive] = useState(post.isLive);
-  const [isPublished, setIsPublished] = useState(post.isPublished || false);
 
   const handleDelete = async () => {
     const res = await Swal.fire({
@@ -45,7 +50,9 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
       await postsAPI.deletePost(`${post._id}`);
       toast.success("Post deleted successfully");
       onDelete();
-    } catch (error) {
+    } catch (err) {
+      // Changed from 'error' to 'err' and added console.error to use the variable
+      console.error("Delete error:", err);
       toast.error("Failed to delete post");
     } finally {
       setIsDeleting(false);
@@ -60,15 +67,43 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
     });
   };
 
+  const postStatus = useMemo(() => {
+    const now = new Date();
+    const eventDate = post.eventDate ? new Date(post.eventDate) : null;
+    const eventExpiry =
+      eventDate && !Number.isNaN(eventDate.getTime())
+        ? new Date(eventDate.getTime() + 5 * 24 * 60 * 60 * 1000)
+        : null;
+    const expiresAt = post.expiresAt ? new Date(post.expiresAt) : null;
+    const postedDate = post.postedDate ? new Date(post.postedDate) : null;
+
+    if (eventExpiry && eventExpiry < now) return "Expired";
+    if (!eventExpiry && expiresAt && expiresAt < now) return "Expired";
+    if (postedDate && postedDate > now) return "Scheduled";
+    if (post.isLive) return "Live";
+    if (post.isPublished) return "Published";
+    return "Draft";
+  }, [post.eventDate, post.expiresAt, post.postedDate, post.isLive, post.isPublished]);
+
+  const statusBadgeClass =
+    postStatus === "Live"
+      ? "bg-red-50 text-red-600 border-red-100"
+      : postStatus === "Published"
+        ? "bg-green-50 text-green-600 border-green-100"
+        : postStatus === "Scheduled"
+          ? "bg-blue-50 text-blue-600 border-blue-100"
+          : postStatus === "Expired"
+            ? "bg-gray-50 text-gray-600 border-gray-200"
+            : "bg-yellow-50 text-yellow-700 border-yellow-100";
+
   const getMediaPreview = () => {
-    // VIDEO PREVIEW LOGIC
     if (post.video) {
       const videoUrl = post.video.startsWith("http")
         ? post.video
         : `${mediaUrl}${post.video}`;
 
       return (
-        <div className="relative w-full aspect-video bg-black rounded-t-lg overflow-hidden group/video">
+        <div className="relative w-full h-72 bg-black rounded-t-lg overflow-hidden group/video">
           <video
             src={`${videoUrl}#t=0.1`}
             className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover/video:opacity-100 transition-opacity"
@@ -88,39 +123,41 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
       );
     }
 
-    // IMAGE PREVIEW LOGIC
     if (post.mainImage) {
       const imageUrl = post.mainImage.startsWith("http")
         ? post.mainImage
         : `${mediaUrl}${post.mainImage}`;
 
       return (
-        <div className="relative w-full aspect-video bg-gray-100 rounded-t-lg overflow-hidden">
-          <img
+        <div className="relative w-full h-72 bg-gray-100 rounded-t-lg overflow-hidden">
+          {/* Replace img with Next.js Image component */}
+          <Image
             src={imageUrl}
             alt={post.title}
-            className="absolute inset-0 w-full h-full object-cover"
+            fill
+            className="object-cover"
+            sizes="(max-width: 768px) 100vw, 400px"
             loading="lazy"
+            unoptimized={imageUrl.startsWith('http://localhost')}
           />
         </div>
       );
     }
 
-    // FALLBACK
     return (
-      <div className="w-full aspect-video bg-gradient-to-br from-gray-50 to-gray-100 rounded-t-lg flex flex-col items-center justify-center text-gray-400">
+      <div className="w-full h-72 bg-gradient-to-br from-gray-50 to-gray-100 rounded-t-lg flex flex-col items-center justify-center text-gray-400">
         <ImageIcon size={40} strokeWidth={1.5} className="mb-2" />
         <span className="text-xs font-medium">No Image</span>
       </div>
     );
   };
 
-  // Get author name from the populated author object
+  // Fix: Replace 'any' with proper Author type
   const getAuthorName = () => {
     if (!post.author) return "Admin";
 
     if (typeof post.author === "object") {
-      const author = post.author as any; // Temporarily bypass type checking
+      const author = post.author as Author;
       return (
         author.username ||
         author.displayName ||
@@ -134,28 +171,34 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden flex flex-col h-[480px] w-full max-w-[400px] mx-auto">
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden flex flex-col h-[540px] w-full max-w-[400px] mx-auto">
       {getMediaPreview()}
 
       <div className="p-5 flex-1 flex flex-col">
-        {/* Title and badges */}
         <div className="flex justify-between items-start mb-2 gap-2">
           <h3 className="font-bold text-gray-900 text-md line-clamp-2 flex-1">
             {post.title}
           </h3>
+
           <div className="flex-shrink-0 flex flex-col gap-1">
-            {isPublished && (
-              <span className="flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-600 text-[10px] font-bold rounded-full uppercase border border-green-100 whitespace-nowrap">
-                <span className="h-1.5 w-1.5 bg-green-500 rounded-full animate-pulse" />
-                Published
-              </span>
-            )}
-            {isLive && (
-              <span className="flex items-center gap-1 px-2 py-0.5 bg-red-50 text-red-600 text-[10px] font-bold rounded-full uppercase border border-red-100 whitespace-nowrap">
-                <span className="h-1.5 w-1.5 bg-red-500 rounded-full animate-pulse" />
-                Live
-              </span>
-            )}
+            <span
+              className={`flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded-full uppercase border whitespace-nowrap ${statusBadgeClass}`}
+            >
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  postStatus === "Live"
+                    ? "bg-red-500 animate-pulse"
+                    : postStatus === "Published"
+                      ? "bg-green-500"
+                      : postStatus === "Scheduled"
+                        ? "bg-blue-500"
+                        : postStatus === "Expired"
+                          ? "bg-gray-400"
+                          : "bg-yellow-500"
+                }`}
+              />
+              {postStatus}
+            </span>
           </div>
         </div>
 
@@ -163,9 +206,7 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
           {post.description || "No description"}
         </p>
 
-        {/* Author Section - Using populated author data */}
         <div className="space-y-2 mb-4 bg-gray-50/50 p-3 rounded-lg">
-          {/* Location */}
           {post.location && (
             <div className="flex items-center gap-2 text-xs text-gray-600">
               <MapPin size={14} className="flex-shrink-0 text-gray-500" />
@@ -173,7 +214,6 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
             </div>
           )}
 
-          {/* Program/Channel Name */}
           <div className="flex items-center gap-2 text-xs">
             <Radio size={14} className="flex-shrink-0 text-gray-500" />
             <span className="text-gray-600 truncate">
@@ -184,7 +224,6 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
             </span>
           </div>
 
-          {/* Author/Admin Name - Directly from populated author */}
           <div className="flex items-center gap-2 text-xs">
             <User size={14} className="flex-shrink-0 text-gray-500" />
             <span className="text-gray-600 truncate">
@@ -194,9 +233,26 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
               </span>
             </span>
           </div>
+
+          {post.postedDate && (
+            <div className="flex items-center gap-2 text-xs text-gray-600">
+              <span className="text-gray-400 mr-1">Posted:</span>
+              <span className="font-medium text-gray-800">
+                {formatDate(post.postedDate)}
+              </span>
+            </div>
+          )}
+
+          {post.expiresAt && (
+            <div className="flex items-center gap-2 text-xs text-gray-600">
+              <span className="text-gray-400 mr-1">Expires:</span>
+              <span className="font-medium text-gray-800">
+                {formatDate(post.expiresAt)}
+              </span>
+            </div>
+          )}
         </div>
 
-        {/* Actions */}
         <div className="flex items-center justify-between pt-4 mt-auto border-t border-gray-100">
           <div className="flex gap-1">
             <Link

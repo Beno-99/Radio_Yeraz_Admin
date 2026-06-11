@@ -15,6 +15,17 @@ interface HeaderProps {
   };
 }
 
+// Define the notification type based on what useAdminNotifications returns
+interface Notification {
+  _id: string;
+  id?: string; // Optional id field if it exists
+  type: string;
+  title: string;
+  message: string;
+  createdAt: string;
+  isRead: boolean;
+}
+
 const typeIcon: Record<string, string> = {
   NEW_POST: "📢",
   POST_UPDATED: "✏️",
@@ -33,6 +44,16 @@ const timeAgo = (dateStr: string) => {
   if (minutes < 60) return `${minutes}m ago`;
   if (hours < 24) return `${hours}h ago`;
   return `${days}d ago`;
+};
+
+// Helper function to generate a unique key without using Math.random()
+const generateNotificationKey = (notification: Notification, index: number): string => {
+  // Use existing IDs first
+  if (notification.id) return notification.id;
+  if (notification._id) return notification._id;
+  // Fallback to combination of index and createdAt timestamp as a pure alternative
+  // This avoids Math.random() which is impure
+  return `${notification.type}-${notification.createdAt}-${index}`;
 };
 
 export default function Header({ onMenuClick, user }: HeaderProps) {
@@ -143,10 +164,10 @@ export default function Header({ onMenuClick, user }: HeaderProps) {
                         </p>
                       </div>
                     ) : (
-                      notifications.map((n) => (
+                      notifications.map((n: Notification, index: number) => (
                         <div
-                          key={n.id || n._id || Math.random().toString()}
-                          onClick={() => markRead(n.id || n._id || "")}
+                          key={generateNotificationKey(n, index)}
+                          onClick={() => markRead(n._id)}
                           className={`p-4 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 cursor-pointer ${
                             !n.isRead ? "bg-blue-50 dark:bg-blue-900/20" : ""
                           }`}

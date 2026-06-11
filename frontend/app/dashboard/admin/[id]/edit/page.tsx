@@ -1,17 +1,14 @@
 // app/dashboard/admin/[id]/edit/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import {
   ArrowLeft,
   Save,
   Loader2,
-  Shield,
   CheckCircle,
-  XCircle,
   User,
-  Mail,
   AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -21,7 +18,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import type { Admin } from "@/types";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
-import { Router } from "next/router";
 
 // Define validation schema
 const editAdminSchema = z.object({
@@ -64,9 +60,7 @@ export default function EditAdminPage() {
     handleSubmit,
     formState: { errors, isDirty },
     reset,
-    setValue,
-    watch,
-  } = useForm({
+  } = useForm<EditAdminFormData>({
     resolver: zodResolver(editAdminSchema),
     defaultValues: {
       username: "",
@@ -79,117 +73,142 @@ export default function EditAdminPage() {
   });
 
   // Watch form values
-  const formValues = watch();
-  const roleValue = watch("role");
-  const isActiveValue = watch("isActive");
+const roleValue = admin?.role ?? "ADMIN";
+const isActiveValue = admin?.isActive ?? false;
 
-  // Fetch admin data
-  useEffect(() => {
-    if (adminId) {
-      fetchAdminData();
+ 
+
+  const fetchAdminData = useCallback(async () => {
+  try {
+    setLoading(true);
+    setError(null);
+
+    const response = await adminAPI.getAdmin(adminId);
+
+    if (response.data) {
+      const adminData = response.data;
+      setAdmin(adminData);
+
+      reset({
+        username: adminData.username || "",
+        email: adminData.email || "",
+        displayName: adminData.displayName || "",
+        role: adminData.role || "ADMIN",
+        isActive:
+          adminData.isActive !== undefined ? adminData.isActive : true,
+        password: "",
+      });
+    } else {
+      toast.error("Admin not found");
     }
-  }, [adminId]);
 
-  const fetchAdminData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
+    toast.success("Admin data loaded");
+  } catch (err: unknown) {
+    console.error("Error fetching admin:", err);
 
-      const response = await adminAPI.getAdmin(adminId);
-
-      if (response.data) {
-        const adminData = response.data;
-        setAdmin(adminData);
-
-        // Reset form with fetched data
-        reset({
-          username: adminData.username || "",
-          email: adminData.email || "",
-          displayName: adminData.displayName || "",
-          role: adminData.role || "ADMIN",
-          isActive:
-            adminData.isActive !== undefined ? adminData.isActive : true,
-          password: "", // Empty password for security
-        });
-      } else {
-        toast.error("Admin not found");
-      }
-      toast.success("Admin data loaded");
-    } catch (err: any) {
-      console.error("Error fetching admin:", err);
-      toast.error(err.response?.data?.message || "Failed to load admin data");
-    } finally {
-      setLoading(false);
+    if (err instanceof Error) {
+      toast.error(err.message);
+    } else {
+      toast.error("Failed to load admin data");
     }
+  } finally {
+    setLoading(false);
+  }
+}, [adminId, reset]);
+
+ // Fetch admin data
+ useEffect(() => {
+  let mounted = true;
+
+  const loadAdmin = async () => {
+    if (!adminId || !mounted) return;
+
+    await fetchAdminData();
   };
+
+  loadAdmin();
+
+  return () => {
+    mounted = false;
+  };
+}, [adminId, fetchAdminData]);
 
   // Handle form submission
   const onSubmit = async (data: EditAdminFormData) => {
-    try {
-      setSaving(true);
-      setError(null);
-      setSuccess(null);
+  try {
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
 
-      // Prepare update data (remove empty fields)
-      const updateData: any = {
-        username: data.username,
-        displayName: data.displayName,
-        role: data.role,
-        isActive: data.isActive,
+    const updateData: Partial<EditAdminFormData> = {
+      username: data.username,
+      displayName: data.displayName,
+      role: data.role,
+      isActive: data.isActive,
+    };
+
+    if (data.email?.trim()) {
+      updateData.email = data.email;
+    }
+
+    if (data.password?.trim()) {
+      updateData.password = data.password;
+    }
+
+    const response = await adminAPI.updateAdmin(adminId, updateData);
+
+    if (response.data) {
+      setSuccess("Admin updated successfully!");
+
+      setAdmin(response.data);
+
+      reset({
+        username: response.data.username,
+        email: response.data.email || "",
+        displayName: response.data.displayName,
+        role: response.data.role,
+        isActive: response.data.isActive,
+        password: "",
+      });
+
+      toast.success("Admin updated successfully!");
+      router.push("/dashboard/admin");
+    }
+  } catch (err: unknown) {
+    toast.error("Failed to update admin. Please try again.");
+
+    let errorMessage = "Failed to update admin";
+
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "response" in err
+    ) {
+      const errorResponse = err as {
+        response?: {
+          data?: {
+            message?: string;
+            errors?: Record<string, string[]>;
+          };
+        };
       };
 
-      // Only include email if provided
-      if (data.email && data.email.trim() !== "") {
-        updateData.email = data.email;
+      if (errorResponse.response?.data?.message) {
+        errorMessage = errorResponse.response.data.message;
+      } else if (errorResponse.response?.data?.errors) {
+        errorMessage = Object.values(
+          errorResponse.response.data.errors
+        )
+          .flat()
+          .join(", ");
       }
-
-      // Only include password if provided
-      if (data.password && data.password.trim() !== "") {
-        updateData.password = data.password;
-      }
-
-      const response = await adminAPI.updateAdmin(adminId, updateData);
-
-      if (response.data) {
-        setSuccess("Admin updated successfully!");
-
-        // Update local admin data
-        setAdmin(response.data);
-
-        // Reset form with new data
-        reset({
-          username: response.data.username,
-          email: response.data.email || "",
-          displayName: response.data.displayName,
-          role: response.data.role,
-          isActive: response.data.isActive,
-          password: "", // Clear password field
-        });
-
-        // Auto-hide success message after 3 seconds
-        // setTimeout(() => {
-        //   setSuccess(null);
-        // }, 3000);
-        toast.success("Admin updated successfully!");
-        router.push("/dashboard/admin");
-      }
-    } catch (err: any) {
-      toast.error("Failed to update admin. Please try again.");
-
-      let errorMessage = "Failed to update admin";
-      if (err.response?.data?.message) {
-        errorMessage = err.response.data.message;
-      } else if (err.response?.data?.errors) {
-        // Handle validation errors
-        const errors = err.response.data.errors;
-        errorMessage = Object.values(errors).flat().join(", ");
-      }
-
-      setError(errorMessage);
-    } finally {
-      setSaving(false);
     }
-  };
+
+    setError(errorMessage);
+  } finally {
+    setSaving(false);
+  }
+};
 
   // Handle cancel
   const handleCancel = () => {
@@ -209,7 +228,7 @@ export default function EditAdminPage() {
       await adminAPI.deleteAdmin(adminId);
       toast.success("Admin deleted successfully");
       router.push("/dashboard/admin");
-    } catch (error) {
+    } catch  {
       toast.error("Failed to delete admin");
     }
   };
@@ -288,15 +307,15 @@ export default function EditAdminPage() {
               >
                 {isActiveValue ? "Active" : "Inactive"}
               </span>
-              <span
-                className={`px-3 py-1 rounded-full text-sm font-medium ${
-                  (roleValue || admin?.role || "") === "SUPER_ADMIN"
-                    ? "bg-purple-100 text-purple-800"
-                    : "bg-blue-100 text-blue-800"
-                }`}
-              >
-                {(roleValue || admin?.role || "ADMIN").replace("_", " ")}
-              </span>
+             <span
+  className={`px-3 py-1 rounded-full text-sm font-medium ${
+    String(roleValue || admin?.role || "") === "SUPER_ADMIN"
+      ? "bg-purple-100 text-purple-800"
+      : "bg-blue-100 text-blue-800"
+  }`}
+>
+  {String(roleValue || admin?.role || "ADMIN").replace("_", " ")}
+</span>
             </div>
           </div>
         </div>

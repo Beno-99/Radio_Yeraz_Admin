@@ -1,4 +1,3 @@
-// app/dashboard/page.tsx
 "use client";
 
 import { useState, useEffect, useRef } from "react";
@@ -8,12 +7,15 @@ import {
   Users,
   PlusCircle,
   Upload,
-  BarChart3,
-  Settings,
   ArrowRight,
   AlertCircle,
 } from "lucide-react";
 import Link from "next/link";
+import type { Post } from "@/types";
+
+interface AdItem {
+  clicks?: number;
+}
 
 export default function DashboardPage() {
   const [stats, setStats] = useState({
@@ -28,22 +30,6 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const fetchAttempted = useRef(false);
 
-  useEffect(() => {
-    // Prevent double fetching in strict mode
-    if (fetchAttempted.current) return;
-    fetchAttempted.current = true;
-
-    // Force stop loading after 5 seconds no matter what
-    const forceStopLoading = setTimeout(() => {
-      setLoading(false);
-      setError("Request timed out. Please check if backend is running.");
-    }, 5000);
-
-    fetchDashboardData();
-
-    return () => clearTimeout(forceStopLoading);
-  }, []);
-
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
@@ -51,7 +37,6 @@ export default function DashboardPage() {
 
       console.log("📡 Fetching dashboard data...");
 
-      // Simple fetch with no complex timeout logic
       let adminsTotal = 0;
       let postsTotal = 0;
       let adsTotal = 0;
@@ -69,8 +54,8 @@ export default function DashboardPage() {
       try {
         const postsRes = await postsAPI.getAllPosts({ limit: 1 });
         postsTotal = postsRes.data?.total || 0;
-        const posts = postsRes.data?.data || [];
-        activePosts = posts.filter((p: any) => p.isLive).length;
+        const posts: Post[] = postsRes.data?.data || [];
+        activePosts = posts.filter((p) => p.isLive).length;
         console.log("✅ Posts:", postsTotal);
       } catch (e) {
         console.error("❌ Posts error:", e);
@@ -79,9 +64,9 @@ export default function DashboardPage() {
       try {
         const adsRes = await adsAPI.getAllAds({ limit: 1 });
         adsTotal = adsRes.data?.total || 0;
-        const ads = adsRes.data?.data || [];
+        const ads: AdItem[] = adsRes.data?.data || [];
         clicksToday = ads.reduce(
-          (sum: number, ad: any) => sum + (ad.clicks || 0),
+          (sum: number, ad: AdItem) => sum + (ad.clicks || 0),
           0,
         );
         console.log("✅ Ads:", adsTotal);
@@ -107,6 +92,20 @@ export default function DashboardPage() {
     }
   };
 
+  useEffect(() => {
+    if (fetchAttempted.current) return;
+    fetchAttempted.current = true;
+
+    const forceStopLoading = setTimeout(() => {
+      setLoading(false);
+      setError("Request timed out. Please check if backend is running.");
+    }, 5000);
+
+    fetchDashboardData();
+
+    return () => clearTimeout(forceStopLoading);
+  }, []);
+
   const quickActions = [
     {
       title: "Create New Post",
@@ -131,7 +130,6 @@ export default function DashboardPage() {
     },
   ];
 
-  // Show loading state
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-[60vh]">
@@ -155,7 +153,6 @@ export default function DashboardPage() {
     );
   }
 
-  // Show error state
   if (error) {
     return (
       <div className="flex justify-center items-center min-h-[60vh]">
@@ -187,17 +184,15 @@ export default function DashboardPage() {
     );
   }
 
-  // Show dashboard
   return (
     <div className="space-y-6 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-xl border border-gray-200">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
             Dashboard
           </h1>
           <p className="mt-1 text-sm sm:text-base text-gray-600">
-            Welcome back! Here's what's happening with your platform.
+            Welcome back! Here&apos;s what&apos;s happening with your platform.
           </p>
         </div>
         <div className="flex-shrink-0">
@@ -214,7 +209,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Stats Cards Section */}
       <div>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
           <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
@@ -234,7 +228,6 @@ export default function DashboardPage() {
         <StatsCards stats={stats} isLoading={false} />
       </div>
 
-      {/* Quick Actions */}
       <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 border border-gray-100">
         <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4 sm:mb-6 text-center sm:text-left">
           Quick Actions

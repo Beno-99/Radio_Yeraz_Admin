@@ -1,7 +1,7 @@
 // src/components/charts/StatsChart.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   LineChart,
   Line,
@@ -30,6 +30,17 @@ interface ChartData {
   clicks: number;
   users: number;
   revenue?: number;
+}
+interface TooltipEntry {
+  color: string;
+  dataKey: string;
+  value: number;
+}
+
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: TooltipEntry[];
+  label?: string;
 }
 
 export type ChartType = "line" | "bar" | "area";
@@ -79,14 +90,18 @@ export default function StatsChart({
     chartData[chartData.length - 1].clicks > chartData[0].clicks;
 
   // Custom tooltip
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomTooltip = ({
+  active,
+  payload,
+  label,
+}: CustomTooltipProps) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700">
           <p className="font-medium text-gray-900 dark:text-white mb-2">
             {label}
           </p>
-          {payload.map((entry: any, index: number) => (
+          {payload.map((entry: TooltipEntry, index: number) => (
             <div key={index} className="flex items-center justify-between mb-1">
               <div className="flex items-center">
                 <div
