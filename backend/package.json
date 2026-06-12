@@ -10,7 +10,8 @@
     "start:prod": "node dist/main",
     "db:start": "docker run --name mongodb -p 27017:27017 -d mongo:latest",
     "db:stop": "docker stop mongodb",
-    "db:shell": "docker exec -it mongodb mongosh"
+    "db:shell": "docker exec -it mongodb mongosh",
+    "seed": "ts-node -r tsconfig-paths/register src/seed.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",
@@ -50,4 +51,6 @@
     "@types/passport-jwt": "^3.0.10",
     "typescript": "^5.0.0"
   }
+
+  
 }
