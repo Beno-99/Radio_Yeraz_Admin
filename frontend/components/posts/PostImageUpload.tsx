@@ -15,14 +15,9 @@ export function SimpleImageUpload({
   currentImageUrl,
   label = "Post Image", // Default value
 }: SimpleImageUploadProps) {
-  const [preview, setPreview] = useState<string | null>(null);
+  const [preview, setPreview] = useState<string | null>(currentImageUrl ?? null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (currentImageUrl && !preview) {
-      setPreview(currentImageUrl);
-    }
-  }, [currentImageUrl]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
