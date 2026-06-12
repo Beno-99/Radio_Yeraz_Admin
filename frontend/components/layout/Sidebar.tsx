@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import Image from "next/image";
 import {
   LayoutDashboard,
   Users,
@@ -35,10 +36,10 @@ export default function Sidebar({ isOpen, onClose, user }: SidebarProps) {
   const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
+useEffect(() => {
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  setMounted(true);
+}, []);
   const handleLogout = () => {
     localStorage.removeItem("access_token");
     localStorage.removeItem("user");
@@ -61,11 +62,7 @@ export default function Sidebar({ isOpen, onClose, user }: SidebarProps) {
       >
         <div className="flex items-center justify-between h-16 px-4 border-b border-gray-800">
           <div className="flex items-center">
-            <img
-              src="/radioLogo.jpg"
-              alt="logo"
-              className="h-10 w-10 rounded-full"
-            />
+            <Image src="/radioLogo.jpg" alt="logo" width={40} height={40} className="rounded-full" />
 
             <span className="ml-3 text-xl font-bold text-white">
               Radio Yeraz
