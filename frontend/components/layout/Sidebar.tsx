@@ -37,8 +37,8 @@ export default function Sidebar({ isOpen, onClose, user }: SidebarProps) {
   const [mounted, setMounted] = useState(false);
 
 useEffect(() => {
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  setMounted(true);
+  const timer = setTimeout(() => setMounted(true), 0);
+  return () => clearTimeout(timer);
 }, []);
   const handleLogout = () => {
     localStorage.removeItem("access_token");
