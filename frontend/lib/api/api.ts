@@ -47,6 +47,10 @@ api.interceptors.response.use(
       originalRequest._retry = true;
     }
 
+    if (typeof window === "undefined") {
+      return Promise.reject(error);
+    }
+
     try {
       const refreshToken = localStorage.getItem("refresh_token");
 
