@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { PostsHeader } from "@/components/posts/PostsHeader";
 import { PostsStats } from "@/components/posts/PostStats";
 import { PostsFilterBar } from "@/components/posts/PostsFilterBar";
@@ -12,7 +12,7 @@ import {
   usePostsPagination,
   usePostsStats,
 } from "../../../hooks/UsePostsData";
-import { adminAPI, postsAPI } from "@/lib/api/api";
+import { postsAPI } from "@/lib/api/api";
 import Swal from "sweetalert2";
 
 
@@ -40,14 +40,6 @@ export default function PostsPage() {
     filteredPosts,
     page,
   );
-  interface Author {
-  _id: string;
-  username?: string;
-  displayName?: string;
-  email?: string;
-}
-
-const [authorsMap, setAuthorsMap] = useState<Record<string, Author>>({});
   const { livePosts, publishedPosts, draftPosts, postsWithMedia, expiredPosts } =
     usePostsStats(allPosts);
 
@@ -55,26 +47,6 @@ const [authorsMap, setAuthorsMap] = useState<Record<string, Author>>({});
     process.env.NEXT_PUBLIC_MEDIA_GET_URL || "http://localhost:8000";
 
  
-
-  const authorIds: string[] = [
-  ...new Set(
-    paginatedPosts
-      .map((post) => {
-        if (
-          post.author &&
-          typeof post.author === "object" &&
-          "_id" in post.author
-        ) {
-          return String(post.author._id);
-        }
-
-        return typeof post.author === "string"
-          ? post.author
-          : undefined;
-      })
-      .filter((id): id is string => Boolean(id)),
-  ),
-];
 
   // Handle bulk delete
   const handleBulkDelete = async () => {

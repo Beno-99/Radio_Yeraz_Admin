@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import Image from "next/image";
+import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
@@ -13,7 +13,7 @@ import {
   User,
   Radio,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { removeLocalStorageValue } from "@/lib/browser-storage";
 
 interface SidebarProps {
   isOpen: boolean;
@@ -34,21 +34,17 @@ const navigation = [
 
 export default function Sidebar({ isOpen, onClose, user }: SidebarProps) {
   const pathname = usePathname();
-  const [mounted, setMounted] = useState(false);
 
-useEffect(() => {
-  const timer = setTimeout(() => setMounted(true), 0);
-  return () => clearTimeout(timer);
-}, []);
   const handleLogout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("user");
+    removeLocalStorageValue("access_token");
+    removeLocalStorageValue("refresh_token");
+    removeLocalStorageValue("user");
     window.location.href = "/login";
   };
 
   return (
     <>
-      {mounted && isOpen && (
+      {isOpen && (
         <div
           className="fixed inset-0 z-40 bg-gray-600 bg-opacity-75 lg:hidden"
           onClick={onClose}
@@ -57,12 +53,18 @@ useEffect(() => {
 
       <aside
         className={`fixed inset-y-0 left-0 z-50 w-64 bg-gray-900 transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 ${
-          mounted && isOpen ? "translate-x-0" : "-translate-x-full"
+          isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         <div className="flex items-center justify-between h-16 px-4 border-b border-gray-800">
           <div className="flex items-center">
-            <Image src="/radioLogo.jpg" alt="logo" width={40} height={40} className="rounded-full" />
+            <Image
+              src="/radioLogo.jpg"
+              alt="Radio Yeraz logo"
+              width={40}
+              height={40}
+              className="h-10 w-10 rounded-full"
+            />
 
             <span className="ml-3 text-xl font-bold text-white">
               Radio Yeraz

@@ -1,36 +1,48 @@
 // src/auth/strategies/jwt.strategy.ts
 import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
-import { ConfigService } from '@nestjs/config';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { Admin, AdminDocument } from '../../admin/schemas/admin.schema';
+import { Role } from '../../admin/schemas/admin.schema';
+import { PrismaService } from '../../prisma/prisma.service';
+import { AuthenticatedUser } from '../interfaces/authenticated-request.interface';
+
+interface JwtPayload {
+  sub: string;
+  username?: string;
+  role?: Role;
+  iat?: number;
+  exp?: number;
+}
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
-    private configService: ConfigService,
-    @InjectModel(Admin.name) private adminModel: Model<AdminDocument>,
+    configService: ConfigService,
+    private readonly prisma: PrismaService,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: configService.get<string>('JWT_SECRET'),
+      secretOrKey: configService.get<string>('JWT_SECRET') || 'secret',
     });
   }
 
-  async validate(payload: any) {
-    const admin = await this.adminModel.findById(payload.sub);
+  async validate(payload: JwtPayload): Promise<AuthenticatedUser> {
+    const admin = await this.prisma.admin.findUnique({
+      where: { id: payload.sub },
+    });
 
     if (!admin || !admin.isActive) {
       throw new UnauthorizedException('User not found or inactive');
     }
 
     return {
-      sub: admin._id,
+      sub: admin.id,
       username: admin.username,
-      role: admin.role,
+      role: admin.role === 'SUPER_ADMIN' ? Role.SUPER_ADMIN : Role.ADMIN,
+      displayName: admin.displayName,
+      isActive: admin.isActive,
     };
   }
 }

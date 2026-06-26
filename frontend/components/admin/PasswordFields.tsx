@@ -1,15 +1,11 @@
 import { Key } from "lucide-react";
 import { FieldError } from "./FieldError";
 import { UseFormRegister, FieldErrors } from "react-hook-form";
-
-export interface AdminFormData {
-  password: string;
-  confirmPassword: string;
-}
+import { AdminFormValues } from "@/hooks/useAdminForm";
 
 interface PasswordFieldsProps {
-  register: UseFormRegister<AdminFormData>;
-  errors: FieldErrors<AdminFormData>;
+  register: UseFormRegister<AdminFormValues>;
+  errors: FieldErrors<AdminFormValues>;
 }
 
 export function PasswordFields({ register, errors }: PasswordFieldsProps) {

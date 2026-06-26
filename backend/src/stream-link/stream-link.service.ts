@@ -1,49 +1,109 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { StreamLink, StreamLinkDocument } from './schemas/stream-link.schema';
+import { StreamLink as PrismaStreamLink } from '@prisma/client';
+import { createObjectIdString } from '../common/utils/object-id.utils';
+import { PrismaService } from '../prisma/prisma.service';
 import { CreateStreamLinkDto } from './dto/create-stream-link.dto';
 import { UpdateStreamLinkDto } from './dto/update-stream-link.dto';
 
+export interface StreamLinkResponse extends PrismaStreamLink {
+  _id: string;
+  __v: number;
+}
+
 @Injectable()
 export class StreamLinkService {
-  constructor(
-    @InjectModel(StreamLink.name)
-    private streamLinkModel: Model<StreamLinkDocument>,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  async create(dto: CreateStreamLinkDto): Promise<StreamLinkDocument> {
-    const created = new this.streamLinkModel(dto);
-    return created.save();
+  private toStreamLinkResponse(
+    streamLink: PrismaStreamLink,
+  ): StreamLinkResponse {
+    return {
+      ...streamLink,
+      _id: streamLink.id,
+      __v: 0,
+    };
   }
 
-  async findAll(): Promise<StreamLinkDocument[]> {
-    return this.streamLinkModel.find().sort({ createdAt: -1 }).exec();
+  async create(dto: CreateStreamLinkDto): Promise<StreamLinkResponse> {
+    const created = await this.prisma.streamLink.create({
+      data: {
+        id: createObjectIdString(),
+        title: dto.title,
+        url: dto.url,
+        description: dto.description,
+        isActive: dto.isActive ?? true,
+      },
+    });
+
+    return this.toStreamLinkResponse(created);
   }
 
-  async findActive(): Promise<StreamLinkDocument[]> {
-    return this.streamLinkModel.find({ isActive: true }).sort({ createdAt: -1 }).exec();
+  async findAll(): Promise<StreamLinkResponse[]> {
+    const streamLinks = await this.prisma.streamLink.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return streamLinks.map((streamLink) =>
+      this.toStreamLinkResponse(streamLink),
+    );
   }
 
-  async findOne(id: string): Promise<StreamLinkDocument> {
-    const streamLink = await this.streamLinkModel.findById(id).exec();
+  async findActive(): Promise<StreamLinkResponse[]> {
+    const streamLinks = await this.prisma.streamLink.findMany({
+      where: { isActive: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return streamLinks.map((streamLink) =>
+      this.toStreamLinkResponse(streamLink),
+    );
+  }
+
+  async findOne(id: string): Promise<StreamLinkResponse> {
+    const streamLink = await this.prisma.streamLink.findUnique({
+      where: { id },
+    });
+
     if (!streamLink) {
       throw new NotFoundException(`Stream link with ID ${id} not found`);
     }
-    return streamLink;
+
+    return this.toStreamLinkResponse(streamLink);
   }
 
-  async update(id: string, dto: UpdateStreamLinkDto): Promise<StreamLinkDocument> {
-    const updated = await this.streamLinkModel
-      .findByIdAndUpdate(id, dto, { new: true })
-      .exec();
+  async update(
+    id: string,
+    dto: UpdateStreamLinkDto,
+  ): Promise<StreamLinkResponse> {
+    const existing = await this.prisma.streamLink.findUnique({
+      where: { id },
+    });
 
-    if (!updated) throw new NotFoundException(`Stream link with ID ${id} not found`);
-    return updated;
+    if (!existing) {
+      throw new NotFoundException(`Stream link with ID ${id} not found`);
+    }
+
+    const updated = await this.prisma.streamLink.update({
+      where: { id },
+      data: {
+        title: dto.title,
+        url: dto.url,
+        description: dto.description,
+        isActive: dto.isActive,
+        updatedAt: new Date(),
+      },
+    });
+
+    return this.toStreamLinkResponse(updated);
   }
 
   async remove(id: string): Promise<void> {
-    const result = await this.streamLinkModel.findByIdAndDelete(id).exec();
-    if (!result) throw new NotFoundException(`Stream link with ID ${id} not found`);
+    const result = await this.prisma.streamLink.deleteMany({
+      where: { id },
+    });
+
+    if (result.count === 0) {
+      throw new NotFoundException(`Stream link with ID ${id} not found`);
+    }
   }
 }

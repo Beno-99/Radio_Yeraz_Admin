@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { authAPI } from "@/lib/api/api";
+import { setLocalStorageValue } from "@/lib/browser-storage";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -22,19 +23,29 @@ export default function LoginPage() {
       const response = await authAPI.login({ username, password });
 
       if (response.data.success) {
-        localStorage.setItem("access_token", response.data.data.accessToken);
-        localStorage.setItem("user", JSON.stringify(response.data.data.admin));
+        setLocalStorageValue("access_token", response.data.data.accessToken);
+        setLocalStorageValue("refresh_token", response.data.data.refreshToken);
+        setLocalStorageValue("user", JSON.stringify(response.data.data.admin));
         router.push("/dashboard");
       }
     } catch (err: unknown) {
-      // Safely handle error without using `any`
-      let errorMessage = "Login failed";
+      let errorMessage = "Username or password is incorrect.";
 
       if (err && typeof err === "object" && "response" in err) {
-        const axiosError = err as { response?: { data?: { message?: string } } };
-        errorMessage = axiosError.response?.data?.message || errorMessage;
+        const axiosError = err as {
+          response?: {
+            status?: number;
+            data?: { message?: string };
+          };
+        };
+
+        if (axiosError.response?.status && axiosError.response.status !== 401) {
+          errorMessage =
+            axiosError.response.data?.message ||
+            "Unable to sign in. Please try again.";
+        }
       } else if (err instanceof Error) {
-        errorMessage = err.message;
+        errorMessage = "Unable to sign in. Please try again.";
       }
 
       setError(errorMessage);
@@ -76,7 +87,7 @@ export default function LoginPage() {
                 type="text"
                 required
                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-black"
-                defaultValue="superadmin"
+                autoComplete="username"
               />
             </div>
 
@@ -93,7 +104,7 @@ export default function LoginPage() {
                 type="password"
                 required
                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-black"
-                defaultValue="SuperAdmin123!"
+                autoComplete="current-password"
               />
             </div>
           </div>

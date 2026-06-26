@@ -25,7 +25,6 @@ const editAdminSchema = z.object({
     .string()
     .min(3, "Username must be at least 3 characters")
     .max(50, "Username must be at most 50 characters"),
-  email: z.string().email("Invalid email address").optional().or(z.literal("")),
   displayName: z
     .string()
     .min(2, "Display name must be at least 2 characters")
@@ -64,7 +63,6 @@ export default function EditAdminPage() {
     resolver: zodResolver(editAdminSchema),
     defaultValues: {
       username: "",
-      email: "",
       displayName: "",
       role: "ADMIN" as const,
       isActive: true,
@@ -91,7 +89,6 @@ const isActiveValue = admin?.isActive ?? false;
 
       reset({
         username: adminData.username || "",
-        email: adminData.email || "",
         displayName: adminData.displayName || "",
         role: adminData.role || "ADMIN",
         isActive:
@@ -147,27 +144,23 @@ const isActiveValue = admin?.isActive ?? false;
       isActive: data.isActive,
     };
 
-    if (data.email?.trim()) {
-      updateData.email = data.email;
-    }
-
     if (data.password?.trim()) {
       updateData.password = data.password;
     }
 
     const response = await adminAPI.updateAdmin(adminId, updateData);
+    const updatedAdmin = response.data?.data || response.data;
 
-    if (response.data) {
+    if (updatedAdmin) {
       setSuccess("Admin updated successfully!");
 
-      setAdmin(response.data);
+      setAdmin(updatedAdmin);
 
       reset({
-        username: response.data.username,
-        email: response.data.email || "",
-        displayName: response.data.displayName,
-        role: response.data.role,
-        isActive: response.data.isActive,
+        username: updatedAdmin.username,
+        displayName: updatedAdmin.displayName,
+        role: updatedAdmin.role,
+        isActive: updatedAdmin.isActive,
         password: "",
       });
 

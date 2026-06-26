@@ -1,5 +1,5 @@
 // components/forms/MediaUploadCard.tsx
-import { useRef, ReactNode } from "react";
+import { useRef } from "react";
 import { cn } from "@/lib/utils";
 import { Icons } from "@/lib/icons";
 
@@ -84,6 +84,7 @@ export function MediaUploadCard({
               )}
             >
               {isImage ? (
+                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={preview}
                   alt="Preview"

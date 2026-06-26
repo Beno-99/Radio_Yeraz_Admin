@@ -11,35 +11,75 @@ import {
   UseGuards,
   Req,
   UseInterceptors,
-  UploadedFile,
-  ParseFilePipe,
-  MaxFileSizeValidator,
-  FileTypeValidator,
   BadRequestException,
   UploadedFiles,
 } from '@nestjs/common';
-import {
-  FileFieldsInterceptor,
-  FileInterceptor,
-} from '@nestjs/platform-express';
-import { PostsService } from './posts.service';
-import { CreatePostDto } from './dto/create-post.dto';
-import { UpdatePostDto } from './dto/update-post.dto';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import { PostStatus } from '@prisma/client';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
+import * as fs from 'fs';
+import { Role } from '../admin/schemas/admin.schema';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { AuthenticatedRequest } from '../auth/interfaces/authenticated-request.interface';
 import { Roles } from '../common/decorators/roles.decorator';
-import { Role } from '../admin/schemas/admin.schema';
-import { Request } from 'express';
-import { diskStorage } from 'multer';
-import path, { extname } from 'path';
-import * as fs from 'fs';
-import {FirebaseService} from '../firebase/firebase.service';
+import { FirebaseService } from '../firebase/firebase.service';
+import { CreatePostDto } from './dto/create-post.dto';
+import { UpdatePostDto } from './dto/update-post.dto';
+import {
+  PostFindAllFilters,
+  PostSortField,
+  PostSortOptions,
+  PostsService,
+} from './posts.service';
+
+interface PostUploadFiles {
+  mainImage?: Express.Multer.File[];
+  video?: Express.Multer.File[];
+}
+
+type CreatePostPayload = CreatePostDto & {
+  author: string;
+  isLive: boolean;
+  isPublished: boolean;
+  mainImage: string;
+};
 
 @Controller('posts')
 export class PostsController {
-  constructor(private readonly postsService: PostsService , private readonly firebaseService: FirebaseService) {}
+  constructor(
+    private readonly postsService: PostsService,
+    private readonly firebaseService: FirebaseService,
+  ) {}
 
-  // ============ PUBLIC ENDPOINTS ============
+  private parseBooleanQuery(value: string | undefined): boolean | undefined {
+    if (value === undefined) return undefined;
+    return value === 'true';
+  }
+
+  private parseSortField(field: string): PostSortField {
+    switch (field) {
+      case 'createdAt':
+        return 'createdAt';
+      case 'updatedAt':
+        return 'updatedAt';
+      case 'eventDate':
+        return 'eventDate';
+      case 'title':
+        return 'title';
+      case 'status':
+        return 'status';
+      case 'postedDate':
+      default:
+        return 'postedDate';
+    }
+  }
+
+  private parseBodyBoolean(value: unknown): boolean {
+    return value === true || value === 'true';
+  }
+
   @Get()
   async getAllPosts(
     @Query('page') page: string = '1',
@@ -54,21 +94,21 @@ export class PostsController {
     const pageNum = parseInt(page, 10) || 1;
     const limitNum = parseInt(limit, 10) || 10;
 
-    const filters: any = {};
+    const filters: PostFindAllFilters = {};
+    if (authorId) filters.author = authorId;
 
-    if (authorId) {
-      filters.author = authorId;
+    const liveFilter = this.parseBooleanQuery(isLive);
+    if (liveFilter !== undefined) filters.isLive = liveFilter;
+
+    const publishedFilter = this.parseBooleanQuery(isPublished);
+    if (publishedFilter !== undefined) {
+      filters.isPublished = publishedFilter;
     }
 
-    if (isLive !== undefined) {
-      filters.isLive = isLive === 'true';
-    }
-    if (isPublished !== undefined) {
-      filters.isPublished = isPublished === 'true';
-    }
-
-    const sort: any = {};
-    sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
+    const sort: PostSortOptions = {
+      field: this.parseSortField(sortBy),
+      direction: sortOrder === 'asc' ? 'asc' : 'desc',
+    };
 
     const result = await this.postsService.findAll(
       pageNum,
@@ -127,22 +167,15 @@ export class PostsController {
   }
 
   @Get(':id')
-async getPostById(@Param('id') id: string) {
-  const post = await this.postsService.findById(id);
+  async getPostById(@Param('id') id: string) {
+    const post = await this.postsService.findById(id);
 
-  return {
-    success: true,
-    data: post,
-  };
-}
+    return {
+      success: true,
+      data: post,
+    };
+  }
 
-  // ============ PROTECTED ENDPOINTS ============
-  // In posts.controller.ts
-  // src/posts/posts.controller.ts
-  // In posts.controller.ts
-
-  // In posts.controller.ts, update the FileFieldsInterceptor:
-  // posts.controller.ts - Updated createPost method
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)
@@ -173,9 +206,7 @@ async getPostById(@Param('id') id: string) {
             const uniqueSuffix =
               Date.now() + '-' + Math.round(Math.random() * 1e9);
             const ext = extname(file.originalname);
-
-            let prefix = file.fieldname;
-            const filename = `${prefix}-${uniqueSuffix}${ext}`;
+            const filename = `${file.fieldname}-${uniqueSuffix}${ext}`;
             callback(null, filename);
           },
         }),
@@ -183,110 +214,54 @@ async getPostById(@Param('id') id: string) {
     ),
   )
   async createPost(
-    @Req() req: Request,
-    @UploadedFiles()
-    files: {
-      mainImage?: Express.Multer.File[];
-      video?: Express.Multer.File[];
-    },
+    @Req() req: AuthenticatedRequest,
+    @UploadedFiles() files: PostUploadFiles,
     @Body() createPostDto: CreatePostDto,
   ) {
-    const authorId = req.user['sub'];
-
-    console.log('=== BACKEND: Creating post ===');
-    console.log('Files received:', files);
-    console.log('isLive VALUE:', createPostDto.isLive);
-    console.log('isPublished VALUE:', createPostDto.isPublished);
-
-    // Convert isLive manually
-    let isLiveValue = false;
-    if (req.body.isLive !== undefined) {
-      if (req.body.isLive === 'false' || req.body.isLive === false) {
-        isLiveValue = false;
-      } else if (req.body.isLive === 'true' || req.body.isLive === true) {
-        isLiveValue = true;
-      }
-    }
-
-    // Convert isPublished manually
-    let isPublishedValue = false;
-    if (req.body.isPublished !== undefined) {
-      if (req.body.isPublished === 'false' || req.body.isPublished === false) {
-        isPublishedValue = false;
-      } else if (
-        req.body.isPublished === 'true' ||
-        req.body.isPublished === true
-      ) {
-        isPublishedValue = true;
-      }
-    }
-
-    const postData = {
+    const authorId = req.user.sub;
+    const postData: CreatePostPayload = {
       ...createPostDto,
       author: authorId,
-      isLive: isLiveValue,
-      isPublished: isPublishedValue,
+      isLive: this.parseBodyBoolean(createPostDto.isLive),
+      isPublished: this.parseBodyBoolean(createPostDto.isPublished),
+      mainImage: '',
     };
 
-    // Handle main image (can be empty)
-    if (files.mainImage && files.mainImage[0]) {
+    if (files?.mainImage?.[0]) {
       postData.mainImage = `/uploads/posts/images/${files.mainImage[0].filename}`;
-      console.log('✅ Main image saved to:', postData.mainImage);
-    } else {
-      postData.mainImage = '';
-      console.log('ℹ️ No main image provided');
     }
 
-    // Handle video (optional)
-    if (files.video && files.video[0]) {
+    if (files?.video?.[0]) {
       postData.video = `/uploads/posts/videos/${files.video[0].filename}`;
-      console.log('✅ Video saved to:', postData.video);
     }
 
-    console.log('Final post data:', postData);
+    const post = await this.postsService.create(postData, authorId);
 
-    try {
-      const post = await this.postsService.create(postData, authorId);
-
-      console.log('✅ Post created:', post._id);
-      console.log('Post isLive:', post.isLive);
-      console.log('Post isPublished:', post.isPublished);
-
-      if (post.isPublished) {
-        try {
-          const notificationId = await this.firebaseService.sendToTopic(
-            'client',
-            'A New Post Added',
-            post.title,
-            {
-              postId: post._id.toString(),
-            },
-          );
-
-          console.log('FCM topic notification sent:', notificationId);
-        } catch (notifError) {
-          console.error(
-            'FCM topic notification failed:',
-            notifError instanceof Error
-              ? notifError.message
-              : String(notifError),
-          );
-        }
+    if (post.isPublished) {
+      try {
+        await this.firebaseService.sendToTopic(
+          'client',
+          'A New Post Added',
+          post.title,
+          {
+            postId: post._id,
+          },
+        );
+      } catch (notifError) {
+        console.error(
+          'FCM topic notification failed:',
+          notifError instanceof Error ? notifError.message : String(notifError),
+        );
       }
-
-      return {
-        success: true,
-        message: 'Post created successfully',
-        data: post,
-      };
-    } catch (error) {
-      console.error('❌ Error creating post:', error);
-      throw error;
     }
+
+    return {
+      success: true,
+      message: 'Post created successfully',
+      data: post,
+    };
   }
 
-  // ============ UPDATE POST WITH MULTIPLE FILES ============
-  // posts.controller.ts
   @Put(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)
@@ -322,11 +297,7 @@ async getPostById(@Param('id') id: string) {
   async updatePost(
     @Param('id') id: string,
     @Body() updatePostDto: UpdatePostDto,
-    @UploadedFiles()
-    files?: {
-      mainImage?: Express.Multer.File[];
-      video?: Express.Multer.File[];
-    },
+    @UploadedFiles() files?: PostUploadFiles,
   ) {
     const previousPost = await this.postsService.findById(id);
 
@@ -341,28 +312,22 @@ async getPostById(@Param('id') id: string) {
       updatePostDto.video = `/uploads/posts/videos/${files.video[0].filename}`;
     }
 
-    // Update the post
     const updatedPost = await this.postsService.update(id, updatePostDto);
 
     const becamePublished =
-      (!previousPost?.isPublished && updatedPost.isPublished) ||
-      (previousPost?.status !== 'published' &&
-        updatedPost.status === 'published');
+      (!previousPost.isPublished && updatedPost.isPublished) ||
+      (previousPost.status !== PostStatus.published &&
+        updatedPost.status === PostStatus.published);
 
     if (becamePublished) {
       try {
-        const notificationId = await this.firebaseService.sendToTopic(
+        await this.firebaseService.sendToTopic(
           'client',
           'A New Post Added',
           updatedPost.title,
           {
-            postId: updatedPost._id.toString(),
+            postId: updatedPost._id,
           },
-        );
-
-        console.log(
-          'FCM topic notification sent on publish transition:',
-          notificationId,
         );
       } catch (notifError) {
         console.error(
@@ -378,18 +343,15 @@ async getPostById(@Param('id') id: string) {
       data: updatedPost,
     };
   }
+
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN) // REMOVED EDITOR
-  async deletePost(@Param('id') id: string, @Req() req: Request) {
-    const adminId = req.user['sub'];
-    const adminRole = req.user['role'] as Role;
-
-    // Check if admin can delete this post
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  async deletePost(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     const canDelete = await this.postsService.canAdminDeletePost(
       id,
-      adminId,
-      adminRole,
+      req.user.sub,
+      req.user.role,
     );
     if (!canDelete) {
       return {
@@ -408,16 +370,15 @@ async getPostById(@Param('id') id: string) {
 
   @Put(':id/toggle-live')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN) // REMOVED EDITOR
-  async toggleLiveStatus(@Param('id') id: string, @Req() req: Request) {
-    const adminId = req.user['sub'];
-    const adminRole = req.user['role'] as Role;
-
-    // Check if user can edit this post
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  async toggleLiveStatus(
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
     const canEdit = await this.postsService.canAdminEditPost(
       id,
-      adminId,
-      adminRole,
+      req.user.sub,
+      req.user.role,
     );
     if (!canEdit) {
       return {
@@ -436,41 +397,39 @@ async getPostById(@Param('id') id: string) {
   }
 
   @Put(':id/republish')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.SUPER_ADMIN, Role.ADMIN)
-async republishPost(@Param('id') id: string, @Req() req: Request) {
-  const adminId = req.user['sub'];
-  const adminRole = req.user['role'] as Role;
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  async republishPost(
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const canEdit = await this.postsService.canAdminEditPost(
+      id,
+      req.user.sub,
+      req.user.role,
+    );
 
-  const canEdit = await this.postsService.canAdminEditPost(
-    id,
-    adminId,
-    adminRole,
-  );
+    if (!canEdit) {
+      return {
+        success: false,
+        message: 'You are not authorized to modify this post',
+      };
+    }
 
-  if (!canEdit) {
+    const post = await this.postsService.republish(id);
+
     return {
-      success: false,
-      message: 'You are not authorized to modify this post',
+      success: true,
+      message: 'Post republished successfully',
+      data: post,
     };
   }
 
-  const post = await this.postsService.republish(id);
-
-  return {
-    success: true,
-    message: 'Post republished successfully',
-    data: post,
-  };
-}
-
-  // ============ AUTHOR SPECIFIC ENDPOINTS ============
   @Get('author/my-posts')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN) // REMOVED EDITOR
-  async getMyPosts(@Req() req: Request) {
-    const authorId = req.user['sub'];
-    const posts = await this.postsService.findByAuthor(authorId);
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  async getMyPosts(@Req() req: AuthenticatedRequest) {
+    const posts = await this.postsService.findByAuthor(req.user.sub);
 
     return {
       success: true,
@@ -488,7 +447,6 @@ async republishPost(@Param('id') id: string, @Req() req: Request) {
     };
   }
 
-  // ============ STATISTICS ENDPOINTS ============
   @Get('statistics/summary')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)
@@ -501,7 +459,6 @@ async republishPost(@Param('id') id: string, @Req() req: Request) {
     };
   }
 
-  // ============ BULK OPERATIONS ============
   @Put('bulk/toggle-live')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)

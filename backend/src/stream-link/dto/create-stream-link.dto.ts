@@ -6,7 +6,7 @@ export class CreateStreamLinkDto {
   @MaxLength(100)
   title: string;
 
-  @IsUrl({ require_tld: false })
+  @IsUrl({ require_protocol: true, require_tld: false })
   url: string;
 
   @IsOptional()

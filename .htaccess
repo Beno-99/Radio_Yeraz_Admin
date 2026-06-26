@@ -1,0 +1,12 @@
+RewriteEngine On
+
+# If file exists on disk, serve it directly (handles _next/static, etc)
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteRule ^ - [L]
+
+# If directory exists, serve it directly
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Proxy everything else to pm2 frontend on port 3000
+RewriteRule ^(.*)$ http://127.0.0.1:3000/$1 [P,L]

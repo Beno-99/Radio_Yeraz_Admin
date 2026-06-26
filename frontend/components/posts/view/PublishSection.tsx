@@ -1,15 +1,10 @@
-import { useState } from "react";
 import {
-  Send,
-  EyeOff,
-  Eye,
   CheckCircle,
   XCircle,
   CalendarDays,
   Globe,
   type LucideIcon,
 } from "lucide-react";
-import { postsAPI } from "@/lib/api/api";
 
 interface Post {
   _id?: string;
@@ -30,68 +25,8 @@ export function PublishSection({
   post,
   onUpdate,
 }: PublishSectionProps) {
-  const [publishing, setPublishing] = useState(false);
-  const [unpublishing, setUnpublishing] = useState(false);
-
   const postId = post?._id || post?.id;
-
-  const handlePublish = async () => {
-    if (publishing || !postId) return;
-
-    setPublishing(true);
-
-    try {
-      const formData = new FormData();
-
-      formData.append("isLive", "true");
-
-      if (post.title) formData.append("title", post.title);
-      if (post.description)
-        formData.append("description", post.description);
-      if (post.visibility)
-        formData.append("visibility", post.visibility);
-
-      await postsAPI.updatePost(postId, formData);
-
-      onUpdate();
-
-      alert("Post published successfully!");
-    } catch (error) {
-      console.error("Publish error:", error);
-      alert("Failed to publish post");
-    } finally {
-      setPublishing(false);
-    }
-  };
-
-  const handleUnpublish = async () => {
-    if (unpublishing || !postId) return;
-
-    setUnpublishing(true);
-
-    try {
-      const formData = new FormData();
-
-      formData.append("isLive", "false");
-
-      if (post.title) formData.append("title", post.title);
-      if (post.description)
-        formData.append("description", post.description);
-      if (post.visibility)
-        formData.append("visibility", post.visibility);
-
-      await postsAPI.updatePost(postId, formData);
-
-      onUpdate();
-
-      alert("Post unpublished successfully!");
-    } catch (error) {
-      console.error("Unpublish error:", error);
-      alert("Failed to unpublish post");
-    } finally {
-      setUnpublishing(false);
-    }
-  };
+  void onUpdate;
 
   if (!postId) {
     return (
@@ -175,11 +110,5 @@ function StatusItem({
         <p className="font-medium">{value}</p>
       </div>
     </div>
-  );
-}
-
-function Spinner() {
-  return (
-    <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
   );
 }

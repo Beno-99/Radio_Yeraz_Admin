@@ -33,7 +33,7 @@ export class Notification {
   type: NotificationType;
 
   @Prop({ type: Object })
-  data?: Record<string, any>;
+  data?: Record<string, unknown>;
 
   @Prop({ default: false })
   isRead: boolean;

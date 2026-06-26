@@ -32,8 +32,10 @@ export class ApiClient {
       total: response.data.total || 0,
       page: response.data.page || 1,
       limit: response.data.limit || 10,
-      totalPages: response.data.totalPages || 1,
-      hasNextPage: (response.data.page || 1) < (response.data.totalPages || 1),
+      totalPages: response.data.totalPages || response.data.pages || 1,
+      hasNextPage:
+        (response.data.page || 1) <
+        (response.data.totalPages || response.data.pages || 1),
       hasPrevPage: (response.data.page || 1) > 1,
     };
   }
@@ -60,7 +62,6 @@ export interface Post {
         profileName?: string;
         username?: string;
         name?: string;
-        email?: string;
       };
   link: string;
   createdAt: string;

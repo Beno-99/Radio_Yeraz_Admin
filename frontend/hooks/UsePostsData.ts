@@ -95,7 +95,7 @@ export function usePostsStats(allPosts: Post[]) {
       draftPosts: allPosts.filter((p) => p.status === "draft" || !p.isPublished)
         .length,
       postsWithMedia: allPosts.filter((p) => p.video || p.mainImage).length,
-      expiredPosts: allPosts.filter((p: any) => p.status === "expired").length,
+      expiredPosts: allPosts.filter((p) => p.status === "expired").length,
     };
   }, [allPosts]);
 }

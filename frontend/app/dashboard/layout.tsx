@@ -4,12 +4,12 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/layout/Sidebar";
 import Header from "@/components/layout/Header";
+import { getLocalStorageValue } from "@/lib/browser-storage";
 
 interface User {
   username: string;
   displayName: string;
   role: string;
-  email?: string;
   _id?: string;
 }
 
@@ -25,7 +25,7 @@ export default function DashboardLayout({
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem("access_token");
+    const token = getLocalStorageValue("access_token");
 
     if (!token) {
       router.replace("/login");
@@ -33,7 +33,7 @@ export default function DashboardLayout({
     }
 
     try {
-      const userData = localStorage.getItem("user");
+      const userData = getLocalStorageValue("user");
       const parsed = userData ? (JSON.parse(userData) as User) : null;
       setUser(parsed);
     } catch {

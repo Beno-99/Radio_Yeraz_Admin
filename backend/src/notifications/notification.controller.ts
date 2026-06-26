@@ -8,11 +8,18 @@ import {
   Post,
   Put,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { NotificationService } from './notification.service';
 import { FirebaseService } from '../firebase/firebase.service';
+import { Role } from '../admin/schemas/admin.schema';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 
 @Controller('notifications')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(Role.SUPER_ADMIN, Role.ADMIN)
 export class NotificationController {
   constructor(
     private readonly notificationService: NotificationService,

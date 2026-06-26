@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { notificationAPI } from "@/lib/api/api";
+import { getLocalStorageValue } from "@/lib/browser-storage";
 import { format } from "date-fns";
 import { Trash2, CheckCircle, Bell, Eye } from "lucide-react";
 
@@ -35,7 +36,7 @@ export default function NotificationsPage() {
     }
 
     try {
-      const userStr = localStorage.getItem("user");
+      const userStr = getLocalStorageValue("user");
       return userStr ? (JSON.parse(userStr) as User) : null;
     } catch {
       return null;
