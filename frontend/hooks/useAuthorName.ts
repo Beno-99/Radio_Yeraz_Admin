@@ -5,7 +5,6 @@ import { adminAPI } from "@/lib/api/api";
 export const useAuthorName = (authorId: string) => {
   const [username, setUsername] = useState<string>("");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchAuthorName = async () => {
@@ -47,5 +46,5 @@ export const useAuthorName = (authorId: string) => {
     fetchAuthorName();
   }, [authorId]);
 
-  return { username, loading, error };
+  return { username, loading };
 };

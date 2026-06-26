@@ -41,23 +41,14 @@ export function PostHeader({ id, title, isLive, onBack }: PostHeaderProps) {
 
 function StatusBadge({ isLive }: { isLive: boolean }) {
   return (
-    <>
-      {/* <span
-        className={`px-3 py-1 rounded-full text-sm font-medium ${
+    <span
+      className={`px-3 py-1 rounded-full text-sm font-medium ${
           isLive
             ? "bg-red-100 text-red-700 border border-red-200"
             : "bg-gray-100 text-gray-700 border border-gray-200"
         }`}
-      >
-        {isLive ? (
-          <div className="flex items-center gap-1.5">
-            <div className="h-2 w-2 bg-red-600 rounded-full animate-pulse"></div>
-            Published
-          </div>
-        ) : (
-          "Draft"
-        )}
-      </span> */}
-    </>
+    >
+      {isLive ? "Published" : "Draft"}
+    </span>
   );
 }

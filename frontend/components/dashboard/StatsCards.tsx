@@ -5,9 +5,6 @@ import {
   Users,
   FileText,
   Megaphone,
-  TrendingUp,
-  Eye,
-  Calendar,
 } from "lucide-react";
 
 export interface StatCard {

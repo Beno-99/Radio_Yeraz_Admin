@@ -7,11 +7,29 @@ import {
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { NotificationType, Prisma } from '@prisma/client';
+import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
+import { PrismaService } from '../prisma/prisma.service';
 import {
   NotificationResponse,
   NotificationService,
 } from './notification.service';
+
+const socketAllowedOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean)
+  : [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:3001',
+      'http://192.168.1.197:3001',
+    ];
+
+interface JwtPayload {
+  sub?: string;
+}
 
 interface IdentifiedPayload {
   _id?: string;
@@ -48,7 +66,7 @@ interface NotificationSocketPayload {
 
 @WebSocketGateway({
   cors: {
-    origin: '*',
+    origin: socketAllowedOrigins,
     credentials: true,
   },
 })
@@ -58,10 +76,21 @@ export class NotificationGateway
   @WebSocketServer()
   server: Server;
 
-  constructor(private readonly notificationService: NotificationService) {}
+  constructor(
+    private readonly notificationService: NotificationService,
+    private readonly jwtService: JwtService,
+    private readonly prisma: PrismaService,
+  ) {}
 
-  handleConnection(client: Socket): void {
-    console.log(`Client connected: ${client.id}`);
+  async handleConnection(client: Socket): Promise<void> {
+    try {
+      const adminId = await this.authenticateClient(client);
+      client.data.adminId = adminId;
+      console.log(`Client connected: ${client.id}`);
+    } catch {
+      client.emit('auth_error', { message: 'Authentication required' });
+      client.disconnect(true);
+    }
   }
 
   handleDisconnect(client: Socket): void {
@@ -70,6 +99,41 @@ export class NotificationGateway
 
   private getEntityId(entity: IdentifiedPayload): string {
     return entity._id ?? entity.id ?? '';
+  }
+
+  private getSocketToken(client: Socket): string | undefined {
+    const auth = client.handshake.auth as Record<string, unknown>;
+    const authToken = typeof auth.token === 'string' ? auth.token : undefined;
+    const authorization = client.handshake.headers.authorization;
+    const headerToken =
+      typeof authorization === 'string' && authorization.startsWith('Bearer ')
+        ? authorization.slice('Bearer '.length)
+        : undefined;
+
+    return authToken ?? headerToken;
+  }
+
+  private async authenticateClient(client: Socket): Promise<string> {
+    const token = this.getSocketToken(client);
+    if (!token) {
+      throw new Error('Missing socket token');
+    }
+
+    const payload = this.jwtService.verify<JwtPayload>(token);
+    if (!payload.sub) {
+      throw new Error('Invalid socket token');
+    }
+
+    const admin = await this.prisma.admin.findUnique({
+      where: { id: payload.sub },
+      select: { id: true, isActive: true },
+    });
+
+    if (!admin || !admin.isActive) {
+      throw new Error('Inactive socket user');
+    }
+
+    return admin.id;
   }
 
   private buildPayload(

@@ -37,7 +37,6 @@ export function useDataFetching<T>({
   });
   const [loading, setLoading] = useState(false);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);

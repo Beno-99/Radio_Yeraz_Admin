@@ -21,7 +21,6 @@ export default function EditPostPage() {
   const [selectedVideoFile, setSelectedVideoFile] = useState<File | null>(null);
   const [currentImagePath, setCurrentImagePath] = useState("");
   const [currentVideoPath, setCurrentVideoPath] = useState("");
-  const [hasVideo, setHasVideo] = useState(false);
   const [mediaType, setMediaType] = useState<MediaType>("image");
   const [postMeta, setPostMeta] = useState({
     postedDate: "",
@@ -64,20 +63,17 @@ export default function EditPostPage() {
         });
 
         if (post.video && post.video !== "") {
-          setHasVideo(true);
           setMediaType("video");
           setCurrentVideoPath(post.video);
           setCurrentImagePath("");
         } else if (post.mainImage && post.mainImage !== "[object Object]") {
-          setHasVideo(false);
           setMediaType("image");
           setCurrentImagePath(post.mainImage);
           setCurrentVideoPath("");
         } else {
-          setHasVideo(false);
           setMediaType("none");
         }
-      } catch (error) {
+      } catch {
         toast.error("Failed to load post");
       } finally {
         setLoading(false);
@@ -277,7 +273,6 @@ export default function EditPostPage() {
                 onClick={() => {
                   setMediaType("image");
                   setSelectedVideoFile(null);
-                  setHasVideo(false);
                 }}
                 className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium ${
                   mediaType === "image"
@@ -294,7 +289,6 @@ export default function EditPostPage() {
                 onClick={() => {
                   setMediaType("video");
                   setSelectedFile(null);
-                  setHasVideo(true);
                 }}
                 className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium ${
                   mediaType === "video"
@@ -312,7 +306,6 @@ export default function EditPostPage() {
                   setMediaType("none");
                   setSelectedFile(null);
                   setSelectedVideoFile(null);
-                  setHasVideo(false);
                   setCurrentImagePath("");
                   setCurrentVideoPath("");
                 }}

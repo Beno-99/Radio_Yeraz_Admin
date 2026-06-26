@@ -6,7 +6,6 @@ import { adminAPI } from "@/lib/api/api";
 import { DataTable } from "@/components/data/DataTable";
 import {
   UserPlus,
-  Shield,
   ChevronLeft,
   ChevronRight,
   RefreshCw,
@@ -64,11 +63,6 @@ export default function AdminPage() {
     status: undefined,
   });
 
-  const [sortConfig, setSortConfig] = useState<{
-    field: string;
-    direction: "asc" | "desc";
-  } | null>(null);
-
   const isSuperAdmin = useMemo(() => {
     if (typeof window === "undefined") return false;
 
@@ -113,11 +107,6 @@ export default function AdminPage() {
           params.createdAtTo = filters.dateRange.end;
         }
 
-        if (sortConfig) {
-          params.sortBy = sortConfig.field;
-          params.sortOrder = sortConfig.direction;
-        }
-
         const response = await adminAPI.getAllAdmins(params);
 
         if (response.data) {
@@ -137,7 +126,7 @@ export default function AdminPage() {
         setLoading(false);
       }
     },
-    [filters, sortConfig, pagination.limit]
+    [filters, pagination.limit]
   );
 
   useEffect(() => {
@@ -156,7 +145,7 @@ export default function AdminPage() {
     return () => clearTimeout(handler);
   }, [filters.search, fetchAdmins]);
 
-  const activeFilters = [];
+  const activeFilters: Array<{ key: string; label: string; value: string }> = [];
 
   if (filters.search) {
     activeFilters.push({
@@ -337,9 +326,9 @@ export default function AdminPage() {
         form.querySelector('[name="role"]') as HTMLSelectElement
       ).value,
 
-      isActive: (
-        form.querySelector('[name="isActive"]') as HTMLInputElement
-      ).checked,
+      isActive:
+        (form.querySelector('[name="isActive"]') as HTMLInputElement)
+          ?.checked ?? true,
     };
 
     try {
@@ -387,10 +376,6 @@ export default function AdminPage() {
     }
   };
 
-  const handleSort = (field: string, direction: "asc" | "desc") => {
-    setSortConfig({ field, direction });
-  };
-
   const handleClearFilters = () => {
     setFilters({
       search: "",
@@ -399,7 +384,6 @@ export default function AdminPage() {
       dateRange: undefined,
     });
 
-    setSortConfig(null);
     setShowFilterPanel(false);
   };
 
@@ -528,6 +512,66 @@ export default function AdminPage() {
         </div>
       </div>
 
+      {showFilterPanel && (
+        <FilterPanel
+          title="Admin Filters"
+          onClear={handleClearFilters}
+        >
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <TextFilter
+              label="Search"
+              value={filters.search}
+              onChange={(value) =>
+                setFilters((prev) => ({ ...prev, search: value }))
+              }
+              placeholder="Search admins..."
+            />
+            <SelectFilter
+              label="Role"
+              value={filters.role === "all" ? "" : filters.role}
+              onChange={(value) =>
+                setFilters((prev) => ({ ...prev, role: value || "all" }))
+              }
+              options={[
+                { value: "SUPER_ADMIN", label: "Super Admin" },
+                { value: "ADMIN", label: "Admin" },
+              ]}
+              placeholder="All roles"
+            />
+            <SelectFilter
+              label="Status"
+              value={
+                filters.status === undefined
+                  ? ""
+                  : filters.status
+                    ? "active"
+                    : "inactive"
+              }
+              onChange={(value) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  status:
+                    value === ""
+                      ? undefined
+                      : value === "active",
+                }))
+              }
+              options={[
+                { value: "active", label: "Active" },
+                { value: "inactive", label: "Inactive" },
+              ]}
+              placeholder="All statuses"
+            />
+          </div>
+        </FilterPanel>
+      )}
+
+      <FilterChips
+        filters={activeFilters}
+        onRemove={removeFilter}
+        onClearAll={handleClearFilters}
+      />
+
       <DataTable
         data={admins}
         columns={columns}
@@ -550,10 +594,89 @@ export default function AdminPage() {
           onEdit: isSuperAdmin ? handleEdit : undefined,
           onDelete: isSuperAdmin ? handleDelete : undefined,
         }}
-        onSort={handleSort}
       />
 
       {!loading && admins.length > 0 && PaginationControls}
+
+      {showForm && isSuperAdmin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <form
+            onSubmit={handleCreateAdmin}
+            className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl space-y-4"
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">
+                Add Admin
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowForm(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                Close
+              </button>
+            </div>
+
+            <input
+              name="username"
+              type="text"
+              required
+              minLength={3}
+              placeholder="Username"
+              className="w-full rounded border border-gray-300 px-3 py-2"
+            />
+            <input
+              name="displayName"
+              type="text"
+              placeholder="Display name"
+              className="w-full rounded border border-gray-300 px-3 py-2"
+            />
+            <div className="flex gap-2">
+              <input
+                name="password"
+                type={showPassword ? "text" : "password"}
+                required
+                minLength={6}
+                placeholder="Password"
+                className="min-w-0 flex-1 rounded border border-gray-300 px-3 py-2"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((value) => !value)}
+                className="rounded border border-gray-300 px-3 py-2 text-sm"
+              >
+                {showPassword ? "Hide" : "Show"}
+              </button>
+            </div>
+            <select
+              name="role"
+              defaultValue="ADMIN"
+              className="w-full rounded border border-gray-300 px-3 py-2"
+            >
+              <option value="ADMIN">Admin</option>
+            </select>
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input name="isActive" type="checkbox" defaultChecked />
+              Active
+            </label>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowForm(false)}
+                className="rounded border border-gray-300 px-4 py-2"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+              >
+                Create
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

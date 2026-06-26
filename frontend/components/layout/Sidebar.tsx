@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -57,9 +58,11 @@ export default function Sidebar({ isOpen, onClose, user }: SidebarProps) {
       >
         <div className="flex items-center justify-between h-16 px-4 border-b border-gray-800">
           <div className="flex items-center">
-            <img
+            <Image
               src="/radioLogo.jpg"
-              alt="logo"
+              alt="Radio Yeraz logo"
+              width={40}
+              height={40}
               className="h-10 w-10 rounded-full"
             />
 

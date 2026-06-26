@@ -104,9 +104,14 @@ export function useAdminNotifications() {
     }
 
     readIdsRef.current = getLocalReadIds();
+    const token = getLocalStorageValue("access_token");
+    if (!token) {
+      return;
+    }
 
     const socket = io(BACKEND_URL, {
       path: "/socket.io",
+      auth: { token },
       transports: ["websocket", "polling"],
       reconnection: true,
       reconnectionAttempts: 5,

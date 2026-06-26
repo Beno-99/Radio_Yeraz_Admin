@@ -8,6 +8,7 @@
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
+    "test": "node scripts/local-smoke-test.js",
     "db:seed": "node prisma/seed.js",
     "db:migrate:mongo": "node prisma/migrate-mongo-to-mysql.js",
     "db:start": "docker run --name mongodb -p 27017:27017 -d mongo:latest",

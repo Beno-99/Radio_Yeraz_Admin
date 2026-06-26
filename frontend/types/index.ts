@@ -95,4 +95,4 @@ export interface CreateStreamLinkDto {
 }
 
 // Optional: Type for updating
-export interface UpdateStreamLinkDto extends Partial<CreateStreamLinkDto> {}
+export type UpdateStreamLinkDto = Partial<CreateStreamLinkDto>;

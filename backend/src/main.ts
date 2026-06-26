@@ -7,7 +7,15 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 
 const allowedOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',')
-  : [];
+      .map((origin) => origin.trim())
+      .filter(Boolean)
+  : [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:3001',
+      'http://192.168.1.197:3001',
+    ];
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -18,8 +26,7 @@ async function bootstrap() {
   //   credentials: true,
   // });
   app.enableCors({
-    // origin: allowedOrigins, // Use the allowed origins from environment
-    origin: '*', // Allow all origins (for development only, change in production!)
+    origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: [

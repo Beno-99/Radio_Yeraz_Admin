@@ -53,7 +53,6 @@ interface DataTableProps<T> {
 
   filters?: React.ReactNode;
   emptyState?: React.ReactNode;
-  onSort?: (field: string, direction: "asc" | "desc") => void; 
 }
 
 export function DataTable<T extends { _id: string }>({
@@ -63,7 +62,6 @@ export function DataTable<T extends { _id: string }>({
   actions,
   filters,
   emptyState,
-  onSort,
 }: DataTableProps<T>) {
   const [open, setOpen] = React.useState(false);
   const [selectedItem, setSelectedItem] = React.useState<T | null>(null);

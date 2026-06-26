@@ -7,9 +7,7 @@ import {
   Edit,
   Trash2,
   Eye,
-  Power,
   Copy,
-  UserCog,
 } from "lucide-react";
 import { StatusToggle } from "./StatusToggle";
 import type { Admin } from "@/types";

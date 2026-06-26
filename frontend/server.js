@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 process.chdir('/home/lolugexye9o5/public_html/radioyeraz/player/frontend');
 
 const { createServer } = require("http");

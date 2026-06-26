@@ -1,6 +1,4 @@
 // components/forms/MediaSection.tsx
-import { Clock } from "lucide-react";
-
 interface MediaSectionProps {
   mainImage?: string;
   video?: string;
@@ -19,6 +17,7 @@ export function MediaSection({ mainImage, video, title }: MediaSectionProps) {
 
     return (
       <div className="relative aspect-video max-h-[600px] overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={imageUrl}
           className="w-full h-full object-cover transition-transform duration-300 hover:scale-[1.02]"
@@ -29,5 +28,15 @@ export function MediaSection({ mainImage, video, title }: MediaSectionProps) {
     );
   }
 
-  // ... rest of the component
+  if (video) {
+    const videoUrl = video.startsWith("http") ? video : `${mediaUrl}${video}`;
+
+    return (
+      <div className="relative aspect-video max-h-[600px] overflow-hidden bg-black">
+        <video src={videoUrl} controls className="h-full w-full object-contain" />
+      </div>
+    );
+  }
+
+  return null;
 }

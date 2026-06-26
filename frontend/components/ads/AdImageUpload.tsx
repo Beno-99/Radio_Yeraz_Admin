@@ -73,6 +73,7 @@ export function AdImageUpload({
       >
         {displayImage ? (
           <div className="relative">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={displayImage}
               alt="Ad preview"

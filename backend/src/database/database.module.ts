@@ -8,7 +8,10 @@ import { MongooseModule } from '@nestjs/mongoose';
 @Module({})
 export class DatabaseModule {
   static forRoot(): DynamicModule {
-    if (!process.env.MONGODB_URI) {
+    const shouldConnectToMongo =
+      process.env.MONGODB_ENABLED === 'true' && Boolean(process.env.MONGODB_URI);
+
+    if (!shouldConnectToMongo) {
       return {
         module: DatabaseModule,
       };
