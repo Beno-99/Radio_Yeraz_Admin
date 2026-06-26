@@ -1,12 +1,8 @@
-RewriteEngine On
-
-# If file exists on disk, serve it directly (handles _next/static, etc)
-RewriteCond %{REQUEST_FILENAME} -f
-RewriteRule ^ - [L]
-
-# If directory exists, serve it directly
-RewriteCond %{REQUEST_FILENAME} -d
-RewriteRule ^ - [L]
-
-# Proxy everything else to pm2 frontend on port 3000
-RewriteRule ^(.*)$ http://127.0.0.1:3000/$1 [P,L]
+# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION BEGIN
+PassengerAppRoot "/home/lolugexye9o5/public_html/radioyeraz/player/frontend"
+PassengerBaseURI "/"
+PassengerNodejs "/home/lolugexye9o5/nodevenv/public_html/radioyeraz/player/frontend/24/bin/node"
+PassengerAppType node
+PassengerStartupFile server.js
+PassengerAppLogFile "/home/lolugexye9o5/public_html/radioyeraz/player/frontend/passenger.log"
+# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION END
