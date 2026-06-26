@@ -1,16 +1,37 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/layout/Sidebar";
 import Header from "@/components/layout/Header";
-import { getLocalStorageValue } from "@/lib/browser-storage";
+import {
+  getLocalStorageValue,
+  subscribeToLocalStorage,
+} from "@/lib/browser-storage";
 
 interface User {
   username: string;
   displayName: string;
   role: string;
   _id?: string;
+}
+
+const getServerSnapshot = () => null;
+const getHydratedServerSnapshot = () => false;
+const getHydratedSnapshot = () => typeof window !== "undefined";
+const getAccessTokenSnapshot = () => getLocalStorageValue("access_token");
+const getUserSnapshot = () => getLocalStorageValue("user");
+
+function parseStoredUser(userData: string | null): User | null {
+  if (!userData) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(userData) as User;
+  } catch {
+    return null;
+  }
 }
 
 export default function DashboardLayout({
@@ -21,29 +42,34 @@ export default function DashboardLayout({
   const router = useRouter();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
-  const [ready, setReady] = useState(false);
+  const hydrated = useSyncExternalStore(
+    subscribeToLocalStorage,
+    getHydratedSnapshot,
+    getHydratedServerSnapshot,
+  );
+  const token = useSyncExternalStore(
+    subscribeToLocalStorage,
+    getAccessTokenSnapshot,
+    getServerSnapshot,
+  );
+  const userData = useSyncExternalStore(
+    subscribeToLocalStorage,
+    getUserSnapshot,
+    getServerSnapshot,
+  );
+  const user = useMemo(() => parseStoredUser(userData), [userData]);
 
   useEffect(() => {
-    const token = getLocalStorageValue("access_token");
-
-    if (!token) {
-      router.replace("/login");
+    if (!hydrated) {
       return;
     }
 
-    try {
-      const userData = getLocalStorageValue("user");
-      const parsed = userData ? (JSON.parse(userData) as User) : null;
-      setUser(parsed);
-    } catch {
-      setUser(null);
-    } finally {
-      setReady(true);
+    if (!token || !user) {
+      router.replace("/login");
     }
-  }, [router]);
+  }, [hydrated, token, user, router]);
 
-  if (!ready || !user) {
+  if (!hydrated || !token || !user) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
