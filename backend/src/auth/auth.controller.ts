@@ -19,6 +19,7 @@ import { RolesGuard } from './guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Role } from '../admin/schemas/admin.schema';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { AuthenticatedRequest } from './interfaces/authenticated-request.interface';
 
 @Controller('auth')
 export class AuthController {
@@ -46,14 +47,14 @@ export class AuthController {
   @Post('logout-all')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
-  async logoutAll(@Req() req: any) {
+  async logoutAll(@Req() req: AuthenticatedRequest) {
     const adminId = req.user.sub;
     return this.authService.logoutAll(adminId);
   }
 
   @Get('tokens')
   @UseGuards(JwtAuthGuard)
-  async getMyTokens(@Req() req: any) {
+  async getMyTokens(@Req() req: AuthenticatedRequest) {
     const adminId = req.user.sub;
     const tokens = await this.authService.getAdminTokens(adminId);
     return {
@@ -78,7 +79,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   async changePassword(
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
     @Body() changePasswordDto: ChangePasswordDto, // Get the full DTO
   ) {
     const adminId = req.user.sub;

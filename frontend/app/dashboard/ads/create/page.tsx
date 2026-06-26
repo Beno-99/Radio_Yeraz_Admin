@@ -54,9 +54,6 @@ export default function CreateAdPage() {
         formDataToSend.append("endDate", formData.endDate);
       }
 
-      // Send request
-      // const token = localStorage.getItem("access_token");
-
       const response = await adsAPI.createAd(formDataToSend);
 
       const data = response.data;

@@ -1,10 +1,14 @@
 // hooks/useLocalStorageUser.ts
 import { useState, useEffect } from "react";
+import {
+  getLocalStorageValue,
+  removeLocalStorageValue,
+  setLocalStorageValue,
+} from "@/lib/browser-storage";
 
 interface User {
   id: string;
   username: string;
-  email?: string;
   role?: string;
 }
 
@@ -15,7 +19,7 @@ export function useLocalStorageUser() {
   useEffect(() => {
     const getUserFromStorage = () => {
       try {
-        const userString = localStorage.getItem("user");
+        const userString = getLocalStorageValue("user");
         if (userString) {
           const parsedUser: User = JSON.parse(userString);
           setUser(parsedUser);
@@ -33,7 +37,7 @@ export function useLocalStorageUser() {
   // Function to update user in localStorage and state
   const updateUser = (newUser: User) => {
     try {
-      localStorage.setItem("user", JSON.stringify(newUser));
+      setLocalStorageValue("user", JSON.stringify(newUser));
       setUser(newUser);
     } catch (error) {
       console.error("Error updating user in localStorage:", error);
@@ -42,7 +46,7 @@ export function useLocalStorageUser() {
 
   // Function to clear user from localStorage
   const clearUser = () => {
-    localStorage.removeItem("user");
+    removeLocalStorageValue("user");
     setUser(null);
   };
 

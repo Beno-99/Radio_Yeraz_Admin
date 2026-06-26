@@ -21,6 +21,7 @@ import {
 } from "@/components/data/FilterPanel";
 import { FilterChips } from "@/components/data/FilterChips";
 import { toast } from "sonner";
+import { getLocalStorageValue } from "@/lib/browser-storage";
 
 interface AdminFilters {
   search: string;
@@ -72,7 +73,7 @@ export default function AdminPage() {
     if (typeof window === "undefined") return false;
 
     try {
-      const userStr = localStorage.getItem("user");
+      const userStr = getLocalStorageValue("user");
 
       if (!userStr) return false;
 
@@ -104,7 +105,7 @@ export default function AdminPage() {
         }
 
         if (filters.status !== undefined) {
-          params.isActive = filters.status;
+          params.active = filters.status;
         }
 
         if (filters.dateRange?.start && filters.dateRange?.end) {
@@ -125,7 +126,7 @@ export default function AdminPage() {
           setPagination((prev) => ({
             ...prev,
             page: response.data.page || 1,
-            totalPages: response.data.totalPages || 1,
+            totalPages: response.data.totalPages || response.data.pages || 1,
             totalItems: response.data.total || response.data.count || 0,
           }));
         }

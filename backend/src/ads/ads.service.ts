@@ -1,20 +1,90 @@
 // src/ads/ads.service.ts
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { Ad, AdDocument } from './schemas/ad.schema';
-import { CreateAdDto } from './dto/create-ad.dto';
-import { UpdateAdDto } from './dto/update-ad.dto';
-import { NotificationGateway } from '../notifications/notification.gateway';
+import {
+  Ad as PrismaAd,
+  AdStatus,
+  Admin as PrismaAdmin,
+  AdminRole,
+  Prisma,
+} from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
+import { Role } from '../admin/schemas/admin.schema';
+import { createObjectIdString } from '../common/utils/object-id.utils';
+import { NotificationGateway } from '../notifications/notification.gateway';
+import { PrismaService } from '../prisma/prisma.service';
+import { CreateAdDto } from './dto/create-ad.dto';
+import { UpdateAdDto } from './dto/update-ad.dto';
+
+const adAuthorSelect = {
+  id: true,
+  username: true,
+  displayName: true,
+  role: true,
+} satisfies Prisma.AdminSelect;
+
+const adInclude = {
+  author: { select: adAuthorSelect },
+} satisfies Prisma.AdInclude;
+
+type AdWithAuthor = Prisma.AdGetPayload<{ include: typeof adInclude }>;
+
+export interface AdAuthorResponse
+  extends Omit<Pick<PrismaAdmin, 'id' | 'username' | 'displayName'>, never> {
+  _id: string;
+  role: Role;
+}
+
+export interface AdResponse extends Omit<PrismaAd, 'authorId' | 'author'> {
+  _id: string;
+  author: AdAuthorResponse | null;
+  __v: number;
+}
+
+export interface AdFindAllFilters {
+  isActive?: boolean;
+  status?: AdStatus;
+  startDateLte?: Date;
+  endDateGte?: Date;
+}
 
 @Injectable()
 export class AdsService {
   constructor(
-    @InjectModel(Ad.name) private adModel: Model<AdDocument>,
-    private notificationGateway: NotificationGateway, // ← ADDED
+    private readonly prisma: PrismaService,
+    private readonly notificationGateway: NotificationGateway,
   ) {}
+
+  private toApiRole(role: AdminRole): Role {
+    return role === AdminRole.SUPER_ADMIN ? Role.SUPER_ADMIN : Role.ADMIN;
+  }
+
+  private toAdResponse(ad: AdWithAuthor): AdResponse {
+    return {
+      id: ad.id,
+      _id: ad.id,
+      image: ad.image,
+      isActive: ad.isActive,
+      status: ad.status,
+      clicks: ad.clicks,
+      startDate: ad.startDate,
+      endDate: ad.endDate,
+      targetUrl: ad.targetUrl,
+      name: ad.name,
+      createdAt: ad.createdAt,
+      updatedAt: ad.updatedAt,
+      author: ad.author
+        ? {
+            id: ad.author.id,
+            _id: ad.author.id,
+            username: ad.author.username,
+            displayName: ad.author.displayName,
+            role: this.toApiRole(ad.author.role),
+          }
+        : null,
+      __v: 0,
+    };
+  }
 
   private deleteMediaFileIfExists(filePath?: string): void {
     if (!filePath || filePath.trim() === '') return;
@@ -34,280 +104,354 @@ export class AdsService {
     }
   }
 
+  private parseOptionalDate(value: Date | string | null | undefined): Date | null | undefined {
+    if (value === undefined) return undefined;
+    if (value === null || value === '') return null;
+
+    const parsed = value instanceof Date ? value : new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  private parseOptionalBoolean(value: unknown): boolean | undefined {
+    if (value === true || value === 'true') return true;
+    if (value === false || value === 'false') return false;
+    if (value === undefined || value === null) return undefined;
+    return Boolean(value);
+  }
+
   private resolveStatus(
-    startDate: Date | string | undefined,
-    endDate: Date | string | undefined,
+    startDate: Date | string | null | undefined,
+    endDate: Date | string | null | undefined,
     isActive: boolean,
-  ): 'pending' | 'active' | 'inactive' | 'expired' {
+  ): AdStatus {
     const now = new Date();
     const start = startDate ? new Date(startDate) : null;
     const end = endDate ? new Date(endDate) : null;
 
     if (end && !Number.isNaN(end.getTime()) && now > end) {
-      return 'expired';
+      return AdStatus.expired;
     }
     if (start && !Number.isNaN(start.getTime()) && now < start) {
-      return 'pending';
+      return AdStatus.pending;
     }
-    return isActive ? 'active' : 'inactive';
+    return isActive ? AdStatus.active : AdStatus.inactive;
+  }
+
+  private buildWhere(filters: AdFindAllFilters): Prisma.AdWhereInput {
+    const where: Prisma.AdWhereInput = {};
+
+    if (filters.isActive !== undefined) where.isActive = filters.isActive;
+    if (filters.status !== undefined) where.status = filters.status;
+    if (filters.startDateLte !== undefined) {
+      where.startDate = { lte: filters.startDateLte };
+    }
+    if (filters.endDateGte !== undefined) {
+      where.endDate = { gte: filters.endDateGte };
+    }
+
+    return where;
   }
 
   async syncLifecycleStatuses(): Promise<void> {
     const now = new Date();
 
-    await this.adModel.updateMany(
-      {
-        endDate: { $exists: true, $ne: null, $lt: now },
-        status: { $ne: 'expired' },
+    await this.prisma.ad.updateMany({
+      where: {
+        endDate: { lt: now },
+        NOT: { status: AdStatus.expired },
       },
-      {
-        $set: {
-          status: 'expired',
-          isActive: false,
-          updatedAt: now,
-        },
+      data: {
+        status: AdStatus.expired,
+        isActive: false,
+        updatedAt: now,
       },
-    );
+    });
 
-    await this.adModel.updateMany(
-      {
-        startDate: { $exists: true, $ne: null, $gt: now },
-        status: { $ne: 'pending' },
+    await this.prisma.ad.updateMany({
+      where: {
+        startDate: { gt: now },
+        NOT: { status: AdStatus.pending },
       },
-      {
-        $set: {
-          status: 'pending',
-          isActive: false,
-          updatedAt: now,
-        },
+      data: {
+        status: AdStatus.pending,
+        isActive: false,
+        updatedAt: now,
       },
-    );
+    });
 
-    await this.adModel.updateMany(
-      {
-        $and: [
-          { $or: [{ startDate: { $exists: false } }, { startDate: { $lte: now } }] },
-          { $or: [{ endDate: { $exists: false } }, { endDate: { $gte: now } }] },
-          { isActive: true },
-          { status: { $ne: 'active' } },
-        ],
+    await this.prisma.ad.updateMany({
+      where: {
+        startDate: { lte: now },
+        OR: [{ endDate: null }, { endDate: { gte: now } }],
+        isActive: true,
+        NOT: { status: AdStatus.active },
       },
-      {
-        $set: {
-          status: 'active',
-          updatedAt: now,
-        },
+      data: {
+        status: AdStatus.active,
+        updatedAt: now,
       },
-    );
+    });
 
-    await this.adModel.updateMany(
-      {
-        $and: [
-          { $or: [{ startDate: { $exists: false } }, { startDate: { $lte: now } }] },
-          { $or: [{ endDate: { $exists: false } }, { endDate: { $gte: now } }] },
-          { isActive: false },
-          { status: { $ne: 'inactive' } },
-        ],
+    await this.prisma.ad.updateMany({
+      where: {
+        startDate: { lte: now },
+        OR: [{ endDate: null }, { endDate: { gte: now } }],
+        isActive: false,
+        NOT: { status: AdStatus.inactive },
       },
-      {
-        $set: {
-          status: 'inactive',
-          updatedAt: now,
-        },
+      data: {
+        status: AdStatus.inactive,
+        updatedAt: now,
       },
-    );
+    });
   }
 
-  async create(
-    createAdDto: CreateAdDto,
-    authorId: string,
-  ): Promise<AdDocument> {
+  async create(createAdDto: CreateAdDto, authorId: string): Promise<AdResponse> {
+    const author = await this.prisma.admin.findUnique({
+      where: { id: authorId },
+    });
+    if (!author) throw new NotFoundException('Author not found');
+
     const inputIsActive =
-      createAdDto.isActive === undefined ? true : Boolean(createAdDto.isActive);
+      this.parseOptionalBoolean(createAdDto.isActive) ?? true;
+    const startDate = this.parseOptionalDate(createAdDto.startDate);
+    const endDate = this.parseOptionalDate(createAdDto.endDate);
     const computedStatus = this.resolveStatus(
-      createAdDto.startDate,
-      createAdDto.endDate,
+      startDate,
+      endDate,
       inputIsActive,
     );
 
-    const adData = {
-      ...createAdDto,
-      author: new Types.ObjectId(authorId),
-      isActive:
-        computedStatus === 'pending' || computedStatus === 'expired'
-          ? false
-          : inputIsActive,
-      status: computedStatus,
-    };
+    const ad = await this.prisma.ad.create({
+      data: {
+        id: createObjectIdString(),
+        image: createAdDto.image || '',
+        authorId,
+        name: createAdDto.name,
+        targetUrl: createAdDto.targetUrl,
+        startDate: startDate ?? new Date(),
+        endDate,
+        isActive:
+          computedStatus === AdStatus.pending ||
+          computedStatus === AdStatus.expired
+            ? false
+            : inputIsActive,
+        status: computedStatus,
+      },
+      include: adInclude,
+    });
 
-    const ad = new this.adModel(adData);
-    await ad.save();
-    const populated = await ad.populate('author', 'username displayName');
-
-    // ← Get name from populated author
-    const author = populated.author as any;
-    const authorName = author?.displayName || author?.username || 'Admin';
+    const adResponse = this.toAdResponse(ad);
+    const authorName = author.displayName || author.username || 'Admin';
 
     try {
-      await this.notificationGateway.emitAdCreated(populated, authorName);
-    } catch (e) {
-      console.error('⚠️ Ad notification failed:', (e as Error).message);
+      await this.notificationGateway.emitAdCreated(adResponse, authorName);
+    } catch (e: unknown) {
+      console.error(
+        'Ad notification failed:',
+        e instanceof Error ? e.message : String(e),
+      );
     }
 
-    return populated;
+    return adResponse;
   }
 
-  async findAll(page: number = 1, limit: number = 10, filters: any = {}) {
-  await this.syncLifecycleStatuses();
-  const skip = (page - 1) * limit;
+  async findAll(
+    page: number = 1,
+    limit: number = 10,
+    filters: AdFindAllFilters = {},
+  ): Promise<{
+    data: AdResponse[];
+    total: number;
+    page: number;
+    pages: number;
+  }> {
+    await this.syncLifecycleStatuses();
+    const skip = (page - 1) * limit;
+    const where = this.buildWhere(filters);
 
-  const [data, total] = await Promise.all([
-    this.adModel
-      .find(filters)
-      .populate('author', 'username displayName')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .exec(),
-    this.adModel.countDocuments(filters),
-  ]);
+    const [data, total] = await Promise.all([
+      this.prisma.ad.findMany({
+        where,
+        include: adInclude,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.ad.count({ where }),
+    ]);
 
-  return { data, total, page, pages: Math.ceil(total / limit) };
-}
+    return {
+      data: data.map((ad) => this.toAdResponse(ad)),
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+    };
+  }
 
-  async findOne(id: string): Promise<AdDocument> {
+  async findOne(id: string): Promise<AdResponse> {
     await this.syncLifecycleStatuses();
 
-    const ad = await this.adModel
-      .findById(id)
-      .populate('author', 'username displayName')
-      .exec();
+    const ad = await this.prisma.ad.findUnique({
+      where: { id },
+      include: adInclude,
+    });
 
     if (!ad) throw new NotFoundException('Ad not found');
-    return ad;
+    return this.toAdResponse(ad);
+  }
+
+  async findExpiringAds(now: Date, in3Days: Date): Promise<AdResponse[]> {
+    const ads = await this.prisma.ad.findMany({
+      where: {
+        isActive: true,
+        endDate: { gte: now, lte: in3Days },
+      },
+      include: adInclude,
+      orderBy: { endDate: 'asc' },
+    });
+
+    return ads.map((ad) => this.toAdResponse(ad));
   }
 
   async update(
     id: string,
     updateAdDto: UpdateAdDto,
-    authorName: string = 'Admin', // ← ADDED
-  ): Promise<AdDocument> {
-    console.log('🔄 SERVICE UPDATE - received:', updateAdDto);
+    authorName: string = 'Admin',
+  ): Promise<AdResponse> {
+    const oldAd = await this.prisma.ad.findUnique({
+      where: { id },
+      include: adInclude,
+    });
+    if (!oldAd) throw new NotFoundException('Ad not found');
 
-    // Get old ad to check isActive change
-    const oldAd = await this.adModel.findById(id).exec();
-
-    const updateData: any = { ...updateAdDto, updatedAt: new Date() };
-    Object.keys(updateData).forEach(
-      (key) => updateData[key] === undefined && delete updateData[key],
+    const oldImage = oldAd.image || '';
+    const shouldRemoveImage = updateAdDto.removeImage === 'true';
+    const hasNewImage = !!updateAdDto.image;
+    const parsedIsActive = this.parseOptionalBoolean(updateAdDto.isActive);
+    const startDate =
+      this.parseOptionalDate(updateAdDto.startDate) ?? oldAd.startDate;
+    const endDate =
+      this.parseOptionalDate(updateAdDto.endDate) ?? oldAd.endDate;
+    const nextIsActive =
+      parsedIsActive !== undefined ? parsedIsActive : oldAd.isActive;
+    const computedStatus = this.resolveStatus(
+      startDate,
+      endDate,
+      nextIsActive,
     );
 
-    const oldImage = oldAd?.image || '';
-    const shouldRemoveImage = updateData.removeImage === 'true';
-    const hasNewImage = !!updateData.image;
+    const updateData: Prisma.AdUncheckedUpdateInput = {
+      updatedAt: new Date(),
+      status: computedStatus,
+    };
 
-    if (shouldRemoveImage) {
-      updateData.image = '';
+    if (updateAdDto.name !== undefined) updateData.name = updateAdDto.name;
+    if (updateAdDto.targetUrl !== undefined) {
+      updateData.targetUrl = updateAdDto.targetUrl;
     }
+    if (updateAdDto.startDate !== undefined) updateData.startDate = startDate;
+    if (updateAdDto.endDate !== undefined) updateData.endDate = endDate;
+    if (parsedIsActive !== undefined) updateData.isActive = parsedIsActive;
+    if (hasNewImage) updateData.image = updateAdDto.image;
+    if (shouldRemoveImage) updateData.image = '';
 
-    delete updateData.removeImage;
-
-    if (updateData.isActive !== undefined) {
-      updateData.isActive = Boolean(updateData.isActive);
-    }
-
-    const startDate = updateData.startDate ?? oldAd?.startDate;
-    const endDate = updateData.endDate ?? oldAd?.endDate;
-    const nextIsActive =
-      updateData.isActive !== undefined
-        ? updateData.isActive
-        : Boolean(oldAd?.isActive);
-
-    const computedStatus = this.resolveStatus(startDate, endDate, nextIsActive);
-    updateData.status = computedStatus;
-    if (computedStatus === 'pending' || computedStatus === 'expired') {
+    if (
+      computedStatus === AdStatus.pending ||
+      computedStatus === AdStatus.expired
+    ) {
       updateData.isActive = false;
     }
 
-    const ad = await this.adModel
-      .findByIdAndUpdate(id, updateData, { new: true, runValidators: true })
-      .populate('author', 'username displayName')
-      .exec();
-
-    if (!ad) throw new NotFoundException('Ad not found');
+    const ad = await this.prisma.ad.update({
+      where: { id },
+      data: updateData,
+      include: adInclude,
+    });
+    const adResponse = this.toAdResponse(ad);
 
     try {
       if ((shouldRemoveImage || hasNewImage) && oldImage.trim() !== '') {
-        const replacedWithDifferentImage = hasNewImage && oldImage !== ad.image;
+        const replacedWithDifferentImage =
+          hasNewImage && oldImage !== ad.image;
         if (shouldRemoveImage || replacedWithDifferentImage) {
           this.deleteMediaFileIfExists(oldImage);
         }
       }
     } catch (fileError) {
-      console.error('⚠️ Failed to delete replaced/removed ad image:', fileError);
+      console.error('Failed to delete replaced/removed ad image:', fileError);
     }
 
-    // ── Notify admins ────────────────────────────────────────
     try {
-      if (oldAd?.isActive !== ad.isActive) {
-        // Active status changed
-        await this.notificationGateway.emitAdToggled(ad, authorName);
+      if (oldAd.isActive !== ad.isActive) {
+        await this.notificationGateway.emitAdToggled(adResponse, authorName);
       } else {
-        // Just updated
-        await this.notificationGateway.emitAdUpdated(ad, authorName);
+        await this.notificationGateway.emitAdUpdated(adResponse, authorName);
       }
-    } catch (e) {
-      console.error('⚠️ Ad notification failed:', (e as Error).message);
+    } catch (e: unknown) {
+      console.error(
+        'Ad notification failed:',
+        e instanceof Error ? e.message : String(e),
+      );
     }
-    // ────────────────────────────────────────────────────────
 
-    return ad;
+    return adResponse;
   }
 
-  async updateImage(id: string, imagePath: string): Promise<AdDocument> {
-    const ad = await this.adModel
-      .findByIdAndUpdate(
-        id,
-        { image: imagePath, updatedAt: new Date() },
-        { new: true, runValidators: true },
-      )
-      .populate('author', 'username displayName')
-      .exec();
+  async updateImage(id: string, imagePath: string): Promise<AdResponse> {
+    const ad = await this.prisma.ad.update({
+      where: { id },
+      data: { image: imagePath, updatedAt: new Date() },
+      include: adInclude,
+    }).catch(() => null);
 
     if (!ad) throw new NotFoundException('Ad not found');
-    return ad;
+    return this.toAdResponse(ad);
+  }
+
+  async toggleActive(
+    id: string,
+    authorName: string = 'Admin',
+  ): Promise<AdResponse> {
+    const existingAd = await this.prisma.ad.findUnique({
+      where: { id },
+      include: adInclude,
+    });
+    if (!existingAd) throw new NotFoundException('Ad not found');
+
+    return this.update(id, { isActive: !existingAd.isActive }, authorName);
   }
 
   async delete(
     id: string,
-    authorName: string = 'Admin', // ← ADDED
-  ): Promise<AdDocument> {
-    const ad = await this.adModel.findById(id).exec();
+    authorName: string = 'Admin',
+  ): Promise<AdResponse> {
+    const ad = await this.prisma.ad.findUnique({
+      where: { id },
+      include: adInclude,
+    });
     if (!ad) throw new NotFoundException('Ad not found');
 
-    // Delete image file if exists
     try {
-      if (ad.image && ad.image.trim() !== '') {
-        const imagePath = path.join(process.cwd(), ad.image);
-        if (fs.existsSync(imagePath)) {
-          fs.unlinkSync(imagePath);
-          console.log('✅ Ad image deleted:', ad.image);
-        }
-      }
-    } catch (e) {
-      console.error('⚠️ Ad image delete failed:', (e as Error).message);
+      this.deleteMediaFileIfExists(ad.image);
+    } catch (e: unknown) {
+      console.error(
+        'Ad image delete failed:',
+        e instanceof Error ? e.message : String(e),
+      );
     }
 
-    await this.adModel.findByIdAndDelete(id).exec();
+    await this.prisma.ad.delete({ where: { id } });
 
-    // ── Notify admins ────────────────────────────────────────
     try {
       await this.notificationGateway.emitAdDeleted(ad.name, authorName);
-    } catch (e) {
-      console.error('⚠️ Ad notification failed:', (e as Error).message);
+    } catch (e: unknown) {
+      console.error(
+        'Ad notification failed:',
+        e instanceof Error ? e.message : String(e),
+      );
     }
-    // ────────────────────────────────────────────────────────
 
-    return ad;
+    return this.toAdResponse(ad);
   }
 }

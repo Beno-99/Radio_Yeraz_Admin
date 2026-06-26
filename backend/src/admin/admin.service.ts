@@ -1,28 +1,49 @@
 // src/admin/admin.service.ts
 import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
-  ForbiddenException,
-  ConflictException,
-  BadRequestException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import mongoose, { Model } from 'mongoose';
+import { Admin as PrismaAdmin, AdminRole, Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
-import { Admin, AdminDocument, Role } from './schemas/admin.schema';
+import { createObjectIdString } from '../common/utils/object-id.utils';
+import { NotificationGateway } from '../notifications/notification.gateway';
+import { PrismaService } from '../prisma/prisma.service';
 import { CreateAdminDto } from './dto/create-admin.dto';
 import { UpdateAdminDto } from './dto/update-admin.dto';
-import { Post, PostDocument } from 'src/posts/schemas/post.schema';
-import { Ad, AdDocument } from 'src/ads/schemas/ad.schema';
-import { NotificationGateway } from '../notifications/notification.gateway';
+import { UpdateAdminProfileDto } from './dto/update-admin-profile.dto';
+import { Role } from './schemas/admin.schema';
+
+export interface AdminResponse
+  extends Omit<PrismaAdmin, 'role'> {
+  _id: string;
+  role: Role;
+  __v: number;
+}
+
+interface AdminListFilters {
+  role?: Role;
+  isActive?: boolean;
+}
+
+export interface AdminStatistics {
+  total: number;
+  active: number;
+  inactive: number;
+  byRole: {
+    superAdmins: number;
+    admins: number;
+  };
+  latestAdmins: AdminResponse[];
+}
 
 @Injectable()
 export class AdminService {
   constructor(
-    @InjectModel(Admin.name) private adminModel: Model<AdminDocument>,
-    @InjectModel(Post.name) private postModel: Model<PostDocument>,
-    @InjectModel(Ad.name) private adModel: Model<AdDocument>,
-    private notificationGateway: NotificationGateway, // ← ADDED
+    private readonly prisma: PrismaService,
+    private readonly notificationGateway: NotificationGateway,
   ) {}
 
   private async hashPassword(password: string): Promise<string> {
@@ -30,186 +51,309 @@ export class AdminService {
     return bcrypt.hash(password, salt);
   }
 
+  private toPrismaRole(role: Role): AdminRole {
+    return role === Role.SUPER_ADMIN ? AdminRole.SUPER_ADMIN : AdminRole.ADMIN;
+  }
+
+  private toApiRole(role: AdminRole): Role {
+    return role === AdminRole.SUPER_ADMIN ? Role.SUPER_ADMIN : Role.ADMIN;
+  }
+
+  private toAdminResponse(admin: PrismaAdmin): AdminResponse {
+    return {
+      ...admin,
+      _id: admin.id,
+      role: this.toApiRole(admin.role),
+      __v: 0,
+    };
+  }
+
+  private async ensureActiveSuperAdminRemains(
+    admin: PrismaAdmin,
+    nextRole: AdminRole = admin.role,
+    nextIsActive: boolean = admin.isActive,
+  ): Promise<void> {
+    const isRemovingActiveSuperAdmin =
+      admin.role === AdminRole.SUPER_ADMIN &&
+      admin.isActive &&
+      (nextRole !== AdminRole.SUPER_ADMIN || !nextIsActive);
+
+    if (!isRemovingActiveSuperAdmin) return;
+
+    const activeSuperAdminCount = await this.prisma.admin.count({
+      where: {
+        role: AdminRole.SUPER_ADMIN,
+        isActive: true,
+      },
+    });
+
+    if (activeSuperAdminCount <= 1) {
+      throw new BadRequestException(
+        'At least one active SUPER_ADMIN account is required',
+      );
+    }
+  }
+
   async validateAdmin(
     username: string,
     password: string,
-  ): Promise<AdminDocument | null> {
-    console.log('Validating admin:', username);
-    const admin = await this.adminModel.findOne({ username });
-    console.log('Admin found:', admin ? 'Yes' : 'No');
+  ): Promise<AdminResponse | null> {
+    const admin = await this.prisma.admin.findUnique({
+      where: { username },
+    });
 
-    if (!admin) return null;
-
-    console.log('Admin isActive:', admin.isActive);
-    if (!admin.isActive) return null;
+    if (!admin || !admin.isActive) return null;
 
     const isPasswordValid = await bcrypt.compare(password, admin.password);
-    console.log('Password valid:', isPasswordValid);
-
     if (!isPasswordValid) return null;
 
-    admin.lastLogin = new Date();
-    await admin.save();
+    const updatedAdmin = await this.prisma.admin.update({
+      where: { id: admin.id },
+      data: { lastLogin: new Date(), updatedAt: new Date() },
+    });
 
-    return admin;
+    return this.toAdminResponse(updatedAdmin);
   }
 
   async createAdmin(
     creatorId: string,
     createAdminDto: CreateAdminDto,
-  ): Promise<AdminDocument> {
-    const creator = await this.adminModel.findById(creatorId);
+  ): Promise<AdminResponse> {
+    const creator = await this.prisma.admin.findUnique({
+      where: { id: creatorId },
+    });
     if (!creator) throw new NotFoundException('Creator admin not found');
 
-    if (creator.role !== Role.SUPER_ADMIN) {
+    if (creator.role !== AdminRole.SUPER_ADMIN) {
       throw new ForbiddenException('Only SUPER_ADMIN can create new admins');
     }
 
-    const existingAdmin = await this.adminModel.findOne({
-      username: createAdminDto.username,
+    const existingAdmin = await this.prisma.admin.findFirst({
+      where: {
+        username: createAdminDto.username,
+      },
     });
-    if (existingAdmin) throw new ConflictException('Username already exists');
+    if (existingAdmin) {
+      throw new ConflictException('Username already exists');
+    }
 
     const hashedPassword = await this.hashPassword(createAdminDto.password);
 
-    const admin = new this.adminModel({
-      ...createAdminDto,
-      password: hashedPassword,
-      role: Role.ADMIN,
+    const admin = await this.prisma.admin.create({
+      data: {
+        id: createObjectIdString(),
+        username: createAdminDto.username,
+        password: hashedPassword,
+        displayName: createAdminDto.displayName,
+        role: AdminRole.ADMIN,
+        isActive: createAdminDto.isActive ?? true,
+      },
     });
 
-    await admin.save();
+    const adminResponse = this.toAdminResponse(admin);
 
-    // ── Notify admins ─────────────────────────────────────────
     try {
       const creatorName =
         creator.displayName || creator.username || 'Super Admin';
-      await this.notificationGateway.emitAdminCreated(admin, creatorName);
+      await this.notificationGateway.emitAdminCreated(
+        adminResponse,
+        creatorName,
+      );
     } catch (e: unknown) {
-  console.error(
-    '⚠️ Admin notification failed:',
-    e instanceof Error ? e.message : String(e),
-  );
-}
-    // ─────────────────────────────────────────────────────────
+      console.error(
+        'Admin notification failed:',
+        e instanceof Error ? e.message : String(e),
+      );
+    }
 
-    return admin;
+    return adminResponse;
   }
 
   async findAll(
     page: number = 1,
     limit: number = 10,
     search?: string,
-    filters: any = {},
+    filters: AdminListFilters = {},
   ): Promise<{
-    data: AdminDocument[];
+    data: AdminResponse[];
     total: number;
     page: number;
     pages: number;
   }> {
     const skip = (page - 1) * limit;
-    const query: any = { ...filters };
+    const where: Prisma.AdminWhereInput = {};
+
+    if (filters.role) where.role = this.toPrismaRole(filters.role);
+    if (filters.isActive !== undefined) where.isActive = filters.isActive;
 
     if (search) {
-      query.$or = [
-        { username: { $regex: search, $options: 'i' } },
-        { displayName: { $regex: search, $options: 'i' } },
+      where.OR = [
+        { username: { contains: search } },
+        { displayName: { contains: search } },
       ];
     }
 
     const [data, total] = await Promise.all([
-      this.adminModel
-        .find(query)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .exec(),
-      this.adminModel.countDocuments(query),
+      this.prisma.admin.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.admin.count({ where }),
     ]);
 
-    return { data, total, page, pages: Math.ceil(total / limit) };
+    return {
+      data: data.map((admin) => this.toAdminResponse(admin)),
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+    };
   }
 
-  async findById(id: string) {
-    console.log('Received ID:', id, 'Type:', typeof id);
+  async findById(id: string): Promise<AdminResponse> {
     if (!id || id === 'undefined') {
       throw new BadRequestException('Invalid ID');
     }
 
-    const admin = await this.adminModel.findById(id).exec();
+    const admin = await this.prisma.admin.findUnique({
+      where: { id },
+    });
     if (!admin) throw new NotFoundException('Admin not found');
-    return admin;
+    return this.toAdminResponse(admin);
   }
 
-  async findByUsername(username: string): Promise<AdminDocument | null> {
-    return this.adminModel.findOne({ username });
+  async findByUsername(username: string): Promise<AdminResponse | null> {
+    const admin = await this.prisma.admin.findUnique({
+      where: { username },
+    });
+
+    return admin ? this.toAdminResponse(admin) : null;
   }
 
   async updateAdmin(
     id: string,
     updateAdminDto: UpdateAdminDto,
-    updaterName: string = 'Admin', // ← ADDED
-  ): Promise<AdminDocument> {
+    updaterName: string = 'Admin',
+  ): Promise<AdminResponse> {
+    const existingTarget = await this.prisma.admin.findUnique({
+      where: { id },
+    });
+    if (!existingTarget) throw new NotFoundException('Admin not found');
+
     if (updateAdminDto.username) {
-      const existingAdmin = await this.adminModel.findOne({
-        username: updateAdminDto.username,
-        _id: { $ne: id },
+      const existingAdmin = await this.prisma.admin.findFirst({
+        where: {
+          username: updateAdminDto.username,
+          NOT: { id },
+        },
       });
-      if (existingAdmin) throw new ConflictException('Username already taken');
+      if (existingAdmin) {
+        throw new ConflictException('Username already taken');
+      }
     }
 
+    const updateData: Prisma.AdminUpdateInput = {
+      updatedAt: new Date(),
+    };
+
+    if (updateAdminDto.username !== undefined) {
+      updateData.username = updateAdminDto.username;
+    }
+    if (updateAdminDto.displayName !== undefined) {
+      updateData.displayName = updateAdminDto.displayName;
+    }
+    if (updateAdminDto.isActive !== undefined) {
+      updateData.isActive = updateAdminDto.isActive;
+    }
+    if (updateAdminDto.role !== undefined) {
+      updateData.role = this.toPrismaRole(updateAdminDto.role);
+    }
     if (updateAdminDto.password) {
-      updateAdminDto.password = await this.hashPassword(
-        updateAdminDto.password,
+      updateData.password = await this.hashPassword(updateAdminDto.password);
+    }
+
+    await this.ensureActiveSuperAdminRemains(
+      existingTarget,
+      updateAdminDto.role !== undefined
+        ? this.toPrismaRole(updateAdminDto.role)
+        : existingTarget.role,
+      updateAdminDto.isActive !== undefined
+        ? updateAdminDto.isActive
+        : existingTarget.isActive,
+    );
+
+    const admin = await this.prisma.admin.update({
+      where: { id },
+      data: updateData,
+    });
+
+    const adminResponse = this.toAdminResponse(admin);
+
+    try {
+      await this.notificationGateway.emitAdminUpdated(
+        adminResponse,
+        updaterName,
+      );
+    } catch (e: unknown) {
+      console.error(
+        'Admin notification failed:',
+        e instanceof Error ? e.message : String(e),
       );
     }
 
-    const admin = await this.adminModel
-      .findByIdAndUpdate(
-        id,
-        { ...updateAdminDto, updatedAt: new Date() },
-        { new: true, runValidators: true },
-      )
-      .exec();
+    return adminResponse;
+  }
 
-    if (!admin) throw new NotFoundException('Admin not found');
-
-    // ── Notify admins ─────────────────────────────────────────
-    try {
-      await this.notificationGateway.emitAdminUpdated(admin, updaterName);
-    } catch (e: unknown) {
-  console.error(
-    '⚠️ Admin notification failed:',
-    e instanceof Error ? e.message : String(e),
-  );
-}
-    // ─────────────────────────────────────────────────────────
-
-    return admin;
+  async updateOwnProfile(
+    id: string,
+    updateProfileDto: UpdateAdminProfileDto,
+    updaterName: string = 'Admin',
+  ): Promise<AdminResponse> {
+    return this.updateAdmin(
+      id,
+      {
+        username: updateProfileDto.username,
+        displayName: updateProfileDto.displayName,
+      },
+      updaterName,
+    );
   }
 
   async deleteAdmin(
     id: string,
-    deleterName: string = 'Admin', // ← ADDED
-  ): Promise<AdminDocument> {
-    const admin = await this.adminModel.findByIdAndDelete(id);
-    if (!admin) throw new NotFoundException('Admin not found');
+    deleterName: string = 'Admin',
+  ): Promise<AdminResponse> {
+    const existingAdmin = await this.prisma.admin.findUnique({
+      where: { id },
+    });
+    if (!existingAdmin) throw new NotFoundException('Admin not found');
 
-    // ── Notify admins ─────────────────────────────────────────
+    await this.ensureActiveSuperAdminRemains(
+      existingAdmin,
+      AdminRole.ADMIN,
+      false,
+    );
+
+    const admin = await this.prisma.admin.delete({
+      where: { id },
+    });
+
+    const adminResponse = this.toAdminResponse(admin);
+
     try {
       await this.notificationGateway.emitAdminDeleted(
         admin.displayName || admin.username,
         deleterName,
       );
     } catch (e: unknown) {
-  console.error(
-    '⚠️ Admin notification failed:',
-    e instanceof Error ? e.message : String(e),
-  );
-}
-    // ─────────────────────────────────────────────────────────
+      console.error(
+        'Admin notification failed:',
+        e instanceof Error ? e.message : String(e),
+      );
+    }
 
-    return admin;
+    return adminResponse;
   }
 
   async changePassword(
@@ -217,7 +361,9 @@ export class AdminService {
     currentPassword: string,
     newPassword: string,
   ): Promise<void> {
-    const admin = await this.adminModel.findById(id);
+    const admin = await this.prisma.admin.findUnique({
+      where: { id },
+    });
     if (!admin) throw new NotFoundException('Admin not found');
 
     const isPasswordValid = await bcrypt.compare(
@@ -228,44 +374,66 @@ export class AdminService {
       throw new BadRequestException('Current password is incorrect');
     }
 
-    admin.password = await this.hashPassword(newPassword);
-    admin.updatedAt = new Date();
-    await admin.save();
+    await this.prisma.admin.update({
+      where: { id },
+      data: {
+        password: await this.hashPassword(newPassword),
+        updatedAt: new Date(),
+      },
+    });
   }
 
   async toggleActiveStatus(
     id: string,
-    togglerName: string = 'Admin', // ← ADDED
-  ): Promise<AdminDocument> {
-    const admin = await this.adminModel.findById(id);
-    if (!admin) throw new NotFoundException('Admin not found');
+    togglerName: string = 'Admin',
+  ): Promise<AdminResponse> {
+    const existingAdmin = await this.prisma.admin.findUnique({
+      where: { id },
+    });
+    if (!existingAdmin) throw new NotFoundException('Admin not found');
 
-    admin.isActive = !admin.isActive;
-    admin.updatedAt = new Date();
-    await admin.save();
+    await this.ensureActiveSuperAdminRemains(
+      existingAdmin,
+      existingAdmin.role,
+      !existingAdmin.isActive,
+    );
 
-    // ── Notify admins ─────────────────────────────────────────
+    const admin = await this.prisma.admin.update({
+      where: { id },
+      data: {
+        isActive: !existingAdmin.isActive,
+        updatedAt: new Date(),
+      },
+    });
+
+    const adminResponse = this.toAdminResponse(admin);
+
     try {
-      await this.notificationGateway.emitAdminToggled(admin, togglerName);
+      await this.notificationGateway.emitAdminToggled(
+        adminResponse,
+        togglerName,
+      );
     } catch (e: unknown) {
-  console.error(
-    '⚠️ Admin notification failed:',
-    e instanceof Error ? e.message : String(e),
-  );
-}
-    // ─────────────────────────────────────────────────────────
+      console.error(
+        'Admin notification failed:',
+        e instanceof Error ? e.message : String(e),
+      );
+    }
 
-    return admin;
+    return adminResponse;
   }
 
-  async getStatistics(): Promise<any> {
+  async getStatistics(): Promise<AdminStatistics> {
     const [total, active, superAdmins, admins, latestAdmins] =
       await Promise.all([
-        this.adminModel.countDocuments(),
-        this.adminModel.countDocuments({ isActive: true }),
-        this.adminModel.countDocuments({ role: Role.SUPER_ADMIN }),
-        this.adminModel.countDocuments({ role: Role.ADMIN }),
-        this.adminModel.find().sort({ createdAt: -1 }).limit(5).exec(),
+        this.prisma.admin.count(),
+        this.prisma.admin.count({ where: { isActive: true } }),
+        this.prisma.admin.count({ where: { role: AdminRole.SUPER_ADMIN } }),
+        this.prisma.admin.count({ where: { role: AdminRole.ADMIN } }),
+        this.prisma.admin.findMany({
+          orderBy: { createdAt: 'desc' },
+          take: 5,
+        }),
       ]);
 
     return {
@@ -273,40 +441,52 @@ export class AdminService {
       active,
       inactive: total - active,
       byRole: { superAdmins, admins },
-      latestAdmins,
+      latestAdmins: latestAdmins.map((admin) => this.toAdminResponse(admin)),
     };
   }
 
-  async getAdminsByRole(role: Role): Promise<AdminDocument[]> {
-    return this.adminModel
-      .find({ role, isActive: true })
-      .sort({ username: 1 })
-      .exec();
+  async getAdminsByRole(role: Role): Promise<AdminResponse[]> {
+    const admins = await this.prisma.admin.findMany({
+      where: {
+        role: this.toPrismaRole(role),
+        isActive: true,
+      },
+      orderBy: { username: 'asc' },
+    });
+
+    return admins.map((admin) => this.toAdminResponse(admin));
   }
 
-  async getActiveAdmins(): Promise<AdminDocument[]> {
-    return this.adminModel
-      .find({ isActive: true })
-      .sort({ username: 1 })
-      .exec();
+  async getActiveAdmins(): Promise<AdminResponse[]> {
+    const admins = await this.prisma.admin.findMany({
+      where: { isActive: true },
+      orderBy: { username: 'asc' },
+    });
+
+    return admins.map((admin) => this.toAdminResponse(admin));
   }
 
-  async searchAdmins(query: string): Promise<AdminDocument[]> {
-    return this.adminModel
-      .find({
-        $or: [
-          { username: { $regex: query, $options: 'i' } },
-          { displayName: { $regex: query, $options: 'i' } },
+  async searchAdmins(query: string): Promise<AdminResponse[]> {
+    const admins = await this.prisma.admin.findMany({
+      where: {
+        OR: [
+          { username: { contains: query } },
+          { displayName: { contains: query } },
         ],
-      })
-      .sort({ username: 1 })
-      .exec();
+      },
+      orderBy: { username: 'asc' },
+    });
+
+    return admins.map((admin) => this.toAdminResponse(admin));
   }
 
   async updateLastLogin(id: string): Promise<void> {
-    await this.adminModel.findByIdAndUpdate(id, {
-      lastLogin: new Date(),
-      updatedAt: new Date(),
+    await this.prisma.admin.update({
+      where: { id },
+      data: {
+        lastLogin: new Date(),
+        updatedAt: new Date(),
+      },
     });
   }
 

@@ -12,6 +12,7 @@ import {
   Calendar,
 } from "lucide-react";
 import { adminAPI } from "@/lib/api/api";
+import { getLocalStorageValue } from "@/lib/browser-storage";
 import { format } from "date-fns";
 import type { Admin } from "@/types";
 
@@ -30,8 +31,8 @@ export default function AdminDetailPage() {
 
   const isSuperAdmin =
     typeof window !== "undefined" &&
-    localStorage.getItem("user")
-      ? JSON.parse(localStorage.getItem("user") || "{}").role ===
+    getLocalStorageValue("user")
+      ? JSON.parse(getLocalStorageValue("user") || "{}").role ===
         "SUPER_ADMIN"
       : false;
 

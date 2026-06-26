@@ -15,54 +15,80 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { AdStatus } from '@prisma/client';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import * as fs from 'fs';
-import { AdsService } from './ads.service';
-import { CreateAdDto } from './dto/create-ad.dto';
-import { UpdateAdDto } from './dto/update-ad.dto';
+import { AuthenticatedRequest } from '../auth/interfaces/authenticated-request.interface';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Role } from '../admin/schemas/admin.schema';
+import { AdFindAllFilters, AdsService } from './ads.service';
+import { CreateAdDto } from './dto/create-ad.dto';
+import { UpdateAdDto } from './dto/update-ad.dto';
+
+interface AdsQuery {
+  page?: string;
+  limit?: string;
+  isActive?: string;
+  status?: string;
+}
 
 @Controller('ads')
 export class AdsController {
   constructor(private readonly adsService: AdsService) {}
 
+  private parseAdStatus(status?: string): AdStatus | undefined {
+    switch (status) {
+      case AdStatus.pending:
+        return AdStatus.pending;
+      case AdStatus.active:
+        return AdStatus.active;
+      case AdStatus.inactive:
+        return AdStatus.inactive;
+      case AdStatus.expired:
+        return AdStatus.expired;
+      default:
+        return undefined;
+    }
+  }
+
   @Get()
-async getAllAds(@Query() query: any) {
-  const page = parseInt(query.page) || 1;
-  const limit = parseInt(query.limit) || 10;
+  async getAllAds(@Query() query: AdsQuery) {
+    const page = parseInt(query.page || '1', 10) || 1;
+    const limit = parseInt(query.limit || '10', 10) || 10;
 
-  const filters: any = {};
-  if (query.isActive !== undefined) {
-    filters.isActive = query.isActive === 'true';
+    const filters: AdFindAllFilters = {};
+    if (query.isActive !== undefined) {
+      filters.isActive = query.isActive === 'true';
+    }
+
+    const status = this.parseAdStatus(query.status);
+    if (status) {
+      filters.status = status;
+    }
+
+    const result = await this.adsService.findAll(page, limit, filters);
+    return { success: true, ...result };
   }
-  if (query.status) {
-    filters.status = query.status;
+
+  @Get('public')
+  async getPublicAds(@Query() query: AdsQuery) {
+    const page = parseInt(query.page || '1', 10) || 1;
+    const limit = parseInt(query.limit || '10', 10) || 10;
+    const now = new Date();
+
+    const filters: AdFindAllFilters = {
+      isActive: true,
+      status: AdStatus.active,
+      startDateLte: now,
+      endDateGte: now,
+    };
+
+    const result = await this.adsService.findAll(page, limit, filters);
+    return { success: true, ...result };
   }
-
-  const result = await this.adsService.findAll(page, limit, filters);
-  return { success: true, ...result };
-}
-
-@Get('public')
-async getPublicAds(@Query() query: any) {
-  const page = parseInt(query.page) || 1;
-  const limit = parseInt(query.limit) || 10;
-  const now = new Date();
-
-  const filters: any = {
-    isActive: true,
-    status: 'active',
-    startDate: { $lte: now },
-    endDate: { $gte: now },
-  };
-
-  const result = await this.adsService.findAll(page, limit, filters);
-  return { success: true, ...result };
-}
 
   @Get(':id')
   async getAd(@Param('id') id: string) {
@@ -93,19 +119,15 @@ async getPublicAds(@Query() query: any) {
     }),
   )
   async createAd(
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
     @Body() createAdDto: CreateAdDto,
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) throw new BadRequestException('Image file is required');
 
-    const authorId = req.user.sub;
-    const authorName =
-      req.user.displayName || req.user.username || req.user.email || 'Admin'; // ← GET author name
-
     createAdDto.image = `/uploads/ads/${file.filename}`;
-    console.log('✅ Saving image path:', createAdDto.image);
-    const ad = await this.adsService.create(createAdDto, authorId);
+    const ad = await this.adsService.create(createAdDto, req.user.sub);
+
     return {
       success: true,
       message: 'Ad created successfully',
@@ -129,17 +151,17 @@ async getPublicAds(@Query() query: any) {
     }),
   )
   async updateAd(
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
     @Body() updateAdDto: UpdateAdDto,
     @UploadedFile() file?: Express.Multer.File,
   ) {
-    const authorName =
-      req.user.displayName || req.user.username || req.user.email || 'Admin'; // ← GET author name
+    const authorName = req.user.displayName || req.user.username || 'Admin';
 
     if (file) {
       updateAdDto.image = `/uploads/ads/${file.filename}`;
     }
+
     const ad = await this.adsService.update(id, updateAdDto, authorName);
     return {
       success: true,
@@ -194,13 +216,28 @@ async getPublicAds(@Query() query: any) {
     };
   }
 
+  @Put(':id/toggle-active')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  async toggleActive(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+  ) {
+    const authorName = req.user.displayName || req.user.username || 'Admin';
+    const ad = await this.adsService.toggleActive(id, authorName);
+
+    return {
+      success: true,
+      message: `Ad ${ad.isActive ? 'activated' : 'deactivated'} successfully`,
+      data: ad,
+    };
+  }
+
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)
-  async deleteAd(@Req() req: any, @Param('id') id: string) {
-    const authorName =
-      req.user.displayName || req.user.username || req.user.email || 'Admin'; // ← GET author name
-
+  async deleteAd(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    const authorName = req.user.displayName || req.user.username || 'Admin';
     await this.adsService.delete(id, authorName);
 
     return {

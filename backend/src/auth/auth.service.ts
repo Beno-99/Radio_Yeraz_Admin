@@ -6,27 +6,58 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Admin as PrismaAdmin, AdminRole, RefreshToken } from '@prisma/client';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcrypt';
-import { Admin, AdminDocument, Role } from '../admin/schemas/admin.schema';
-import {
-  RefreshToken,
-  RefreshTokenDocument,
-} from './schemas/refresh-token.schema';
 import { LoginAdminDto } from '../admin/dto/login-admin.dto';
+import { Role } from '../admin/schemas/admin.schema';
+import { createObjectIdString } from '../common/utils/object-id.utils';
+import { PrismaService } from '../prisma/prisma.service';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { TokenResponseDto } from './dto/token-response.dto';
-import { ChangePasswordDto } from './dto/change-password.dto';
+
+interface TokenPair {
+  accessToken: string;
+  refreshToken: string;
+}
+
+export interface SafeAdminResponse
+  extends Omit<PrismaAdmin, 'password' | 'role'> {
+  _id: string;
+  role: Role;
+  __v: number;
+}
+
+export interface RefreshTokenResponse extends Omit<RefreshToken, 'adminId'> {
+  _id: string;
+  admin: string;
+  __v: number;
+}
+
+interface JwtTokenPayload {
+  sub: string;
+  username?: string;
+  role?: Role;
+  type?: string;
+  iat?: number;
+  exp?: number;
+}
+
+interface AdminProfileUpdateData {
+  username?: string;
+  password?: string;
+  displayName?: string;
+  isActive?: boolean;
+  lastLogin?: Date;
+  role?: Role;
+}
 
 @Injectable()
 export class AuthService {
   constructor(
-    @InjectModel(Admin.name) private adminModel: Model<AdminDocument>,
-    @InjectModel(RefreshToken.name)
-    private refreshTokenModel: Model<RefreshTokenDocument>,
-    private jwtService: JwtService,
+    private readonly prisma: PrismaService,
+    private readonly jwtService: JwtService,
   ) {}
 
   // ============ TOKEN GENERATION METHODS ============
@@ -34,12 +65,44 @@ export class AuthService {
     return crypto.randomBytes(40).toString('hex');
   }
 
-  private async generateAccessToken(admin: AdminDocument): Promise<string> {
+  private async hashPassword(password: string): Promise<string> {
+    const salt = await bcrypt.genSalt(10);
+    return bcrypt.hash(password, salt);
+  }
+
+  private toApiRole(role: AdminRole): Role {
+    return role === AdminRole.SUPER_ADMIN ? Role.SUPER_ADMIN : Role.ADMIN;
+  }
+
+  private toSafeAdminResponse(admin: PrismaAdmin): SafeAdminResponse {
+    const { password, role, ...adminWithoutPassword } = admin;
+    void password;
+
+    return {
+      ...adminWithoutPassword,
+      _id: admin.id,
+      role: this.toApiRole(role),
+      __v: 0,
+    };
+  }
+
+  private toRefreshTokenResponse(token: RefreshToken): RefreshTokenResponse {
+    const { adminId, ...tokenWithoutAdminId } = token;
+
+    return {
+      ...tokenWithoutAdminId,
+      _id: token.id,
+      admin: adminId,
+      __v: 0,
+    };
+  }
+
+  private generateAccessToken(admin: PrismaAdmin): string {
     return this.jwtService.sign(
       {
-        sub: admin._id,
+        sub: admin.id,
         username: admin.username,
-        role: admin.role,
+        role: this.toApiRole(admin.role),
       },
       {
         expiresIn: '1h',
@@ -49,7 +112,7 @@ export class AuthService {
 
   private getRefreshTokenExpiry(): Date {
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7); // 7 days
+    expiresAt.setDate(expiresAt.getDate() + 7);
     return expiresAt;
   }
 
@@ -57,10 +120,10 @@ export class AuthService {
   async validateAdminCredentials(
     username: string,
     password: string,
-  ): Promise<AdminDocument | null> {
-    const admin = await this.adminModel
-      .findOne({ username })
-      .select('+password');
+  ): Promise<PrismaAdmin | null> {
+    const admin = await this.prisma.admin.findUnique({
+      where: { username },
+    });
 
     if (!admin || !admin.isActive) {
       return null;
@@ -74,11 +137,13 @@ export class AuthService {
     return admin;
   }
 
-  async validateRefreshToken(token: string): Promise<RefreshTokenDocument> {
-    const refreshToken = await this.refreshTokenModel.findOne({
-      token,
-      isRevoked: false,
-      expiresAt: { $gt: new Date() },
+  async validateRefreshToken(token: string): Promise<RefreshToken> {
+    const refreshToken = await this.prisma.refreshToken.findFirst({
+      where: {
+        token,
+        isRevoked: false,
+        expiresAt: { gt: new Date() },
+      },
     });
 
     if (!refreshToken) {
@@ -90,22 +155,18 @@ export class AuthService {
 
   // ============ AUTHENTICATION METHODS ============
   async login(loginDto: LoginAdminDto) {
-    // 1. Find admin by username
-    const admin = await this.adminModel
-      .findOne({ username: loginDto.username })
-      .select('+password')
-      .exec();
+    const admin = await this.prisma.admin.findUnique({
+      where: { username: loginDto.username },
+    });
 
     if (!admin) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // 2. Check if admin is active
     if (!admin.isActive) {
       throw new UnauthorizedException('Account is inactive');
     }
 
-    // 3. Verify password
     const isPasswordValid = await bcrypt.compare(
       loginDto.password,
       admin.password,
@@ -115,12 +176,12 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // 4. Update last login
-    admin.lastLogin = new Date();
-    await admin.save();
+    const updatedAdmin = await this.prisma.admin.update({
+      where: { id: admin.id },
+      data: { lastLogin: new Date(), updatedAt: new Date() },
+    });
 
-    // 5. Generate tokens
-    const tokens = await this.generateTokens(admin);
+    const tokens = await this.generateTokens(updatedAdmin);
 
     return {
       success: true,
@@ -128,40 +189,38 @@ export class AuthService {
       data: {
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
-        expiresIn: 3600, // 1 hour in seconds
+        expiresIn: 3600,
         admin: {
-          id: admin._id,
-          username: admin.username,
-          displayName: admin.displayName,
-          role: admin.role,
+          id: updatedAdmin.id,
+          username: updatedAdmin.username,
+          displayName: updatedAdmin.displayName,
+          role: this.toApiRole(updatedAdmin.role),
         },
       },
     };
   }
 
-  private async generateTokens(admin: AdminDocument) {
-    // ✅ admin._id is available here
+  private async generateTokens(admin: PrismaAdmin): Promise<TokenPair> {
     const accessTokenPayload = {
-      sub: admin._id.toString(),
+      sub: admin.id,
       username: admin.username,
-      role: admin.role,
+      role: this.toApiRole(admin.role),
     };
 
     const accessToken = this.jwtService.sign(accessTokenPayload, {
       expiresIn: '1h',
     });
 
-    const refreshToken = this.jwtService.sign(
-      { sub: admin._id.toString(), type: 'refresh' },
-      { expiresIn: '7d' },
-    );
+    const refreshToken = this.generateRefreshToken();
 
-    // Save refresh token
-    await this.refreshTokenModel.create({
-      token: refreshToken,
-      admin: admin._id, // ✅ Can use directly as ObjectId
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      isRevoked: false,
+    await this.prisma.refreshToken.create({
+      data: {
+        id: createObjectIdString(),
+        token: refreshToken,
+        adminId: admin.id,
+        expiresAt: this.getRefreshTokenExpiry(),
+        isRevoked: false,
+      },
     });
 
     return { accessToken, refreshToken };
@@ -170,13 +229,13 @@ export class AuthService {
   async refreshToken(
     refreshTokenDto: RefreshTokenDto,
   ): Promise<TokenResponseDto> {
-    // Validate refresh token
     const refreshToken = await this.validateRefreshToken(
       refreshTokenDto.refreshToken,
     );
 
-    // Get admin
-    const admin = await this.adminModel.findById(refreshToken.admin);
+    const admin = await this.prisma.admin.findUnique({
+      where: { id: refreshToken.adminId },
+    });
     if (!admin) {
       throw new UnauthorizedException('Admin not found');
     }
@@ -185,36 +244,35 @@ export class AuthService {
       throw new UnauthorizedException('Admin account is inactive');
     }
 
-    // Generate new tokens
-    const accessToken = await this.generateAccessToken(admin);
+    const accessToken = this.generateAccessToken(admin);
     const newRefreshToken = this.generateRefreshToken();
     const expiresAt = this.getRefreshTokenExpiry();
 
-    // Update refresh token (token rotation)
-    refreshToken.token = newRefreshToken;
-    refreshToken.expiresAt = expiresAt;
-    await refreshToken.save();
-
-    // Remove password from admin object
-    const adminWithoutPassword = admin.toObject();
-    delete adminWithoutPassword.password;
+    await this.prisma.refreshToken.update({
+      where: { id: refreshToken.id },
+      data: {
+        token: newRefreshToken,
+        expiresAt,
+        updatedAt: new Date(),
+      },
+    });
 
     return new TokenResponseDto(
       accessToken,
       newRefreshToken,
       3600,
-      adminWithoutPassword,
+      this.toSafeAdminResponse(admin),
     );
   }
 
   // ============ LOGOUT METHODS ============
   async logout(refreshTokenDto: RefreshTokenDto): Promise<{ message: string }> {
-    const result = await this.refreshTokenModel.updateOne(
-      { token: refreshTokenDto.refreshToken },
-      { isRevoked: true, updatedAt: new Date() },
-    );
+    const result = await this.prisma.refreshToken.updateMany({
+      where: { token: refreshTokenDto.refreshToken },
+      data: { isRevoked: true, updatedAt: new Date() },
+    });
 
-    if (result.modifiedCount === 0) {
+    if (result.count === 0) {
       throw new NotFoundException('Refresh token not found');
     }
 
@@ -222,16 +280,17 @@ export class AuthService {
   }
 
   async logoutAll(adminId: string): Promise<{ message: string }> {
-    // Validate admin exists
-    const admin = await this.adminModel.findById(adminId);
+    const admin = await this.prisma.admin.findUnique({
+      where: { id: adminId },
+    });
     if (!admin) {
       throw new NotFoundException('Admin not found');
     }
 
-    await this.refreshTokenModel.updateMany(
-      { admin: adminId, isRevoked: false },
-      { isRevoked: true, updatedAt: new Date() },
-    );
+    await this.prisma.refreshToken.updateMany({
+      where: { adminId, isRevoked: false },
+      data: { isRevoked: true, updatedAt: new Date() },
+    });
 
     return { message: 'Logged out from all devices' };
   }
@@ -239,27 +298,26 @@ export class AuthService {
   // ============ PASSWORD MANAGEMENT ============
   async changePassword(
     adminId: string,
-    changePasswordDto: ChangePasswordDto, // Just the DTO
+    changePasswordDto: ChangePasswordDto,
   ): Promise<{ message: string }> {
-    // Use changePasswordDto.currentPassword and changePasswordDto.newPassword
-    const admin = await this.adminModel.findById(adminId).select('+password');
+    const admin = await this.prisma.admin.findUnique({
+      where: { id: adminId },
+    });
 
     if (!admin) {
       throw new NotFoundException('Admin not found');
     }
 
-    // Validate current password
     const isPasswordValid = await bcrypt.compare(
-      changePasswordDto.currentPassword, // Access from DTO
+      changePasswordDto.currentPassword,
       admin.password,
     );
     if (!isPasswordValid) {
       throw new UnauthorizedException('Current password is incorrect');
     }
 
-    // Check if new password is same as old
     const isSamePassword = await bcrypt.compare(
-      changePasswordDto.newPassword, // Access from DTO
+      changePasswordDto.newPassword,
       admin.password,
     );
     if (isSamePassword) {
@@ -268,12 +326,14 @@ export class AuthService {
       );
     }
 
-    // Update password
-    admin.password = changePasswordDto.newPassword; // Access from DTO
-    admin.updatedAt = new Date();
-    await admin.save();
+    await this.prisma.admin.update({
+      where: { id: adminId },
+      data: {
+        password: await this.hashPassword(changePasswordDto.newPassword),
+        updatedAt: new Date(),
+      },
+    });
 
-    // Revoke all tokens for security
     await this.logoutAll(adminId);
 
     return { message: 'Password changed successfully. Please login again.' };
@@ -283,101 +343,152 @@ export class AuthService {
     adminId: string,
     newPassword: string,
   ): Promise<{ message: string }> {
-    const admin = await this.adminModel.findById(adminId);
+    const admin = await this.prisma.admin.findUnique({
+      where: { id: adminId },
+    });
     if (!admin) {
       throw new NotFoundException('Admin not found');
     }
 
-    admin.password = newPassword;
-    admin.updatedAt = new Date();
-    await admin.save();
+    await this.prisma.admin.update({
+      where: { id: adminId },
+      data: {
+        password: await this.hashPassword(newPassword),
+        updatedAt: new Date(),
+      },
+    });
 
-    // Revoke all tokens
     await this.logoutAll(adminId);
 
     return { message: 'Password reset successfully. Please login again.' };
   }
 
   // ============ TOKEN MANAGEMENT ============
-  async getAdminTokens(adminId: string): Promise<RefreshTokenDocument[]> {
-    // Validate admin exists
-    const admin = await this.adminModel.findById(adminId);
+  async getAdminTokens(adminId: string): Promise<RefreshTokenResponse[]> {
+    const admin = await this.prisma.admin.findUnique({
+      where: { id: adminId },
+    });
     if (!admin) {
       throw new NotFoundException('Admin not found');
     }
 
-    return this.refreshTokenModel
-      .find({ admin: adminId })
-      .sort({ createdAt: -1 })
-      .exec();
+    const tokens = await this.prisma.refreshToken.findMany({
+      where: { adminId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return tokens.map((token) => this.toRefreshTokenResponse(token));
   }
 
-  async revokeTokenById(tokenId: string): Promise<RefreshTokenDocument> {
-    const token = await this.refreshTokenModel.findByIdAndUpdate(
-      tokenId,
-      { isRevoked: true, updatedAt: new Date() },
-      { new: true },
-    );
+  async revokeTokenById(tokenId: string): Promise<RefreshTokenResponse> {
+    const token = await this.prisma.refreshToken.findUnique({
+      where: { id: tokenId },
+    });
 
     if (!token) {
       throw new NotFoundException('Token not found');
     }
 
-    return token;
+    const updatedToken = await this.prisma.refreshToken.update({
+      where: { id: tokenId },
+      data: { isRevoked: true, updatedAt: new Date() },
+    });
+
+    return this.toRefreshTokenResponse(updatedToken);
   }
 
-  async revokeTokenByValue(token: string): Promise<RefreshTokenDocument> {
-    const refreshToken = await this.refreshTokenModel.findOneAndUpdate(
-      { token },
-      { isRevoked: true, updatedAt: new Date() },
-      { new: true },
-    );
+  async revokeTokenByValue(token: string): Promise<RefreshTokenResponse> {
+    const refreshToken = await this.prisma.refreshToken.findUnique({
+      where: { token },
+    });
 
     if (!refreshToken) {
       throw new NotFoundException('Token not found');
     }
 
-    return refreshToken;
+    const updatedToken = await this.prisma.refreshToken.update({
+      where: { token },
+      data: { isRevoked: true, updatedAt: new Date() },
+    });
+
+    return this.toRefreshTokenResponse(updatedToken);
   }
 
   // ============ ADMIN MANAGEMENT ============
-  async getAdminProfile(adminId: string): Promise<AdminDocument> {
-    const admin = await this.adminModel.findById(adminId);
+  async getAdminProfile(adminId: string): Promise<SafeAdminResponse> {
+    const admin = await this.prisma.admin.findUnique({
+      where: { id: adminId },
+    });
     if (!admin) {
       throw new NotFoundException('Admin not found');
     }
 
-    // Remove password
-    const adminWithoutPassword = admin.toObject();
-    delete adminWithoutPassword.password;
-
-    return adminWithoutPassword as AdminDocument;
+    return this.toSafeAdminResponse(admin);
   }
 
   async updateAdminProfile(
     adminId: string,
-    updateData: Partial<Admin>,
-  ): Promise<AdminDocument> {
-    // Don't allow role update through profile (use admin service instead)
-    if (updateData.role) {
-      delete updateData.role;
-    }
+    updateData: AdminProfileUpdateData,
+  ): Promise<SafeAdminResponse> {
+    const data = await this.buildAdminProfileUpdateData(adminId, updateData);
 
-    const admin = await this.adminModel.findByIdAndUpdate(
-      adminId,
-      { ...updateData, updatedAt: new Date() },
-      { new: true, runValidators: true },
-    );
+    const admin = await this.prisma.admin.update({
+      where: { id: adminId },
+      data,
+    }).catch(() => null);
 
     if (!admin) {
       throw new NotFoundException('Admin not found');
     }
 
-    // Remove password
-    const adminWithoutPassword = admin.toObject();
-    delete adminWithoutPassword.password;
+    return this.toSafeAdminResponse(admin);
+  }
 
-    return adminWithoutPassword as AdminDocument;
+  private async buildAdminProfileUpdateData(
+    adminId: string,
+    updateData: AdminProfileUpdateData,
+  ) {
+    if (updateData.username !== undefined) {
+      const existingAdmin = await this.prisma.admin.findFirst({
+        where: {
+          username: updateData.username,
+          NOT: { id: adminId },
+        },
+      });
+
+      if (existingAdmin) {
+        throw new BadRequestException('Username already taken');
+      }
+    }
+
+    const data: {
+      username?: string;
+      password?: string;
+      displayName?: string;
+      isActive?: boolean;
+      lastLogin?: Date;
+      updatedAt: Date;
+    } = {
+      updatedAt: new Date(),
+    };
+
+    if (updateData.username !== undefined) {
+      data.username = updateData.username;
+    }
+    if (updateData.displayName !== undefined) {
+      data.displayName = updateData.displayName;
+    }
+    if (updateData.isActive !== undefined) {
+      data.isActive = updateData.isActive;
+    }
+    if (updateData.lastLogin !== undefined) {
+      data.lastLogin = updateData.lastLogin;
+    }
+    if (updateData.password !== undefined) {
+      data.password = await this.hashPassword(updateData.password);
+    }
+
+    return data;
   }
 
   // ============ SECURITY METHODS ============
@@ -385,19 +496,23 @@ export class AuthService {
     deletedCount: number;
     message: string;
   }> {
-    const result = await this.refreshTokenModel.deleteMany({
-      $or: [
-        { expiresAt: { $lt: new Date() } },
-        {
-          isRevoked: true,
-          updatedAt: { $lt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
-        }, // Delete revoked tokens older than 30 days
-      ],
+    const result = await this.prisma.refreshToken.deleteMany({
+      where: {
+        OR: [
+          { expiresAt: { lt: new Date() } },
+          {
+            isRevoked: true,
+            updatedAt: {
+              lt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+            },
+          },
+        ],
+      },
     });
 
     return {
-      deletedCount: result.deletedCount,
-      message: `Cleaned up ${result.deletedCount} expired/revoked tokens`,
+      deletedCount: result.count,
+      message: `Cleaned up ${result.count} expired/revoked tokens`,
     };
   }
 
@@ -408,15 +523,19 @@ export class AuthService {
     expired: number;
   }> {
     const [total, active, revoked, expired] = await Promise.all([
-      this.refreshTokenModel.countDocuments(),
-      this.refreshTokenModel.countDocuments({
-        isRevoked: false,
-        expiresAt: { $gt: new Date() },
+      this.prisma.refreshToken.count(),
+      this.prisma.refreshToken.count({
+        where: {
+          isRevoked: false,
+          expiresAt: { gt: new Date() },
+        },
       }),
-      this.refreshTokenModel.countDocuments({ isRevoked: true }),
-      this.refreshTokenModel.countDocuments({
-        expiresAt: { $lt: new Date() },
-        isRevoked: false,
+      this.prisma.refreshToken.count({ where: { isRevoked: true } }),
+      this.prisma.refreshToken.count({
+        where: {
+          expiresAt: { lt: new Date() },
+          isRevoked: false,
+        },
       }),
     ]);
 
@@ -424,34 +543,40 @@ export class AuthService {
   }
 
   // ============ VALIDATION HELPERS ============
-  async validateAccessToken(token: string): Promise<any> {
+  async validateAccessToken(token: string): Promise<JwtTokenPayload> {
     try {
-      return this.jwtService.verify(token);
-    } catch (error) {
+      return this.jwtService.verify<JwtTokenPayload>(token);
+    } catch {
       throw new UnauthorizedException('Invalid or expired access token');
     }
   }
 
   async isTokenRevoked(token: string): Promise<boolean> {
-    const refreshToken = await this.refreshTokenModel.findOne({ token });
+    const refreshToken = await this.prisma.refreshToken.findUnique({
+      where: { token },
+    });
     return refreshToken ? refreshToken.isRevoked : true;
   }
 
   // ============ ADMIN STATUS METHODS ============
   async checkAdminStatus(adminId: string): Promise<{
     isActive: boolean;
-    lastLogin: Date;
+    lastLogin: Date | null;
     hasActiveTokens: boolean;
   }> {
-    const admin = await this.adminModel.findById(adminId);
+    const admin = await this.prisma.admin.findUnique({
+      where: { id: adminId },
+    });
     if (!admin) {
       throw new NotFoundException('Admin not found');
     }
 
-    const activeTokens = await this.refreshTokenModel.countDocuments({
-      admin: adminId,
-      isRevoked: false,
-      expiresAt: { $gt: new Date() },
+    const activeTokens = await this.prisma.refreshToken.count({
+      where: {
+        adminId,
+        isRevoked: false,
+        expiresAt: { gt: new Date() },
+      },
     });
 
     return {
@@ -463,14 +588,14 @@ export class AuthService {
 
   // ============ BULK OPERATIONS ============
   async revokeAllTokens(): Promise<{ revokedCount: number; message: string }> {
-    const result = await this.refreshTokenModel.updateMany(
-      { isRevoked: false },
-      { isRevoked: true, updatedAt: new Date() },
-    );
+    const result = await this.prisma.refreshToken.updateMany({
+      where: { isRevoked: false },
+      data: { isRevoked: true, updatedAt: new Date() },
+    });
 
     return {
-      revokedCount: result.modifiedCount,
-      message: `Revoked ${result.modifiedCount} tokens`,
+      revokedCount: result.count,
+      message: `Revoked ${result.count} tokens`,
     };
   }
 
@@ -478,26 +603,25 @@ export class AuthService {
     cleanedCount: number;
     message: string;
   }> {
-    // Find inactive admins
-    const inactiveAdmins = await this.adminModel
-      .find({ isActive: false })
-      .select('_id');
+    const inactiveAdmins = await this.prisma.admin.findMany({
+      where: { isActive: false },
+      select: { id: true },
+    });
 
-    const adminIds = inactiveAdmins.map((admin) => admin._id);
+    const adminIds = inactiveAdmins.map((admin) => admin.id);
 
     if (adminIds.length === 0) {
       return { cleanedCount: 0, message: 'No inactive admins found' };
     }
 
-    // Revoke all tokens for inactive admins
-    const result = await this.refreshTokenModel.updateMany(
-      { admin: { $in: adminIds } },
-      { isRevoked: true, updatedAt: new Date() },
-    );
+    const result = await this.prisma.refreshToken.updateMany({
+      where: { adminId: { in: adminIds } },
+      data: { isRevoked: true, updatedAt: new Date() },
+    });
 
     return {
-      cleanedCount: result.modifiedCount,
-      message: `Revoked ${result.modifiedCount} tokens from inactive admins`,
+      cleanedCount: result.count,
+      message: `Revoked ${result.count} tokens from inactive admins`,
     };
   }
 }

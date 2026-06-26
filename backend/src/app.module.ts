@@ -19,7 +19,7 @@ import { StreamLinkModule } from './stream-link/stream-link.module';
       envFilePath: '.env',
     }),
     UploadModule,
-    DatabaseModule,
+    DatabaseModule.forRoot(),
     AuthModule,
     AdminModule,
     PostsModule,

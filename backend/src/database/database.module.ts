@@ -1,22 +1,31 @@
 // src/database/database.module.ts
-import { Module, Global } from '@nestjs/common';
+import 'dotenv/config';
+import { DynamicModule, Global, Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 
 @Global()
-@Module({
-  imports: [
-    MongooseModule.forRootAsync({
-      imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
-        uri: configService.get<string>(
-          'MONGODB_URI',
-          'mongodb://localhost:27017/radioyeraz',
-        ),
-      }),
-      inject: [ConfigService],
-    }),
-  ],
-  exports: [MongooseModule],
-})
-export class DatabaseModule {}
+@Module({})
+export class DatabaseModule {
+  static forRoot(): DynamicModule {
+    if (!process.env.MONGODB_URI) {
+      return {
+        module: DatabaseModule,
+      };
+    }
+
+    return {
+      module: DatabaseModule,
+      imports: [
+        MongooseModule.forRootAsync({
+          imports: [ConfigModule],
+          useFactory: async (configService: ConfigService) => ({
+            uri: configService.get<string>('MONGODB_URI'),
+          }),
+          inject: [ConfigService],
+        }),
+      ],
+      exports: [MongooseModule],
+    };
+  }
+}

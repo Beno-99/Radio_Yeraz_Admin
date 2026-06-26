@@ -1,4 +1,13 @@
 // src/auth/dto/token-response.dto.ts
+import { Role } from '../../admin/schemas/admin.schema';
+
+export interface TokenResponseAdmin {
+  _id: string;
+  username: string;
+  displayName: string;
+  role: Role | string;
+}
+
 export class TokenResponseDto {
   accessToken: string;
   refreshToken: string;
@@ -15,7 +24,7 @@ export class TokenResponseDto {
     accessToken: string,
     refreshToken: string,
     expiresIn: number,
-    admin: any,
+    admin: TokenResponseAdmin,
   ) {
     this.accessToken = accessToken;
     this.refreshToken = refreshToken;

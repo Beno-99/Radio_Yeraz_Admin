@@ -1,4 +1,9 @@
 import axios, { AxiosRequestConfig } from "axios";
+import {
+  getLocalStorageValue,
+  removeLocalStorageValue,
+  setLocalStorageValue,
+} from "@/lib/browser-storage";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL ||
@@ -14,11 +19,9 @@ const api = axios.create({
 
 // ✅ Attach token to every request
 api.interceptors.request.use((config) => {
-  if (typeof window !== "undefined") {
-    const token = localStorage.getItem("access_token");
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
+  const token = getLocalStorageValue("access_token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
@@ -52,7 +55,7 @@ api.interceptors.response.use(
     }
 
     try {
-      const refreshToken = localStorage.getItem("refresh_token");
+      const refreshToken = getLocalStorageValue("refresh_token");
 
       if (!refreshToken) {
         throw new Error("No refresh token available");
@@ -62,25 +65,47 @@ api.interceptors.response.use(
         refreshToken,
       });
 
-      const { access_token, refresh_token } = response.data as {
-        access_token: string;
+      const refreshData = response.data as {
+        accessToken?: string;
+        refreshToken?: string;
+        access_token?: string;
         refresh_token?: string;
+        data?: {
+          accessToken?: string;
+          refreshToken?: string;
+          access_token?: string;
+          refresh_token?: string;
+        };
       };
+      const accessToken =
+        refreshData.accessToken ??
+        refreshData.access_token ??
+        refreshData.data?.accessToken ??
+        refreshData.data?.access_token;
+      const nextRefreshToken =
+        refreshData.refreshToken ??
+        refreshData.refresh_token ??
+        refreshData.data?.refreshToken ??
+        refreshData.data?.refresh_token;
 
-      localStorage.setItem("access_token", access_token);
-      if (refresh_token) {
-        localStorage.setItem("refresh_token", refresh_token);
+      if (!accessToken) {
+        throw new Error("Refresh response did not include an access token");
       }
 
-      api.defaults.headers.common.Authorization = `Bearer ${access_token}`;
+      setLocalStorageValue("access_token", accessToken);
+      if (nextRefreshToken) {
+        setLocalStorageValue("refresh_token", nextRefreshToken);
+      }
+
+      api.defaults.headers.common.Authorization = `Bearer ${accessToken}`;
       if (originalRequest?.headers) {
-        (originalRequest.headers as Record<string, string>).Authorization = `Bearer ${access_token}`;
+        (originalRequest.headers as Record<string, string>).Authorization = `Bearer ${accessToken}`;
       }
 
       return api(originalRequest as AxiosRequestConfig);
     } catch (refreshError: unknown) {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("refresh_token");
+      removeLocalStorageValue("access_token");
+      removeLocalStorageValue("refresh_token");
 
       if (typeof window !== "undefined") {
         if (!window.location.pathname.includes("/login")) {
@@ -96,7 +121,10 @@ api.interceptors.response.use(
 export const authAPI = {
   login: (credentials: { username: string; password: string }) =>
     api.post("/auth/login", credentials),
-  logout: () => api.post("/auth/logout"),
+  logout: () => {
+    const refreshToken = getLocalStorageValue("refresh_token");
+    return api.post("/auth/logout", { refreshToken });
+  },
   changePassword: (data: { currentPassword: string; newPassword: string }) =>
     api.post("/auth/change-password", data),
 };
@@ -110,7 +138,6 @@ interface AdminParams {
 
 interface AdminData {
   username?: string;
-  email?: string;
   password?: string;
   role?: string;
   isActive?: boolean;
@@ -150,7 +177,7 @@ export const postsAPI = {
 
   getPost: (id: string) => api.get(`/posts/${id}`),
   getStats: async () => {
-    const { data } = await api.get("/posts/stats");
+    const { data } = await api.get("/posts/statistics/summary");
     return data;
   },
 
@@ -206,7 +233,7 @@ export const postsAPI = {
   getPostWithAuthor: async (postId: string) => {
     try {
       const postResponse = await postsAPI.getPost(postId);
-      const post = postResponse.data as PostData;
+      const post = (postResponse.data?.data || postResponse.data) as PostData;
 
       if (post.author) {
         const authorResponse = await postsAPI.getAuthorById(post.author) as AuthorDetails;
@@ -227,7 +254,7 @@ export const postsAPI = {
   getAllPostsWithAuthors: async (params?: PostParams) => {
     try {
       const postsResponse = await api.get("/posts", { params });
-      const posts = postsResponse.data as PostData[];
+      const posts = (postsResponse.data?.data || postsResponse.data) as PostData[];
 
       const postsWithAuthors = await Promise.all(
         posts.map(async (post: PostData) => {

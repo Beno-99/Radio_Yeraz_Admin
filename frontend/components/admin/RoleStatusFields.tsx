@@ -1,15 +1,11 @@
 import { Shield } from "lucide-react";
 import { Controller, UseFormRegister, UseFormWatch, Control } from "react-hook-form";
-
-export interface AdminFormData {
-  role: "ADMIN" | "SUPER_ADMIN";
-  isActive: boolean;
-}
+import { AdminFormValues } from "@/hooks/useAdminForm";
 
 interface RoleStatusFieldsProps {
-  register: UseFormRegister<AdminFormData>;
-  watch: UseFormWatch<AdminFormData>;
-  control: Control<AdminFormData>;
+  register: UseFormRegister<AdminFormValues>;
+  watch: UseFormWatch<AdminFormValues>;
+  control: Control<AdminFormValues>;
 }
 
 export function RoleStatusFields({

@@ -5,6 +5,10 @@ import { useState, useRef, useEffect } from "react";
 import { Bell, Menu, ChevronDown, User, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAdminNotifications } from "@/hooks/useAdminNotifications";
+import {
+  getLocalStorageValue,
+  removeLocalStorageValue,
+} from "@/lib/browser-storage";
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -67,13 +71,14 @@ export default function Header({ onMenuClick, user }: HeaderProps) {
     useAdminNotifications();
 
   const handleLogout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("user");
+    removeLocalStorageValue("access_token");
+    removeLocalStorageValue("refresh_token");
+    removeLocalStorageValue("user");
     router.push("/login");
   };
 
   const handleProfileClick = () => {
-    const UserData = localStorage.getItem("user");
+    const UserData = getLocalStorageValue("user");
     if (!UserData) {
       router.push("/login");
       return;

@@ -2,6 +2,10 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { io, Socket } from "socket.io-client";
+import {
+  getLocalStorageValue,
+  setLocalStorageValue,
+} from "@/lib/browser-storage";
 
 export interface AdminNotification {
   _id: string;
@@ -19,7 +23,7 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL
 
 const getStorageKey = () => {
   try {
-    const user = localStorage.getItem("user");
+    const user = getLocalStorageValue("user");
     const parsed = user ? JSON.parse(user) : null;
     return `notifications_read_${parsed?.id || "guest"}`;
   } catch {
@@ -29,7 +33,7 @@ const getStorageKey = () => {
 
 const getLocalReadIds = (): Set<string> => {
   try {
-    const stored = localStorage.getItem(getStorageKey());
+    const stored = getLocalStorageValue(getStorageKey());
     return stored ? new Set(JSON.parse(stored)) : new Set();
   } catch {
     return new Set();
@@ -38,7 +42,7 @@ const getLocalReadIds = (): Set<string> => {
 
 const saveLocalReadIds = (ids: Set<string>) => {
   try {
-    localStorage.setItem(getStorageKey(), JSON.stringify([...ids]));
+    setLocalStorageValue(getStorageKey(), JSON.stringify([...ids]));
   } catch {
     // ignore localStorage errors
   }

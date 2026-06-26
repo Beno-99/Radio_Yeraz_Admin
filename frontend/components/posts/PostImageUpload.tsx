@@ -1,7 +1,7 @@
 // components/posts/PostImageUpload.tsx
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { ImageIcon, X } from "lucide-react";
 
 interface SimpleImageUploadProps {
@@ -15,14 +15,10 @@ export function SimpleImageUpload({
   currentImageUrl,
   label = "Post Image", // Default value
 }: SimpleImageUploadProps) {
-  const [preview, setPreview] = useState<string | null>(null);
+  const [selectedPreview, setSelectedPreview] = useState<string | null>(null);
+  const [removed, setRemoved] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (currentImageUrl && !preview) {
-      setPreview(currentImageUrl);
-    }
-  }, [currentImageUrl]);
+  const preview = selectedPreview ?? (removed ? null : currentImageUrl ?? null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -30,7 +26,8 @@ export function SimpleImageUpload({
 
     const reader = new FileReader();
     reader.onloadend = () => {
-      setPreview(reader.result as string);
+      setSelectedPreview(reader.result as string);
+      setRemoved(false);
     };
     reader.readAsDataURL(file);
 
@@ -38,7 +35,8 @@ export function SimpleImageUpload({
   };
 
   const handleRemove = () => {
-    setPreview(null);
+    setSelectedPreview(null);
+    setRemoved(true);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }

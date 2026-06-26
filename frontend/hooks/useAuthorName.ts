@@ -30,7 +30,6 @@ export const useAuthorName = (authorId: string) => {
             adminData.profileName ||
             adminData.username ||
             adminData.name ||
-            (adminData.email ? adminData.email.split("@")[0] : null) ||
             "Admin";
 
           setUsername(name);

@@ -12,7 +12,7 @@ import {
   User,
   Radio,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { removeLocalStorageValue } from "@/lib/browser-storage";
 
 interface SidebarProps {
   isOpen: boolean;
@@ -33,21 +33,17 @@ const navigation = [
 
 export default function Sidebar({ isOpen, onClose, user }: SidebarProps) {
   const pathname = usePathname();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("user");
+    removeLocalStorageValue("access_token");
+    removeLocalStorageValue("refresh_token");
+    removeLocalStorageValue("user");
     window.location.href = "/login";
   };
 
   return (
     <>
-      {mounted && isOpen && (
+      {isOpen && (
         <div
           className="fixed inset-0 z-40 bg-gray-600 bg-opacity-75 lg:hidden"
           onClick={onClose}
@@ -56,7 +52,7 @@ export default function Sidebar({ isOpen, onClose, user }: SidebarProps) {
 
       <aside
         className={`fixed inset-y-0 left-0 z-50 w-64 bg-gray-900 transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 ${
-          mounted && isOpen ? "translate-x-0" : "-translate-x-full"
+          isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         <div className="flex items-center justify-between h-16 px-4 border-b border-gray-800">

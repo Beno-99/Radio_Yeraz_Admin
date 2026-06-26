@@ -1,5 +1,5 @@
 // hooks/useAdminForm.ts
-import { useForm } from "react-hook-form";
+import { DefaultValues, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 
@@ -10,7 +10,6 @@ const createAdminSchema = z
       .min(3)
       .max(50)
       .regex(/^[a-zA-Z0-9_]+$/),
-    email: z.string().email().optional().or(z.literal("")),
     displayName: z.string().min(2).max(100),
     password: z.string().min(6).max(100),
     confirmPassword: z.string(),
@@ -22,12 +21,13 @@ const createAdminSchema = z
     path: ["confirmPassword"],
   });
 
-export function useAdminForm(defaultValues?: any) {
-  return useForm({
+export type AdminFormValues = z.infer<typeof createAdminSchema>;
+
+export function useAdminForm(defaultValues?: DefaultValues<AdminFormValues>) {
+  return useForm<AdminFormValues>({
     resolver: zodResolver(createAdminSchema),
     defaultValues: defaultValues || {
       username: "",
-      email: "",
       displayName: "",
       password: "",
       confirmPassword: "",

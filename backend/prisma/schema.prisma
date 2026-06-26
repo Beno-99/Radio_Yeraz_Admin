@@ -1,0 +1,169 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+}
+
+enum PostStatus {
+  draft
+  published
+  expired
+}
+
+enum AdStatus {
+  pending
+  active
+  inactive
+  expired
+}
+
+enum NotificationType {
+  NEW_POST
+  NEW_DRAFT
+  POST_UPDATED
+  POST_DELETED
+  POST_PUBLISHED
+  AD_CREATED
+  AD_UPDATED
+  AD_DELETED
+  AD_TOGGLED
+  AD_EXPIRING
+  ADMIN_CREATED
+  ADMIN_UPDATED
+  ADMIN_DELETED
+  ADMIN_TOGGLED
+}
+
+model Admin {
+  id            String         @id @map("_id") @db.Char(24)
+  username      String         @unique @db.VarChar(191)
+  password      String         @db.VarChar(255)
+  displayName   String         @default("Admin") @db.VarChar(191)
+  createdAt     DateTime       @default(now())
+  isActive      Boolean        @default(true)
+  lastLogin     DateTime?
+  role          AdminRole      @default(ADMIN)
+  updatedAt     DateTime       @updatedAt
+  posts         Post[]
+  ads           Ad[]
+  refreshTokens RefreshToken[]
+
+  @@index([role], map: "admins_role_idx")
+  @@index([isActive], map: "admins_is_active_idx")
+  @@map("admins")
+}
+
+model RefreshToken {
+  id        String   @id @map("_id") @db.Char(24)
+  token     String   @unique @db.VarChar(512)
+  adminId   String   @map("admin") @db.Char(24)
+  expiresAt DateTime
+  isRevoked Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  admin     Admin    @relation(fields: [adminId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([adminId], map: "refresh_tokens_admin_idx")
+  @@index([expiresAt], map: "refresh_tokens_expires_at_idx")
+  @@index([isRevoked], map: "refresh_tokens_is_revoked_idx")
+  @@index([adminId, isRevoked, expiresAt], map: "refresh_tokens_admin_active_expiry_idx")
+  @@map("refresh_tokens")
+}
+
+model Post {
+  id             String     @id @map("_id") @db.Char(24)
+  title          String     @db.VarChar(255)
+  description    String     @db.Text
+  mainImage      String     @default("") @db.VarChar(1024)
+  video          String     @default("") @db.VarChar(1024)
+  profileName    String     @default("Radio Yeraz") @db.VarChar(191)
+  eventDate      DateTime?
+  eventTime      String?    @db.VarChar(50)
+  location       String?    @db.VarChar(255)
+  isLive         Boolean    @default(false)
+  isPublished    Boolean    @default(false)
+  status         PostStatus @default(draft)
+  postedDate     DateTime   @default(now())
+  authorId       String?    @map("author") @db.Char(24)
+  link           String?    @db.VarChar(2048)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  expiresAt      DateTime?
+  reminderSentAt DateTime?
+  author         Admin?     @relation(fields: [authorId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([authorId], map: "posts_author_idx")
+  @@index([postedDate], map: "posts_posted_date_idx")
+  @@index([eventDate], map: "posts_event_date_idx")
+  @@index([status], map: "posts_status_idx")
+  @@index([isLive], map: "posts_is_live_idx")
+  @@index([isPublished], map: "posts_is_published_idx")
+  @@index([isPublished, status, postedDate], map: "posts_public_listing_idx")
+  @@map("posts")
+}
+
+model Ad {
+  id        String   @id @map("_id") @db.Char(24)
+  image     String   @db.VarChar(1024)
+  isActive  Boolean  @default(true)
+  status    AdStatus @default(pending)
+  clicks    Int      @default(0)
+  startDate DateTime @default(now())
+  endDate   DateTime?
+  authorId  String?  @map("author") @db.Char(24)
+  targetUrl String?  @db.VarChar(2048)
+  name      String   @db.VarChar(191)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  author    Admin?   @relation(fields: [authorId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([authorId], map: "ads_author_idx")
+  @@index([isActive], map: "ads_is_active_idx")
+  @@index([name], map: "ads_name_idx")
+  @@index([status], map: "ads_status_idx")
+  @@index([startDate], map: "ads_start_date_idx")
+  @@index([endDate], map: "ads_end_date_idx")
+  @@index([isActive, status, startDate, endDate], map: "ads_public_listing_idx")
+  @@map("ads")
+}
+
+model StreamLink {
+  id          String   @id @map("_id") @db.Char(24)
+  title       String   @db.VarChar(100)
+  url         String   @db.VarChar(2048)
+  description String?  @db.VarChar(500)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive], map: "streamlinks_is_active_idx")
+  @@index([createdAt], map: "streamlinks_created_at_idx")
+  @@map("streamlinks")
+}
+
+model Notification {
+  id         String           @id @map("_id") @db.Char(24)
+  title      String           @db.VarChar(255)
+  message    String           @db.Text
+  type       NotificationType
+  data       Json?
+  isRead     Boolean          @default(false)
+  postId     String?          @db.Char(24)
+  authorName String?          @db.VarChar(191)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  @@index([isRead], map: "notifications_is_read_idx")
+  @@index([createdAt], map: "notifications_created_at_idx")
+  @@index([type], map: "notifications_type_idx")
+  @@index([postId], map: "notifications_post_id_idx")
+  @@index([type, createdAt], map: "notifications_type_created_at_idx")
+  @@map("notifications")
+}

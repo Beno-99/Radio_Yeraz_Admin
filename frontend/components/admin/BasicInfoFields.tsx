@@ -1,18 +1,12 @@
 // components/admin/BasicInfoFields.tsx
-import { User, Mail } from "lucide-react";
+import { User } from "lucide-react";
 import { FieldError } from "./FieldError";
 import { UseFormRegister, FieldErrors } from "react-hook-form";
-
-// Define the shape of your form data (recommended)
-interface BasicInfoFormData {
-  username: string;
-  displayName: string;
-  email?: string;
-}
+import { AdminFormValues } from "@/hooks/useAdminForm";
 
 interface BasicInfoFieldsProps {
-  register: UseFormRegister<BasicInfoFormData>;
-  errors: FieldErrors<BasicInfoFormData>;
+  register: UseFormRegister<AdminFormValues>;
+  errors: FieldErrors<AdminFormValues>;
 }
 
 export function BasicInfoFields({ register, errors }: BasicInfoFieldsProps) {
@@ -54,27 +48,6 @@ export function BasicInfoFields({ register, errors }: BasicInfoFieldsProps) {
             placeholder="Enter display name"
           />
           <FieldError error={errors.displayName} />
-        </div>
-
-        <div className="md:col-span-2 space-y-2">
-          <label className="block text-sm font-medium text-gray-700">
-            Email Address
-          </label>
-          <div className="relative">
-            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-            <input
-              {...register("email")}
-              type="email"
-              className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
-                errors.email ? "border-red-300" : "border-gray-300"
-              }`}
-              placeholder="Enter email address (optional)"
-            />
-          </div>
-          <FieldError error={errors.email} />
-          <p className="text-xs text-gray-500">
-            Optional but recommended for notifications
-          </p>
         </div>
       </div>
     </div>
