@@ -2,7 +2,7 @@
 import { Module } from '@nestjs/common';
 import { PostsController } from './posts.controller';
 import { PostsService } from './posts.service';
-import { NotificationModule } from 'src/notifications/notification.module';
+import { NotificationModule } from '../notifications/notification.module';
 import { PostsScheduler } from './posts.scheduler';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PostReminderService } from './post-reminder.service';

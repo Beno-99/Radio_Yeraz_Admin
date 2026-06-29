@@ -1,6 +1,6 @@
 // src/admin/admin.module.ts
 import { Module } from '@nestjs/common';
-import { AuthModule } from 'src/auth/auth.module';
+import { AuthModule } from '../auth/auth.module';
 import { NotificationModule } from '../notifications/notification.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AdminController } from './admin.controller';
