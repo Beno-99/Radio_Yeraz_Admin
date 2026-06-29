@@ -122,9 +122,8 @@ export function DataTable<T extends { _id: string }>({
               {columns.map((column) => (
                 <th
                   key={column.key as string}
-                  className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${
-                    column.width ? `w-${column.width}` : ""
-                  }`}
+                  style={column.width ? { width: column.width } : undefined}
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
                   <div
                     className={`flex items-center ${

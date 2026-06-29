@@ -183,8 +183,9 @@ export default function AdminPage() {
     {
       key: "_id",
       header: "ID",
+      width: "120px",
       render: (value: unknown) => (
-        <div className="text-xs text-gray-500 truncate max-w-[120px]">
+        <div className="w-24 truncate text-xs text-gray-500">
           {typeof value === "string" ? `${value.substring(0, 8)}...` : "—"}
         </div>
       ),
@@ -192,20 +193,21 @@ export default function AdminPage() {
     {
       key: "displayName",
       header: "Admin",
+      width: "280px",
       render: (value: unknown, item: Admin) => (
-        <div className="flex items-center">
-          <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
+        <div className="flex min-w-0 items-center whitespace-nowrap">
+          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-purple-600">
             <span className="text-white font-medium">
               {typeof value === "string" ? value.charAt(0).toUpperCase() : "A"}
             </span>
           </div>
 
-          <div className="ml-4">
-            <div className="text-sm font-medium text-gray-900">
+          <div className="ml-3 min-w-0">
+            <div className="truncate text-sm font-medium text-gray-900">
               {typeof value === "string" ? value : ""}
             </div>
 
-            <div className="text-sm text-gray-500">
+            <div className="truncate text-sm text-gray-500">
               @{item.username}
             </div>
           </div>
@@ -216,11 +218,12 @@ export default function AdminPage() {
     {
       key: "role",
       header: "Role",
+      width: "160px",
       render: (value: unknown) => {
         const role = typeof value === "string" ? value : "";
         return (
           <span
-            className={`px-2 py-1 rounded-full text-xs font-medium ${
+            className={`inline-flex whitespace-nowrap rounded-full px-2 py-1 text-xs font-medium ${
               role === "SUPER_ADMIN"
                 ? "bg-green-200 text-green-800"
                 : "bg-blue-200 text-blue-800"
@@ -235,12 +238,13 @@ export default function AdminPage() {
     {
       key: "isActive",
       header: "Status",
+      width: "140px",
       render: (value: unknown) => {
         const active = Boolean(value);
         return (
-          <div className="flex items-center">
+          <div className="flex items-center whitespace-nowrap">
             <div
-              className={`h-2 w-2 rounded-full mr-2 ${
+              className={`mr-2 h-2 w-2 flex-shrink-0 rounded-full ${
                 active ? "bg-green-500" : "bg-red-500"
               }`}
             />
@@ -260,9 +264,10 @@ export default function AdminPage() {
     {
       key: "lastLogin",
       header: "Last Login",
+      width: "150px",
       render: (value: unknown) => {
         if (typeof value !== "string" || !value) {
-          return <div className="text-sm text-gray-500">Never</div>;
+          return <div className="whitespace-nowrap text-sm text-gray-500">Never</div>;
         }
 
         const date = new Date(value);
@@ -273,15 +278,15 @@ export default function AdminPage() {
         );
 
         if (diffDays === 0) {
-          return <div className="text-sm text-gray-500">Today</div>;
+          return <div className="whitespace-nowrap text-sm text-gray-500">Today</div>;
         }
 
         if (diffDays === 1) {
-          return <div className="text-sm text-gray-500">Yesterday</div>;
+          return <div className="whitespace-nowrap text-sm text-gray-500">Yesterday</div>;
         }
 
         return (
-          <div className="text-sm text-gray-500">
+          <div className="whitespace-nowrap text-sm text-gray-500">
             {date.toLocaleDateString()}
           </div>
         );
@@ -291,8 +296,9 @@ export default function AdminPage() {
     {
       key: "createdAt",
       header: "Created",
+      width: "150px",
       render: (value: unknown) => (
-        <div className="text-sm text-gray-500">
+        <div className="whitespace-nowrap text-sm text-gray-500">
           {typeof value === "string"
             ? new Date(value).toLocaleDateString()
             : "—"}
