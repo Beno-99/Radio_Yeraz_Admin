@@ -8,6 +8,7 @@ import {
 } from '@nestjs/websockets';
 import { NotificationType, Prisma } from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
+import { TokenExpiredError } from 'jsonwebtoken';
 import { Server, Socket } from 'socket.io';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -29,6 +30,21 @@ const socketAllowedOrigins = process.env.CORS_ORIGIN
 
 interface JwtPayload {
   sub?: string;
+}
+
+type SocketAuthErrorCode =
+  | 'AUTH_REQUIRED'
+  | 'TOKEN_EXPIRED'
+  | 'INVALID_TOKEN'
+  | 'INACTIVE_ACCOUNT';
+
+class SocketAuthError extends Error {
+  constructor(
+    readonly code: SocketAuthErrorCode,
+    message: string,
+  ) {
+    super(message);
+  }
 }
 
 interface IdentifiedPayload {
@@ -88,10 +104,16 @@ export class NotificationGateway
       client.data.adminId = adminId;
       console.log(`Client connected: ${client.id}`);
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Unknown socket auth error';
-      console.warn(`Socket authentication failed: ${message}`);
-      client.emit('auth_error', { message: 'Authentication required' });
+      const authError =
+        error instanceof SocketAuthError
+          ? error
+          : new SocketAuthError('INVALID_TOKEN', 'Invalid authentication token');
+
+      console.warn(`Socket authentication failed: ${authError.code}`);
+      client.emit('auth_error', {
+        code: authError.code,
+        message: authError.message,
+      });
       client.disconnect(true);
     }
   }
@@ -119,12 +141,22 @@ export class NotificationGateway
   private async authenticateClient(client: Socket): Promise<string> {
     const token = this.getSocketToken(client);
     if (!token) {
-      throw new Error('Missing socket token');
+      throw new SocketAuthError('AUTH_REQUIRED', 'Authentication required');
     }
 
-    const payload = this.jwtService.verify<JwtPayload>(token);
+    let payload: JwtPayload;
+    try {
+      payload = this.jwtService.verify<JwtPayload>(token);
+    } catch (error) {
+      if (error instanceof TokenExpiredError) {
+        throw new SocketAuthError('TOKEN_EXPIRED', 'Access token expired');
+      }
+
+      throw new SocketAuthError('INVALID_TOKEN', 'Invalid authentication token');
+    }
+
     if (!payload.sub) {
-      throw new Error('Invalid socket token');
+      throw new SocketAuthError('INVALID_TOKEN', 'Invalid authentication token');
     }
 
     const admin = await this.prisma.admin.findUnique({
@@ -133,7 +165,7 @@ export class NotificationGateway
     });
 
     if (!admin || !admin.isActive) {
-      throw new Error('Inactive socket user');
+      throw new SocketAuthError('INACTIVE_ACCOUNT', 'Account is inactive');
     }
 
     return admin.id;

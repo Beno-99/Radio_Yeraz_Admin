@@ -17,6 +17,100 @@ const api = axios.create({
   },
 });
 
+interface RefreshResponse {
+  accessToken?: string;
+  refreshToken?: string;
+  access_token?: string;
+  refresh_token?: string;
+  data?: {
+    accessToken?: string;
+    refreshToken?: string;
+    access_token?: string;
+    refresh_token?: string;
+  };
+}
+
+let refreshAccessTokenPromise: Promise<string> | null = null;
+
+const clearAuthenticationAndRedirect = () => {
+  removeLocalStorageValue("access_token");
+  removeLocalStorageValue("refresh_token");
+  removeLocalStorageValue("user");
+
+  if (
+    typeof window !== "undefined" &&
+    !window.location.pathname.includes("/login")
+  ) {
+    window.location.href = "/login";
+  }
+};
+
+const readRefreshResponse = (refreshData: RefreshResponse) => {
+  const accessToken =
+    refreshData.accessToken ??
+    refreshData.access_token ??
+    refreshData.data?.accessToken ??
+    refreshData.data?.access_token;
+  const nextRefreshToken =
+    refreshData.refreshToken ??
+    refreshData.refresh_token ??
+    refreshData.data?.refreshToken ??
+    refreshData.data?.refresh_token;
+
+  return { accessToken, nextRefreshToken };
+};
+
+export const refreshAccessToken = async (): Promise<string> => {
+  if (refreshAccessTokenPromise) {
+    return refreshAccessTokenPromise;
+  }
+
+  refreshAccessTokenPromise = (async () => {
+    try {
+      if (typeof window === "undefined") {
+        throw new Error("Token refresh is only available in the browser");
+      }
+
+      const refreshToken = getLocalStorageValue("refresh_token");
+
+      if (!refreshToken) {
+        throw new Error("No refresh token available");
+      }
+
+      const response = await axios.post<RefreshResponse>(
+        `${API_BASE_URL}/auth/refresh`,
+        { refreshToken },
+      );
+
+      const { accessToken, nextRefreshToken } = readRefreshResponse(
+        response.data,
+      );
+
+      if (!accessToken) {
+        throw new Error("Refresh response did not include an access token");
+      }
+
+      setLocalStorageValue("access_token", accessToken);
+      if (nextRefreshToken) {
+        setLocalStorageValue("refresh_token", nextRefreshToken);
+      }
+
+      api.defaults.headers.common.Authorization = `Bearer ${accessToken}`;
+
+      return accessToken;
+    } catch (error) {
+      clearAuthenticationAndRedirect();
+      throw error;
+    }
+  })();
+
+  try {
+    return await refreshAccessTokenPromise;
+  } finally {
+    refreshAccessTokenPromise = null;
+  }
+};
+
 // ✅ Attach token to every request
 api.interceptors.request.use((config) => {
   const token = getLocalStorageValue("access_token");
@@ -55,64 +149,13 @@ api.interceptors.response.use(
     }
 
     try {
-      const refreshToken = getLocalStorageValue("refresh_token");
-
-      if (!refreshToken) {
-        throw new Error("No refresh token available");
-      }
-
-      const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
-        refreshToken,
-      });
-
-      const refreshData = response.data as {
-        accessToken?: string;
-        refreshToken?: string;
-        access_token?: string;
-        refresh_token?: string;
-        data?: {
-          accessToken?: string;
-          refreshToken?: string;
-          access_token?: string;
-          refresh_token?: string;
-        };
-      };
-      const accessToken =
-        refreshData.accessToken ??
-        refreshData.access_token ??
-        refreshData.data?.accessToken ??
-        refreshData.data?.access_token;
-      const nextRefreshToken =
-        refreshData.refreshToken ??
-        refreshData.refresh_token ??
-        refreshData.data?.refreshToken ??
-        refreshData.data?.refresh_token;
-
-      if (!accessToken) {
-        throw new Error("Refresh response did not include an access token");
-      }
-
-      setLocalStorageValue("access_token", accessToken);
-      if (nextRefreshToken) {
-        setLocalStorageValue("refresh_token", nextRefreshToken);
-      }
-
-      api.defaults.headers.common.Authorization = `Bearer ${accessToken}`;
+      const accessToken = await refreshAccessToken();
       if (originalRequest?.headers) {
         (originalRequest.headers as Record<string, string>).Authorization = `Bearer ${accessToken}`;
       }
 
       return api(originalRequest as AxiosRequestConfig);
     } catch (refreshError: unknown) {
-      removeLocalStorageValue("access_token");
-      removeLocalStorageValue("refresh_token");
-
-      if (typeof window !== "undefined") {
-        if (!window.location.pathname.includes("/login")) {
-          window.location.href = "/login";
-        }
-      }
-
       return Promise.reject(refreshError);
     }
   },

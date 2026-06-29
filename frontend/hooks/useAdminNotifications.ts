@@ -7,6 +7,7 @@ import {
   setLocalStorageValue,
   subscribeToLocalStorage,
 } from "@/lib/browser-storage";
+import { refreshAccessToken } from "@/lib/api/api";
 
 export interface AdminNotification {
   _id: string;
@@ -36,6 +37,17 @@ const getBackendUrl = (): string => {
 };
 
 const BACKEND_URL = getBackendUrl();
+
+type SocketAuthErrorCode =
+  | "AUTH_REQUIRED"
+  | "TOKEN_EXPIRED"
+  | "INVALID_TOKEN"
+  | "INACTIVE_ACCOUNT";
+
+interface SocketAuthErrorPayload {
+  code?: SocketAuthErrorCode;
+  message?: string;
+}
 
 const getStorageKey = () => {
   try {
@@ -149,14 +161,65 @@ export function useAdminNotifications() {
     });
 
     socketRef.current = socket;
+    let pendingAuthErrorCode: SocketAuthErrorCode | null = null;
+    let tokenExpiredRetryUsed = false;
+    let refreshReconnectPromise: Promise<void> | null = null;
+
+    const reconnectWithRefreshedToken = () => {
+      if (
+        cleanupRef.current ||
+        tokenExpiredRetryUsed ||
+        refreshReconnectPromise
+      ) {
+        return;
+      }
+
+      tokenExpiredRetryUsed = true;
+      refreshReconnectPromise = (async () => {
+        try {
+          const accessToken = await refreshAccessToken();
+          socket.auth = {
+            ...(typeof socket.auth === "object" && socket.auth
+              ? socket.auth
+              : {}),
+            token: accessToken,
+          };
+          pendingAuthErrorCode = null;
+
+          if (!cleanupRef.current && !socket.connected) {
+            socket.connect();
+          }
+        } catch {
+          pendingAuthErrorCode = null;
+        } finally {
+          refreshReconnectPromise = null;
+        }
+      })();
+    };
 
     const handleConnect = () => {
+      pendingAuthErrorCode = null;
+      tokenExpiredRetryUsed = false;
       console.log("Admin socket connected");
       socket.emit("get_notifications");
     };
 
     const handleDisconnect = (reason: string) => {
       if (cleanupRef.current) {
+        return;
+      }
+
+      if (pendingAuthErrorCode === "TOKEN_EXPIRED") {
+        reconnectWithRefreshedToken();
+        return;
+      }
+
+      if (
+        pendingAuthErrorCode === "INVALID_TOKEN" ||
+        pendingAuthErrorCode === "AUTH_REQUIRED" ||
+        pendingAuthErrorCode === "INACTIVE_ACCOUNT"
+      ) {
+        console.warn(`Admin socket authentication failed: ${pendingAuthErrorCode}`);
         return;
       }
 
@@ -170,6 +233,15 @@ export function useAdminNotifications() {
 
     const handleConnectError = (err: Error) => {
       console.warn(`Admin socket connection error: ${err.message}`);
+    };
+
+    const handleAuthError = (payload: SocketAuthErrorPayload) => {
+      const code = payload.code ?? "INVALID_TOKEN";
+      pendingAuthErrorCode = code;
+
+      if (code === "TOKEN_EXPIRED" && socket.disconnected) {
+        reconnectWithRefreshedToken();
+      }
     };
 
     const handleReconnectAttempt = () => {
@@ -210,6 +282,7 @@ export function useAdminNotifications() {
     socket.on("connect", handleConnect);
     socket.on("disconnect", handleDisconnect);
     socket.on("connect_error", handleConnectError);
+    socket.on("auth_error", handleAuthError);
     socket.on("notifications_list", handleNotificationsList);
     socket.on("new_notification", handleIncomingNotification);
     socket.on("admin_notification", handleIncomingNotification);
@@ -223,6 +296,7 @@ export function useAdminNotifications() {
       socket.off("connect", handleConnect);
       socket.off("disconnect", handleDisconnect);
       socket.off("connect_error", handleConnectError);
+      socket.off("auth_error", handleAuthError);
       socket.off("notifications_list", handleNotificationsList);
       socket.off("new_notification", handleIncomingNotification);
       socket.off("admin_notification", handleIncomingNotification);
