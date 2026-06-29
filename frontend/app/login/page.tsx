@@ -1,14 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { authAPI } from "@/lib/api/api";
-import { setLocalStorageValue } from "@/lib/browser-storage";
+import {
+  getLocalStorageValue,
+  setLocalStorageValue,
+} from "@/lib/browser-storage";
 
 export default function LoginPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const token = getLocalStorageValue("access_token");
+    const user = getLocalStorageValue("user");
+
+    if (token && user) {
+      router.replace("/dashboard");
+    }
+  }, [router]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
