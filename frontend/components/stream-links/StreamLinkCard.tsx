@@ -31,29 +31,29 @@ export function StreamLinkCard({
         </button>
       </div>
 
-      <div className="p-5 pt-12">
-        <div className="flex items-start justify-between mb-4">
-          <div>
-            <h3 className="font-semibold text-lg line-clamp-2 mb-2">{streamLink.title}</h3>
+      <div className="p-4 pt-12 sm:p-5 sm:pt-12">
+        <div className="mb-4 flex min-w-0 items-start justify-between">
+          <div className="min-w-0">
+            <h3 className="mb-2 line-clamp-2 break-words text-lg font-semibold">{streamLink.title}</h3>
             <a
               href={streamLink.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-blue-600 hover:underline text-sm flex items-center gap-1 break-all"
+              className="flex min-w-0 items-center gap-1 break-all text-sm text-blue-600 hover:underline"
             >
               {streamLink.url}
-              <ExternalLink className="w-3 h-3" />
+              <ExternalLink className="h-3 w-3 flex-shrink-0" />
             </a>
           </div>
         </div>
 
         {streamLink.description && (
-          <p className="text-gray-600 text-sm line-clamp-2 mb-4">
+          <p className="mb-4 line-clamp-2 break-words text-sm text-gray-600">
             {streamLink.description}
           </p>
         )}
 
-        <div className="flex items-center justify-between mt-6">
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             {streamLink.isActive ? (
               <span className="inline-flex items-center gap-1 text-green-600 text-xs font-medium">
@@ -71,13 +71,13 @@ export function StreamLinkCard({
           <div className="flex gap-2">
             <button
               onClick={() => onEdit(streamLink)}
-              className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 hover:text-blue-600 transition"
+              className="min-h-11 min-w-11 rounded-lg p-2 text-gray-600 transition hover:bg-gray-100 hover:text-blue-600"
             >
               <Edit2 className="w-4 h-4" />
             </button>
             <button
               onClick={() => onDelete(streamLink._id)}
-              className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 hover:text-red-600 transition"
+              className="min-h-11 min-w-11 rounded-lg p-2 text-gray-600 transition hover:bg-gray-100 hover:text-red-600"
             >
               <Trash2 className="w-4 h-4" />
             </button>

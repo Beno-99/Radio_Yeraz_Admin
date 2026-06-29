@@ -52,12 +52,12 @@ export default function Sidebar({ isOpen, onClose, user }: SidebarProps) {
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-gray-900 transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 ${
+        className={`fixed inset-y-0 left-0 z-50 w-[min(18rem,85vw)] bg-gray-900 transform transition-transform duration-300 ease-in-out lg:w-64 lg:translate-x-0 lg:static lg:inset-0 ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         <div className="flex items-center justify-between h-16 px-4 border-b border-gray-800">
-          <div className="flex items-center">
+          <div className="flex min-w-0 items-center">
             <Image
               src="/radioLogo.jpg"
               alt="Radio Yeraz logo"
@@ -66,31 +66,31 @@ export default function Sidebar({ isOpen, onClose, user }: SidebarProps) {
               className="h-10 w-10 rounded-full"
             />
 
-            <span className="ml-3 text-xl font-bold text-white">
+            <span className="ml-3 truncate text-xl font-bold text-white">
               Radio Yeraz
             </span>
           </div>
 
           <button
             onClick={onClose}
-            className="lg:hidden text-gray-400 hover:text-white"
+            className="lg:hidden min-h-11 min-w-11 rounded-lg text-gray-400 hover:text-white"
           >
             <X className="h-6 w-6" />
           </button>
         </div>
 
         <div className="p-4 border-b border-gray-800">
-          <div className="flex items-center">
+          <div className="flex min-w-0 items-center">
             <div className="h-10 w-10 rounded-full bg-blue-600 flex items-center justify-center">
               <User className="h-6 w-6 text-white" />
             </div>
 
-            <div className="ml-3">
-              <p className="text-sm font-medium text-white">
+            <div className="ml-3 min-w-0">
+              <p className="truncate text-sm font-medium text-white">
                 {user.displayName}
               </p>
 
-              <p className="text-xs text-gray-400">{user.role}</p>
+              <p className="truncate text-xs text-gray-400">{user.role}</p>
             </div>
           </div>
         </div>
@@ -106,7 +106,7 @@ export default function Sidebar({ isOpen, onClose, user }: SidebarProps) {
                   key={item.name}
                   href={item.href}
                   onClick={onClose}
-                  className={`flex items-center px-3 py-2 text-sm font-medium rounded-md transition ${
+                  className={`flex min-h-11 items-center px-3 py-2 text-sm font-medium rounded-md transition ${
                     isActive
                       ? "bg-blue-600 text-white"
                       : "text-gray-300 hover:bg-gray-800 hover:text-white"
@@ -127,7 +127,7 @@ export default function Sidebar({ isOpen, onClose, user }: SidebarProps) {
         <div className="absolute bottom-0 w-full p-4 border-t border-gray-800">
           <button
             onClick={handleLogout}
-            className="flex items-center w-full px-3 py-2 text-sm font-medium text-gray-300 rounded-md hover:bg-gray-800 hover:text-white transition"
+            className="flex min-h-11 items-center w-full px-3 py-2 text-sm font-medium text-gray-300 rounded-md hover:bg-gray-800 hover:text-white transition"
           >
             <LogOut className="mr-3 h-5 w-5 text-gray-400" />
             Logout

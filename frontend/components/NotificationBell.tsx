@@ -78,7 +78,7 @@ export default function NotificationBell() {
       {/* Bell button */}
       <button
         onClick={() => setOpen(!open)}
-        className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors"
+        className="relative min-h-11 min-w-11 rounded-lg p-2 transition-colors hover:bg-gray-100"
       >
         <svg
           className="w-6 h-6 text-gray-600"
@@ -103,7 +103,7 @@ export default function NotificationBell() {
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-gray-100 z-50 overflow-hidden">
+        <div className="fixed left-3 right-3 top-16 z-50 mt-2 max-h-[calc(100vh-5rem)] overflow-hidden rounded-xl border border-gray-100 bg-white shadow-2xl sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:w-80">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
             <h3 className="font-semibold text-gray-900">Notifications</h3>
@@ -116,7 +116,7 @@ export default function NotificationBell() {
           </div>
 
           {/* List */}
-          <div className="max-h-96 overflow-y-auto">
+          <div className="max-h-[60vh] overflow-y-auto">
             {notifications.length === 0 ? (
               <div className="flex flex-col items-center py-10 text-gray-400">
                 <span className="text-4xl mb-2">🔔</span>
@@ -126,8 +126,8 @@ export default function NotificationBell() {
               notifications.map((n: AdminNotification) => (
                 <div
                   key={n._id}
-onClick={() => markRead(n._id)}
-                  className={`flex items-start gap-3 px-4 py-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors ${
+                  onClick={() => markRead(n._id)}
+                  className={`flex min-h-11 items-start gap-3 border-b border-gray-50 px-4 py-3 cursor-pointer transition-colors hover:bg-gray-50 ${
                     !n.isRead ? "bg-red-50" : ""
                   }`}
                 >
@@ -135,7 +135,7 @@ onClick={() => markRead(n._id)}
                     {typeIcon[n.type] || "🔔"}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 truncate">
+                    <p className="truncate text-sm font-semibold text-gray-900">
                       {n.title}
                     </p>
                     <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">

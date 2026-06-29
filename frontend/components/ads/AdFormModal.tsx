@@ -34,16 +34,16 @@ export default function AdFormModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-xl bg-white p-6 shadow-lg">
-        <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-xl font-bold text-gray-900">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 sm:p-4">
+      <div className="max-h-[calc(100vh-1.5rem)] w-full max-w-4xl overflow-y-auto rounded-xl bg-white p-4 shadow-lg sm:p-6">
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <h2 className="break-words text-lg font-bold text-gray-900 sm:text-xl">
             {editingAd ? "Edit Ad Campaign" : "Create New Ad Campaign"}
           </h2>
 
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
+            className="min-h-11 min-w-11 rounded-lg text-gray-400 hover:text-gray-600"
           >
             ✕
           </button>

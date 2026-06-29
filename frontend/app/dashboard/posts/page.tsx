@@ -44,7 +44,7 @@ export default function PostsPage() {
     usePostsStats(allPosts);
 
   const mediaUrl =
-    process.env.NEXT_PUBLIC_MEDIA_GET_URL || "http://localhost:8000";
+    process.env.NEXT_PUBLIC_MEDIA_GET_URL || "https://api.radioyeraz.com";
 
  
 

@@ -78,20 +78,20 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen max-w-full overflow-hidden bg-gray-50">
       <Sidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         user={user}
       />
 
-      <div className="flex flex-col flex-1 min-w-0">
+      <div className="flex min-w-0 flex-1 flex-col">
         <Header
           onMenuClick={() => setSidebarOpen(true)}
           user={user}
         />
 
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className="min-w-0 flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6">
           {children}
         </main>
       </div>

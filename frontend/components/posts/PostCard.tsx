@@ -129,7 +129,7 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
         : `${mediaUrl}${post.mainImage}`;
 
       return (
-        <div className="relative w-full h-72 bg-gray-100 rounded-t-lg overflow-hidden">
+        <div className="relative h-56 w-full overflow-hidden rounded-t-lg bg-gray-100 sm:h-72">
           {/* Replace img with Next.js Image component */}
           <Image
             src={imageUrl}
@@ -138,14 +138,13 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
             className="object-cover"
             sizes="(max-width: 768px) 100vw, 400px"
             loading="lazy"
-            unoptimized={imageUrl.startsWith('http://localhost')}
           />
         </div>
       );
     }
 
     return (
-      <div className="w-full h-72 bg-gradient-to-br from-gray-50 to-gray-100 rounded-t-lg flex flex-col items-center justify-center text-gray-400">
+      <div className="flex h-56 w-full flex-col items-center justify-center rounded-t-lg bg-gradient-to-br from-gray-50 to-gray-100 text-gray-400 sm:h-72">
         <ImageIcon size={40} strokeWidth={1.5} className="mb-2" />
         <span className="text-xs font-medium">No Image</span>
       </div>
@@ -171,7 +170,7 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden flex flex-col h-[540px] w-full max-w-[400px] mx-auto">
+    <div className="mx-auto flex h-full min-h-[500px] w-full max-w-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-all duration-300 hover:shadow-md sm:min-h-[540px] sm:max-w-[400px]">
       {getMediaPreview()}
 
       <div className="p-5 flex-1 flex flex-col">

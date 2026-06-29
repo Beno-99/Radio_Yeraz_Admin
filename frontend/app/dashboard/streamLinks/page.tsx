@@ -110,11 +110,11 @@ export default function StreamLinksPage() {
   const activeCount = streamLinks.filter((l) => l.isActive).length;
 
   return (
-    <div className="p-6 space-y-8">
+    <div className="min-w-0 space-y-6 p-3 sm:space-y-8 sm:p-6">
       {/* HEADER */}
-      <div className="flex justify-between items-start">
-        <div>
-          <h1 className="text-3xl font-bold">Stream Links</h1>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="break-words text-2xl font-bold sm:text-3xl">Stream Links</h1>
           <p className="text-gray-600 mt-1">Manage your live streaming links</p>
         </div>
 
@@ -123,7 +123,7 @@ export default function StreamLinksPage() {
             setEditingLink(null);
             setShowModal(true);
           }}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl flex items-center gap-2"
+          className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-white hover:bg-blue-700 sm:w-auto"
         >
           <Plus className="w-5 h-5" />
           Add Stream Link
@@ -131,32 +131,32 @@ export default function StreamLinksPage() {
       </div>
 
       {/* STATS */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-2xl border">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
+        <div className="rounded-2xl border bg-white p-4 sm:p-6">
           <p>Total Links</p>
           <p className="text-4xl font-bold">{total}</p>
         </div>
 
-        <div className="bg-green-50 p-6 rounded-2xl border">
+        <div className="rounded-2xl border bg-green-50 p-4 sm:p-6">
           <p>Active</p>
           <p className="text-4xl font-bold">{activeCount}</p>
         </div>
 
-        <div className="bg-red-50 p-6 rounded-2xl border">
+        <div className="rounded-2xl border bg-red-50 p-4 sm:p-6">
           <p>Inactive</p>
           <p className="text-4xl font-bold">{total - activeCount}</p>
         </div>
       </div>
 
       {/* SEARCH + FILTER */}
-      <div className="flex gap-3 items-center">
-        <Search className="w-5 h-5 text-gray-500" />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <Search className="hidden h-5 w-5 flex-shrink-0 text-gray-500 sm:block" />
 
         <input
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           placeholder="Search stream links..."
-          className="border px-4 py-2 rounded-lg w-full"
+          className="min-h-11 w-full rounded-lg border px-4 py-2"
         />
 
         <select
@@ -164,7 +164,7 @@ export default function StreamLinksPage() {
           onChange={(e) =>
             setFilter(e.target.value as "all" | "active" | "inactive")
           }
-          className="border px-3 py-2 rounded-lg"
+          className="min-h-11 w-full rounded-lg border px-3 py-2 sm:w-auto"
         >
           <option value="all">All</option>
           <option value="active">Active</option>

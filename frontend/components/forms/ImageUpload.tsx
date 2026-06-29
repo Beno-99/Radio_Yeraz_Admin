@@ -21,7 +21,7 @@ export function ImageUpload({
   const [preview, setPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaUrl =
-    process.env.NEXT_PUBLIC_MEDIA_GET_URL || "http://localhost:8000";
+    process.env.NEXT_PUBLIC_MEDIA_GET_URL || "https://api.radioyeraz.com";
 
   // Fix: Use useMemo to compute the initial preview URL without side effects
   const initialPreviewUrl = useMemo(() => {
@@ -111,7 +111,7 @@ export function ImageUpload({
                 fill
                 className="object-cover"
                 sizes="(max-width: 768px) 100vw, 100%"
-                unoptimized={preview.startsWith('blob:') || preview.startsWith('http://localhost')}
+                unoptimized={preview.startsWith("blob:")}
               />
             </div>
             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">

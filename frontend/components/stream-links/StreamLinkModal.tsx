@@ -107,18 +107,18 @@ export function StreamLinkModal({ isOpen, onClose, initialData }: StreamLinkModa
     <>
       {/* Main Form Modal */}
       {isOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl">
-            <div className="flex items-center justify-between border-b px-6 py-4">
-              <h2 className="text-xl font-semibold text-gray-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-4">
+          <div className="max-h-[calc(100vh-1.5rem)] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-xl">
+            <div className="flex items-center justify-between gap-3 border-b px-4 py-4 sm:px-6">
+              <h2 className="break-words text-lg font-semibold text-gray-900 sm:text-xl">
                 {initialData ? 'Edit Stream Link' : 'Add New Stream Link'}
               </h2>
-              <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
+              <button onClick={onClose} className="min-h-11 min-w-11 rounded-lg p-2 hover:bg-gray-100">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-5 p-4 sm:space-y-6 sm:p-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Title <span className="text-red-500">*</span>
@@ -127,7 +127,7 @@ export function StreamLinkModal({ isOpen, onClose, initialData }: StreamLinkModa
                   type="text"
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="min-h-11 w-full rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="e.g. Main Live Stream"
                   required
                 />
@@ -142,7 +142,7 @@ export function StreamLinkModal({ isOpen, onClose, initialData }: StreamLinkModa
                   type="url"
                   value={formData.url}
                   onChange={(e) => setFormData({ ...formData, url: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="min-h-11 w-full rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="https://..."
                   required
                 />
@@ -155,7 +155,7 @@ export function StreamLinkModal({ isOpen, onClose, initialData }: StreamLinkModa
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   rows={3}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Additional information..."
                 />
               </div>
@@ -173,18 +173,18 @@ export function StreamLinkModal({ isOpen, onClose, initialData }: StreamLinkModa
                 </label>
               </div>
 
-              <div className="flex gap-3 pt-4">
+              <div className="flex flex-col-reverse gap-3 pt-4 sm:flex-row">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="flex-1 py-3 border border-gray-300 rounded-xl font-medium hover:bg-gray-50"
+                  className="min-h-11 flex-1 rounded-xl border border-gray-300 py-3 font-medium hover:bg-gray-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 disabled:opacity-70"
+                  className="min-h-11 flex-1 rounded-xl bg-blue-600 py-3 font-medium text-white hover:bg-blue-700 disabled:opacity-70"
                 >
                   {loading ? 'Saving...' : initialData ? 'Update Link' : 'Create Link'}
                 </button>

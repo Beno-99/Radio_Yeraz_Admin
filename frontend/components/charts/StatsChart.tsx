@@ -279,14 +279,14 @@ export default function StatsChart({
   };
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border border-gray-100 dark:border-gray-700">
+    <div className="min-w-0 rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:p-6">
       {/* Chart Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6">
-        <div>
+      <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <div className="min-w-0">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
             {title}
           </h3>
-          <div className="flex items-center space-x-4 mt-2">
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
             <div className="flex items-center">
               {postsTrend ? (
                 <TrendingUp className="h-4 w-4 text-green-500 mr-1" />
@@ -311,14 +311,14 @@ export default function StatsChart({
         </div>
 
         {/* Chart Controls */}
-        <div className="flex items-center space-x-4 mt-4 sm:mt-0">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
           {/* Time Range Selector */}
           <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
             {(["week", "month", "year"] as const).map((range) => (
               <button
                 key={range}
                 onClick={() => setTimeRange(range)}
-                className={`px-3 py-1 text-sm font-medium rounded-md transition ${
+                className={`min-h-9 rounded-md px-3 py-1 text-sm font-medium transition ${
                   timeRange === range
                     ? "bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow"
                     : "text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
@@ -333,7 +333,7 @@ export default function StatsChart({
           <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
             <button
               onClick={() => setChartType("line")}
-              className={`p-2 rounded-md transition ${
+              className={`min-h-9 min-w-9 rounded-md p-2 transition ${
                 chartType === "line"
                   ? "bg-white dark:bg-gray-600 text-gray-900 dark:text-white"
                   : "text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
@@ -344,7 +344,7 @@ export default function StatsChart({
             </button>
             <button
               onClick={() => setChartType("bar")}
-              className={`p-2 rounded-md transition ${
+              className={`min-h-9 min-w-9 rounded-md p-2 transition ${
                 chartType === "bar"
                   ? "bg-white dark:bg-gray-600 text-gray-900 dark:text-white"
                   : "text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
@@ -358,7 +358,7 @@ export default function StatsChart({
       </div>
 
       {/* Chart Stats Summary */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
         <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
           <p className="text-sm text-blue-700 dark:text-blue-300">
             Total Posts
@@ -443,18 +443,18 @@ export default function StatsChart({
       </div>
 
       {/* Chart Container */}
-      <div style={{ height: `${height}px` }}>
+      <div className="min-w-0" style={{ height: `${height}px` }}>
         <ResponsiveContainer width="100%" height="100%">
           {renderChart()}
         </ResponsiveContainer>
       </div>
 
       {/* Chart Footer */}
-      <div className="flex flex-wrap items-center justify-between mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 pt-6 dark:border-gray-700">
         <div className="text-sm text-gray-500 dark:text-gray-400">
           Data updates in real-time • Last updated: Just now
         </div>
-        <div className="flex space-x-2 mt-2 sm:mt-0">
+        <div className="flex flex-wrap gap-3">
           <button className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 font-medium">
             Export Data
           </button>

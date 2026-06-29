@@ -5,6 +5,7 @@ import { io, Socket } from "socket.io-client";
 import {
   getLocalStorageValue,
   setLocalStorageValue,
+  subscribeToLocalStorage,
 } from "@/lib/browser-storage";
 
 export interface AdminNotification {
@@ -21,12 +22,16 @@ const getBackendUrl = (): string => {
   const configuredUrl =
     process.env.NEXT_PUBLIC_SOCKET_URL ||
     process.env.NEXT_PUBLIC_API_URL ||
-    "http://localhost:8000";
+    "https://api.radioyeraz.com";
 
   try {
-    return new URL(configuredUrl).origin;
+    const normalizedUrl = configuredUrl.startsWith("//")
+      ? `https:${configuredUrl}`
+      : configuredUrl;
+
+    return new URL(normalizedUrl).origin;
   } catch {
-    return configuredUrl.replace(/\/+$/, "");
+    return `https://${configuredUrl.replace(/^\/+|\/+$/g, "")}`;
   }
 };
 
@@ -59,12 +64,22 @@ const saveLocalReadIds = (ids: Set<string>) => {
   }
 };
 
+const getAccessToken = () => getLocalStorageValue("access_token") || "";
+
+const updateSocketAuth = (socket: Socket) => {
+  socket.auth = {
+    ...(typeof socket.auth === "object" && socket.auth ? socket.auth : {}),
+    token: getAccessToken(),
+  };
+};
+
 export function useAdminNotifications() {
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
   const socketRef = useRef<Socket | null>(null);
   const readIdsRef = useRef<Set<string>>(new Set());
+  const cleanupRef = useRef(false);
 
   const calculateUnread = useCallback(
     (notifs: AdminNotification[], readIds: Set<string>) => {
@@ -115,60 +130,105 @@ export function useAdminNotifications() {
     }
 
     readIdsRef.current = getLocalReadIds();
-    const token = getLocalStorageValue("access_token");
+    const token = getAccessToken();
     if (!token) {
       return;
     }
+
+    cleanupRef.current = false;
 
     const socket = io(BACKEND_URL, {
       path: "/socket.io",
       auth: { token },
       transports: ["websocket"],
       reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 2000,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000,
     });
 
     socketRef.current = socket;
 
-    socket.on("connect", () => {
-      console.log("✅ Admin socket connected:", socket.id);
+    const handleConnect = () => {
+      console.log("Admin socket connected");
       socket.emit("get_notifications");
+    };
+
+    const handleDisconnect = (reason: string) => {
+      if (cleanupRef.current) {
+        return;
+      }
+
+      if (socket.active) {
+        console.info(`Admin socket disconnected temporarily: ${reason}`);
+        return;
+      }
+
+      console.warn(`Admin socket disconnected: ${reason}`);
+    };
+
+    const handleConnectError = (err: Error) => {
+      console.warn(`Admin socket connection error: ${err.message}`);
+    };
+
+    const handleReconnectAttempt = () => {
+      updateSocketAuth(socket);
+    };
+
+    const handleReconnect = (attempt: number) => {
+      console.log(`Admin socket reconnected after ${attempt} attempt(s)`);
+      socket.emit("get_notifications");
+    };
+
+    const handleReconnectError = (err: Error) => {
+      console.warn(`Admin socket reconnect failed: ${err.message}`);
+    };
+
+    const handleNotificationsList = (data: {
+      notifications: AdminNotification[];
+      unreadCount: number;
+    }) => {
+      const readIds = readIdsRef.current;
+
+      const withLocalRead = applyLocalReadState(
+        data.notifications || [],
+        readIds,
+      );
+
+      setNotifications(withLocalRead);
+
+      setUnreadCount(
+        calculateUnread(withLocalRead, readIds),
+      );
+    };
+
+    const unsubscribeStorage = subscribeToLocalStorage(() => {
+      updateSocketAuth(socket);
     });
 
-    socket.on("disconnect", (reason) => {
-      console.log("❌ Disconnected:", reason);
-    });
-
-    socket.on("connect_error", (err) => {
-      console.log("❌ Socket connect error:", err.message);
-    });
-
-    socket.on(
-      "notifications_list",
-      (data: {
-        notifications: AdminNotification[];
-        unreadCount: number;
-      }) => {
-        const readIds = readIdsRef.current;
-
-        const withLocalRead = applyLocalReadState(
-          data.notifications || [],
-          readIds,
-        );
-
-        setNotifications(withLocalRead);
-
-        setUnreadCount(
-          calculateUnread(withLocalRead, readIds),
-        );
-      },
-    );
-
+    socket.on("connect", handleConnect);
+    socket.on("disconnect", handleDisconnect);
+    socket.on("connect_error", handleConnectError);
+    socket.on("notifications_list", handleNotificationsList);
     socket.on("new_notification", handleIncomingNotification);
     socket.on("admin_notification", handleIncomingNotification);
+    socket.io.on("reconnect_attempt", handleReconnectAttempt);
+    socket.io.on("reconnect", handleReconnect);
+    socket.io.on("reconnect_error", handleReconnectError);
 
     return () => {
+      cleanupRef.current = true;
+      unsubscribeStorage();
+      socket.off("connect", handleConnect);
+      socket.off("disconnect", handleDisconnect);
+      socket.off("connect_error", handleConnectError);
+      socket.off("notifications_list", handleNotificationsList);
+      socket.off("new_notification", handleIncomingNotification);
+      socket.off("admin_notification", handleIncomingNotification);
+      socket.io.off("reconnect_attempt", handleReconnectAttempt);
+      socket.io.off("reconnect", handleReconnect);
+      socket.io.off("reconnect_error", handleReconnectError);
       socket.disconnect();
       socketRef.current = null;
     };

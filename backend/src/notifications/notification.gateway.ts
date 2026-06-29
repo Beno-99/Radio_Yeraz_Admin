@@ -20,11 +20,11 @@ const socketAllowedOrigins = process.env.CORS_ORIGIN
       .map((origin) => origin.trim())
       .filter(Boolean)
   : [
+      'https://player.radioyeraz.com',
       'http://localhost:3000',
       'http://localhost:3001',
       'http://127.0.0.1:3000',
       'http://127.0.0.1:3001',
-      'http://192.168.1.197:3001',
     ];
 
 interface JwtPayload {
@@ -87,7 +87,10 @@ export class NotificationGateway
       const adminId = await this.authenticateClient(client);
       client.data.adminId = adminId;
       console.log(`Client connected: ${client.id}`);
-    } catch {
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Unknown socket auth error';
+      console.warn(`Socket authentication failed: ${message}`);
       client.emit('auth_error', { message: 'Authentication required' });
       client.disconnect(true);
     }

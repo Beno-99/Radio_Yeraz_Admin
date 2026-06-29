@@ -140,11 +140,11 @@ export default function NotificationsPage() {
   const isAdmin = isSuperAdmin(currentUser);
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-3xl font-bold flex items-center gap-3">
-            <Bell className="w-8 h-8" />
+    <div className="min-w-0 p-3 sm:p-6">
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="flex items-center gap-3 break-words text-2xl font-bold sm:text-3xl">
+            <Bell className="h-7 w-7 flex-shrink-0 sm:h-8 sm:w-8" />
             Notifications
           </h1>
 
@@ -153,11 +153,11 @@ export default function NotificationsPage() {
           </p>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row">
           <button
             onClick={handleMarkAllRead}
             disabled={unreadCount === 0}
-            className="flex items-center gap-2 px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition disabled:opacity-50"
+            className="flex min-h-11 items-center justify-center gap-2 rounded-lg bg-green-600 px-5 py-2.5 text-white transition hover:bg-green-700 disabled:opacity-50"
           >
             <CheckCircle size={18} />
             Mark All Read
@@ -166,7 +166,7 @@ export default function NotificationsPage() {
           {isAdmin && (
             <button
               onClick={handleDeleteAll}
-              className="flex items-center gap-2 px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg transition"
+              className="flex min-h-11 items-center justify-center gap-2 rounded-lg bg-red-600 px-5 py-2.5 text-white transition hover:bg-red-700"
             >
               <Trash2 size={18} />
               Delete All
@@ -184,8 +184,9 @@ export default function NotificationsPage() {
           No notifications yet
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow overflow-hidden">
-          <table className="w-full">
+        <div className="max-w-full overflow-hidden rounded-xl bg-white shadow">
+          <div className="overflow-x-auto">
+          <table className="min-w-[760px] w-full">
             <thead className="bg-gray-50 border-b">
               <tr>
                 <th className="px-6 py-4 text-left w-12"></th>
@@ -227,8 +228,10 @@ export default function NotificationsPage() {
                     {notif.title}
                   </td>
 
-                  <td className="px-6 py-4 text-gray-600 max-w-md truncate">
+                  <td className="max-w-md px-6 py-4 text-gray-600">
+                    <span className="line-clamp-3 break-words">
                     {notif.message}
+                    </span>
                   </td>
 
                   <td className="px-6 py-4 text-sm text-gray-500">
@@ -261,6 +264,7 @@ export default function NotificationsPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>

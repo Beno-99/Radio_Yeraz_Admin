@@ -49,7 +49,7 @@ export default function PostDetailPage() {
   const [imageTimestamp, setImageTimestamp] = useState<number>(() => Date.now());
 
   const mediaUrl =
-    process.env.NEXT_PUBLIC_MEDIA_GET_URL || "http://localhost:8000";
+    process.env.NEXT_PUBLIC_MEDIA_GET_URL || "https://api.radioyeraz.com";
 
   // Fetch post data
   const fetchPost = useCallback(async () => {

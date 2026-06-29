@@ -16,12 +16,6 @@ const nextConfig: NextConfig = {
         pathname: "/uploads/**",
       },
       {
-        protocol: "http",
-        hostname: "192.168.1.197",
-        port: "8000",
-        pathname: "/uploads/**",
-      },
-      {
         protocol: "https",
         hostname: "api.radioyeraz.com",
         pathname: "/uploads/**",

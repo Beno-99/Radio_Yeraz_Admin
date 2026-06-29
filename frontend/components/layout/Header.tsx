@@ -114,25 +114,25 @@ export default function Header({ onMenuClick, user }: HeaderProps) {
 
   return (
     <header className="sticky top-0 z-40 bg-white border-b border-gray-200 dark:bg-gray-900 dark:border-gray-800">
-      <div className="px-4 sm:px-6 lg:px-8 bg-gray-900">
-        <div className="flex items-center justify-between h-16">
+      <div className="bg-gray-900 px-3 sm:px-4 lg:px-8">
+        <div className="flex h-16 min-w-0 items-center justify-between">
           {/* Left side */}
           <div className="flex items-center">
             <button
               onClick={onMenuClick}
-              className="p-2 rounded-md text-gray-500 hover:text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-800 lg:hidden"
+              className="min-h-11 min-w-11 rounded-md p-2 text-gray-500 hover:text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-800 lg:hidden"
             >
               <Menu className="h-6 w-6" />
             </button>
           </div>
 
           {/* Right side */}
-          <div className="flex items-center space-x-4">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-4">
             {/* Notifications */}
             <div className="relative" ref={notificationsRef}>
               <button
                 onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
-                className="p-2 rounded-lg text-white hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-800 relative"
+                className="relative min-h-11 min-w-11 rounded-lg p-2 text-white hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-800"
               >
                 <Bell className="h-5 w-5" />
                 {unreadCount > 0 && (
@@ -143,7 +143,7 @@ export default function Header({ onMenuClick, user }: HeaderProps) {
               </button>
 
               {isNotificationsOpen && (
-                <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
+                <div className="fixed left-3 right-3 top-16 z-50 mt-2 max-h-[calc(100vh-5rem)] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800 sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:w-80">
                   {/* Header */}
                   <div className="p-4 border-b border-gray-200 dark:border-gray-700">
                     <div className="flex items-center justify-between">
@@ -160,7 +160,7 @@ export default function Header({ onMenuClick, user }: HeaderProps) {
                   </div>
 
                   {/* List */}
-                  <div className="max-h-96 overflow-y-auto">
+                  <div className="max-h-[60vh] overflow-y-auto">
                     {notifications.length === 0 ? (
                       <div className="p-8 text-center">
                         <Bell className="h-12 w-12 text-gray-400 mx-auto mb-3" />
@@ -173,7 +173,7 @@ export default function Header({ onMenuClick, user }: HeaderProps) {
                         <div
                           key={generateNotificationKey(n, index)}
                           onClick={() => markRead(n._id)}
-                          className={`p-4 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 cursor-pointer ${
+                          className={`min-h-11 border-b border-gray-100 p-4 hover:bg-gray-50 dark:border-gray-700 cursor-pointer ${
                             !n.isRead ? "bg-blue-50 dark:bg-blue-900/20" : ""
                           }`}
                         >
@@ -220,15 +220,15 @@ export default function Header({ onMenuClick, user }: HeaderProps) {
             <div className="relative" ref={profileRef}>
               <button
                 onClick={() => setIsProfileOpen(!isProfileOpen)}
-                className="group flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                className="group flex min-h-11 min-w-0 items-center gap-2 rounded-lg p-2 transition hover:bg-gray-100 dark:hover:bg-gray-800 sm:gap-3"
               >
-                <div className="h-8 w-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
+                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-purple-600">
                   <span className="text-white font-medium text-sm">
                     {user.displayName?.charAt(0).toUpperCase() || "A"}
                   </span>
                 </div>
-                <div className="hidden md:block text-left">
-                  <p className="text-sm font-medium text-white group-hover:text-black">
+                <div className="hidden min-w-0 text-left md:block">
+                  <p className="max-w-36 truncate text-sm font-medium text-white group-hover:text-black">
                     {user.displayName}
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-400 capitalize group-hover:text-blue-500 transition">
@@ -239,19 +239,19 @@ export default function Header({ onMenuClick, user }: HeaderProps) {
               </button>
 
               {isProfileOpen && (
-                <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
+                <div className="fixed left-3 right-3 top-16 z-50 mt-2 rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800 sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:w-56">
                   <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-                    <div className="flex items-center space-x-3">
-                      <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-purple-600">
                         <span className="text-white font-medium">
                           {user.displayName?.charAt(0).toUpperCase() || "A"}
                         </span>
                       </div>
-                      <div>
-                        <p className="font-medium text-gray-900 dark:text-white">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-gray-900 dark:text-white">
                           {user.displayName}
                         </p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                        <p className="truncate text-sm text-gray-500 dark:text-gray-400">
                           {user.username}
                         </p>
                       </div>
@@ -261,7 +261,7 @@ export default function Header({ onMenuClick, user }: HeaderProps) {
                   <div className="py-2">
                     <button
                       onClick={handleProfileClick}
-                      className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+                      className="flex min-h-11 items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
                     >
                       <User className="mr-3 h-4 w-4" />
                       Your Profile
@@ -269,7 +269,7 @@ export default function Header({ onMenuClick, user }: HeaderProps) {
                     <div className="border-t border-gray-200 dark:border-gray-700 my-2" />
                     <button
                       onClick={handleLogout}
-                      className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-gray-100 dark:text-red-400 dark:hover:bg-gray-700"
+                      className="flex min-h-11 items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-gray-100 dark:text-red-400 dark:hover:bg-gray-700"
                     >
                       <LogOut className="mr-3 h-4 w-4" />
                       Sign out

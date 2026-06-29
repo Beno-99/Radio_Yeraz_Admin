@@ -22,14 +22,14 @@ export function ConfirmationModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">{title}</h3>
-        <p className="text-gray-600 mb-6">{message}</p>
-        <div className="flex justify-end gap-3">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3">
+      <div className="max-h-[calc(100vh-1.5rem)] w-full max-w-md overflow-y-auto rounded-xl bg-white p-4 shadow-xl sm:p-6">
+        <h3 className="mb-2 break-words text-lg font-semibold text-gray-900">{title}</h3>
+        <p className="mb-6 break-words text-gray-600">{message}</p>
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+            className="min-h-11 rounded-lg border border-gray-300 px-4 py-2 hover:bg-gray-50"
           >
             {cancelText}
           </button>
@@ -38,7 +38,7 @@ export function ConfirmationModal({
               onConfirm();
               onClose();
             }}
-            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+            className="min-h-11 rounded-lg bg-red-600 px-4 py-2 text-white hover:bg-red-700"
           >
             {confirmText}
           </button>

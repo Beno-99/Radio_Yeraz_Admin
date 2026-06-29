@@ -131,7 +131,7 @@ export function ConfirmationDialog({
 
       {/* Dialog */}
       <div className="fixed inset-0 z-50 overflow-y-auto">
-        <div className="flex min-h-full items-center justify-center p-4">
+        <div className="flex min-h-full items-center justify-center p-3 sm:p-4">
           <div
             className={`relative w-full max-w-md transform transition-all duration-200 ${
               isClosing
@@ -140,22 +140,22 @@ export function ConfirmationDialog({
             }`}
           >
             <div
-              className={`overflow-hidden rounded-xl border shadow-2xl ${config.bgColor} ${config.borderColor}`}
+              className={`max-h-[calc(100vh-1.5rem)] overflow-y-auto rounded-xl border shadow-2xl ${config.bgColor} ${config.borderColor}`}
             >
               {/* Header */}
-              <div className="p-6">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
+              <div className="p-4 sm:p-6">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
                     <div className={`rounded-full p-2 ${config.bgColor}`}>
                       <Icon className={`h-6 w-6 ${config.iconColor}`} />
                     </div>
 
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900">
+                    <div className="min-w-0">
+                      <h3 className="break-words text-lg font-semibold text-gray-900">
                         {title}
                       </h3>
 
-                      <p className="mt-1 text-sm text-gray-600">
+                      <p className="mt-1 break-words text-sm text-gray-600">
                         {message}
                       </p>
                     </div>
@@ -164,7 +164,7 @@ export function ConfirmationDialog({
                   <button
                     type="button"
                     onClick={handleClose}
-                    className="rounded-lg p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+                    className="min-h-11 min-w-11 rounded-lg p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
                   >
                     <X className="h-5 w-5" />
                   </button>
@@ -172,12 +172,12 @@ export function ConfirmationDialog({
               </div>
 
               {/* Actions */}
-              <div className="flex justify-end gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4">
+              <div className="flex flex-col-reverse gap-3 border-t border-gray-200 bg-gray-50 px-4 py-4 sm:flex-row sm:justify-end sm:px-6">
                 <button
                   type="button"
                   onClick={handleClose}
                   disabled={loading}
-                  className="px-4 py-2 font-medium text-gray-700 hover:text-gray-900 disabled:opacity-50"
+                  className="min-h-11 rounded-lg px-4 py-2 font-medium text-gray-700 hover:text-gray-900 disabled:opacity-50"
                 >
                   {cancelText}
                 </button>
@@ -186,7 +186,7 @@ export function ConfirmationDialog({
                   type="button"
                   onClick={handleConfirm}
                   disabled={loading}
-                  className={`flex items-center gap-2 rounded-lg px-4 py-2 font-medium text-white transition ${config.confirmColor} disabled:cursor-not-allowed disabled:opacity-50`}
+                  className={`flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 py-2 font-medium text-white transition ${config.confirmColor} disabled:cursor-not-allowed disabled:opacity-50`}
                 >
                   {loading && (
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
