@@ -16,6 +16,18 @@ app
   .prepare()
   .then(() => {
     const server = createServer((req, res) => {
+      const requestUrl = new URL(
+        req.url || "/",
+        `http://${req.headers.host || hostname}`,
+      );
+
+      if (requestUrl.pathname === "/") {
+        res.statusCode = 307;
+        res.setHeader("Location", `/dashboard${requestUrl.search}`);
+        res.end();
+        return;
+      }
+
       handle(req, res).catch((error) => {
         console.error("Request handling failed:", error);
         res.statusCode = 500;
