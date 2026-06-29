@@ -408,7 +408,7 @@ export default function AdminPage() {
   };
 
   const PaginationControls = (
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between mt-4 space-y-3 sm:space-y-0">
+    <div className="mt-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
       <div className="text-sm text-gray-600">
         Showing{" "}
         <span className="font-semibold">
@@ -426,7 +426,7 @@ export default function AdminPage() {
         admins
       </div>
 
-      <div className="flex items-center space-x-2">
+      <div className="flex items-center gap-2">
         <button
           onClick={() => {
             if (pagination.page > 1) {
@@ -436,7 +436,7 @@ export default function AdminPage() {
             }
           }}
           disabled={pagination.page === 1}
-          className={`px-3 py-1 rounded-lg border ${
+          className={`min-h-10 min-w-10 rounded-lg border px-3 py-1 ${
             pagination.page === 1
               ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
               : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
@@ -454,7 +454,7 @@ export default function AdminPage() {
             }
           }}
           disabled={pagination.page === pagination.totalPages}
-          className={`px-3 py-1 rounded-lg border ${
+          className={`min-h-10 min-w-10 rounded-lg border px-3 py-1 ${
             pagination.page === pagination.totalPages
               ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
               : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
@@ -467,9 +467,9 @@ export default function AdminPage() {
   );
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between">
-        <div>
+    <div className="min-w-0 space-y-6">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <div className="min-w-0">
           <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
             Admin Management
           </h1>
@@ -479,10 +479,10 @@ export default function AdminPage() {
           </p>
         </div>
 
-        <div className="mt-4 sm:mt-0 flex space-x-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
           <button
             onClick={() => setShowFilterPanel(!showFilterPanel)}
-            className={`px-4 py-2 rounded-lg transition flex items-center ${
+            className={`flex min-h-11 items-center justify-center rounded-lg px-4 py-2 transition ${
               showFilterPanel
                 ? "bg-blue-600 text-white hover:bg-blue-700"
                 : "bg-gray-200 text-gray-700 hover:bg-gray-300"
@@ -494,7 +494,7 @@ export default function AdminPage() {
 
           <button
             onClick={() => fetchAdmins(pagination.page)}
-            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition flex items-center"
+            className="flex min-h-11 items-center justify-center rounded-lg bg-gray-200 px-4 py-2 text-gray-700 transition hover:bg-gray-300"
           >
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
@@ -503,7 +503,7 @@ export default function AdminPage() {
           {isSuperAdmin && (
             <button
               onClick={() => setShowForm(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center shadow-sm"
+              className="flex min-h-11 items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-white shadow-sm transition hover:bg-blue-700"
             >
               <UserPlus className="h-4 w-4 mr-2" />
               Add Admin
@@ -599,19 +599,19 @@ export default function AdminPage() {
       {!loading && admins.length > 0 && PaginationControls}
 
       {showForm && isSuperAdmin && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-4">
           <form
             onSubmit={handleCreateAdmin}
-            className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl space-y-4"
+            className="max-h-[calc(100vh-1.5rem)] w-full max-w-md space-y-4 overflow-y-auto rounded-lg bg-white p-4 shadow-xl sm:p-6"
           >
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
               <h2 className="text-lg font-semibold text-gray-900">
                 Add Admin
               </h2>
               <button
                 type="button"
                 onClick={() => setShowForm(false)}
-                className="text-gray-500 hover:text-gray-700"
+                className="min-h-11 rounded-lg px-2 text-gray-500 hover:text-gray-700"
               >
                 Close
               </button>
@@ -623,13 +623,13 @@ export default function AdminPage() {
               required
               minLength={3}
               placeholder="Username"
-              className="w-full rounded border border-gray-300 px-3 py-2"
+              className="min-h-11 w-full rounded border border-gray-300 px-3 py-2"
             />
             <input
               name="displayName"
               type="text"
               placeholder="Display name"
-              className="w-full rounded border border-gray-300 px-3 py-2"
+              className="min-h-11 w-full rounded border border-gray-300 px-3 py-2"
             />
             <div className="flex gap-2">
               <input
@@ -638,12 +638,12 @@ export default function AdminPage() {
                 required
                 minLength={6}
                 placeholder="Password"
-                className="min-w-0 flex-1 rounded border border-gray-300 px-3 py-2"
+                className="min-h-11 min-w-0 flex-1 rounded border border-gray-300 px-3 py-2"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((value) => !value)}
-                className="rounded border border-gray-300 px-3 py-2 text-sm"
+                className="min-h-11 rounded border border-gray-300 px-3 py-2 text-sm"
               >
                 {showPassword ? "Hide" : "Show"}
               </button>
@@ -651,7 +651,7 @@ export default function AdminPage() {
             <select
               name="role"
               defaultValue="ADMIN"
-              className="w-full rounded border border-gray-300 px-3 py-2"
+              className="min-h-11 w-full rounded border border-gray-300 px-3 py-2"
             >
               <option value="ADMIN">Admin</option>
             </select>
@@ -659,17 +659,17 @@ export default function AdminPage() {
               <input name="isActive" type="checkbox" defaultChecked />
               Active
             </label>
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
               <button
                 type="button"
                 onClick={() => setShowForm(false)}
-                className="rounded border border-gray-300 px-4 py-2"
+                className="min-h-11 rounded border border-gray-300 px-4 py-2"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                className="min-h-11 rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
               >
                 Create
               </button>

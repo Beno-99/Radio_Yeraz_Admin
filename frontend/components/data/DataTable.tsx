@@ -116,7 +116,7 @@ export function DataTable<T extends { _id: string }>({
 
       {/* Table */}
       <div className="max-w-full overflow-x-auto">
-        <table className="min-w-[720px] divide-y divide-gray-200">
+        <table className="w-full min-w-[760px] divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
               {columns.map((column) => (
@@ -137,7 +137,7 @@ export function DataTable<T extends { _id: string }>({
               ))}
 
               {actions && (
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">
+                <th className="w-[220px] px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
                 </th>
               )}
@@ -168,8 +168,8 @@ export function DataTable<T extends { _id: string }>({
                 ))}
 
                 {actions && (
-                  <td className="px-6 py-4 text-sm font-medium">
-                    <div className="flex flex-wrap items-center gap-2">
+                  <td className="min-w-[220px] px-6 py-4 text-sm font-medium">
+                    <div className="flex flex-nowrap items-center gap-2">
                       {actions.onView && (
                         <Button
                           onClick={() => actions.onView!(item)}

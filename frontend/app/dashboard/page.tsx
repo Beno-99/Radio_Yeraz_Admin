@@ -31,15 +31,24 @@ export default function DashboardPage() {
     if (fetchAttempted.current) return;
     fetchAttempted.current = true;
 
-    // Force stop loading after 5 seconds no matter what
+    let isActive = true;
+
+    // Force stop loading only if the first dashboard request hangs.
     const forceStopLoading = setTimeout(() => {
+      if (!isActive) return;
+
       setLoading(false);
       setError("Request timed out. Please check if backend is running.");
-    }, 5000);
+    }, 15000);
 
-    fetchDashboardData();
+    fetchDashboardData().finally(() => {
+      clearTimeout(forceStopLoading);
+    });
 
-    return () => clearTimeout(forceStopLoading);
+    return () => {
+      isActive = false;
+      clearTimeout(forceStopLoading);
+    };
   }, []);
 
   async function fetchDashboardData() {
@@ -134,7 +143,7 @@ export default function DashboardPage() {
   // Show loading state
   if (loading) {
     return (
-      <div className="flex justify-center items-center min-h-[60vh]">
+      <div className="flex min-h-[50vh] items-center justify-center px-3">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading dashboard data...</p>
@@ -146,7 +155,7 @@ export default function DashboardPage() {
               setLoading(false);
               setError("Loading cancelled");
             }}
-            className="mt-4 px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
+            className="mt-4 min-h-11 rounded-lg bg-gray-500 px-4 py-2 text-white hover:bg-gray-600"
           >
             Cancel Loading
           </button>
@@ -158,26 +167,26 @@ export default function DashboardPage() {
   // Show error state
   if (error) {
     return (
-      <div className="flex justify-center items-center min-h-[60vh]">
-        <div className="text-center max-w-md p-8 bg-red-50 rounded-xl">
-          <AlertCircle className="h-12 w-12 text-red-600 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-red-800 mb-2">
+      <div className="flex min-h-[50vh] items-center justify-center px-3 py-6">
+        <div className="w-full max-w-sm rounded-xl bg-red-50 p-5 text-center sm:max-w-md sm:p-8">
+          <AlertCircle className="mx-auto mb-4 h-11 w-11 text-red-600 sm:h-12 sm:w-12" />
+          <h3 className="mb-2 text-lg font-semibold text-red-800">
             Error Loading Dashboard
           </h3>
-          <p className="text-red-600 mb-4">{error}</p>
-          <div className="space-x-2">
+          <p className="mb-4 text-sm text-red-600 sm:text-base">{error}</p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
             <button
               onClick={() => {
                 fetchAttempted.current = false;
                 fetchDashboardData();
               }}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+              className="min-h-11 rounded-lg bg-red-600 px-4 py-2 text-white transition hover:bg-red-700"
             >
               Try Again
             </button>
             <button
               onClick={() => (window.location.href = "/dashboard")}
-              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition"
+              className="min-h-11 rounded-lg bg-gray-600 px-4 py-2 text-white transition hover:bg-gray-700"
             >
               Reload Page
             </button>
@@ -189,7 +198,7 @@ export default function DashboardPage() {
 
   // Show dashboard
   return (
-    <div className="space-y-6 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+    <div className="mx-auto max-w-7xl space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-xl border border-gray-200">
         <div>
