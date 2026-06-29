@@ -10,6 +10,7 @@ import {
   ChevronRight,
   RefreshCw,
   Filter,
+  Loader2,
 } from "lucide-react";
 import type { Admin } from "@/types";
 import type { Column } from "@/components/data/DataTable";
@@ -45,6 +46,7 @@ export default function AdminPage() {
 
   const [showForm, setShowForm] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [isCreatingAdmin, setIsCreatingAdmin] = useState(false);
 
   const [selectedAdmins, setSelectedAdmins] = useState<string[]>([]);
 
@@ -313,6 +315,10 @@ export default function AdminPage() {
   ) => {
     e.preventDefault();
 
+    if (isCreatingAdmin) {
+      return;
+    }
+
     const form = e.currentTarget;
 
     const data = {
@@ -338,6 +344,8 @@ export default function AdminPage() {
     };
 
     try {
+      setIsCreatingAdmin(true);
+
       await adminAPI.createAdmin(data);
 
       setShowForm(false);
@@ -352,6 +360,8 @@ export default function AdminPage() {
       toast.error(
         err.response?.data?.message || "Failed to create admin"
       );
+    } finally {
+      setIsCreatingAdmin(false);
     }
   };
 
@@ -616,8 +626,13 @@ export default function AdminPage() {
               </h2>
               <button
                 type="button"
-                onClick={() => setShowForm(false)}
-                className="min-h-11 rounded-lg px-2 text-gray-500 hover:text-gray-700"
+                onClick={() => {
+                  if (!isCreatingAdmin) {
+                    setShowForm(false);
+                  }
+                }}
+                disabled={isCreatingAdmin}
+                className="min-h-11 rounded-lg px-2 text-gray-500 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Close
               </button>
@@ -629,12 +644,14 @@ export default function AdminPage() {
               required
               minLength={3}
               placeholder="Username"
+              disabled={isCreatingAdmin}
               className="min-h-11 w-full rounded border border-gray-300 px-3 py-2"
             />
             <input
               name="displayName"
               type="text"
               placeholder="Display name"
+              disabled={isCreatingAdmin}
               className="min-h-11 w-full rounded border border-gray-300 px-3 py-2"
             />
             <div className="flex gap-2">
@@ -644,12 +661,14 @@ export default function AdminPage() {
                 required
                 minLength={6}
                 placeholder="Password"
+                disabled={isCreatingAdmin}
                 className="min-h-11 min-w-0 flex-1 rounded border border-gray-300 px-3 py-2"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((value) => !value)}
-                className="min-h-11 rounded border border-gray-300 px-3 py-2 text-sm"
+                disabled={isCreatingAdmin}
+                className="min-h-11 rounded border border-gray-300 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {showPassword ? "Hide" : "Show"}
               </button>
@@ -657,27 +676,38 @@ export default function AdminPage() {
             <select
               name="role"
               defaultValue="ADMIN"
+              disabled={isCreatingAdmin}
               className="min-h-11 w-full rounded border border-gray-300 px-3 py-2"
             >
               <option value="ADMIN">Admin</option>
             </select>
             <label className="flex items-center gap-2 text-sm text-gray-700">
-              <input name="isActive" type="checkbox" defaultChecked />
+              <input
+                name="isActive"
+                type="checkbox"
+                defaultChecked
+                disabled={isCreatingAdmin}
+              />
               Active
             </label>
             <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
               <button
                 type="button"
                 onClick={() => setShowForm(false)}
-                className="min-h-11 rounded border border-gray-300 px-4 py-2"
+                disabled={isCreatingAdmin}
+                className="min-h-11 rounded border border-gray-300 px-4 py-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="min-h-11 rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                disabled={isCreatingAdmin}
+                className="flex min-h-11 items-center justify-center gap-2 rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:cursor-wait disabled:opacity-70"
               >
-                Create
+                {isCreatingAdmin && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+                {isCreatingAdmin ? "Creating..." : "Create"}
               </button>
             </div>
           </form>
