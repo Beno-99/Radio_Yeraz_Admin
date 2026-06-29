@@ -17,9 +17,20 @@ export interface AdminNotification {
   isRead: boolean;
 }
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL
-  ? process.env.NEXT_PUBLIC_API_URL.replace("/api", "")
-  : "http://192.168.1.197:8000";
+const getBackendUrl = (): string => {
+  const configuredUrl =
+    process.env.NEXT_PUBLIC_SOCKET_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    "http://localhost:8000";
+
+  try {
+    return new URL(configuredUrl).origin;
+  } catch {
+    return configuredUrl.replace(/\/+$/, "");
+  }
+};
+
+const BACKEND_URL = getBackendUrl();
 
 const getStorageKey = () => {
   try {
@@ -112,7 +123,7 @@ export function useAdminNotifications() {
     const socket = io(BACKEND_URL, {
       path: "/socket.io",
       auth: { token },
-      transports: ["websocket", "polling"],
+      transports: ["websocket"],
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 2000,

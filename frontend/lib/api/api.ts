@@ -5,10 +5,10 @@ import {
   setLocalStorageValue,
 } from "@/lib/browser-storage";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ||
+const API_BASE_URL = (
   process.env.NEXT_PUBLIC_API_URL ||
-  "http://192.168.1.115:8000/api";
+  "http://localhost:8000/api"
+).replace(/\/+$/, "");
 
 const api = axios.create({
   baseURL: API_BASE_URL,

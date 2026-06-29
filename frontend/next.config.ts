@@ -23,7 +23,7 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: "https",
-        hostname: "yourdomain.com",
+        hostname: "api.radioyeraz.com",
         pathname: "/uploads/**",
       },
     ],
