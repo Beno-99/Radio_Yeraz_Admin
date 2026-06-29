@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "node --no-experimental-webstorage ./node_modules/next/dist/bin/next dev",
+    "prebuild": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\"",
     "build": "node --no-experimental-webstorage ./node_modules/next/dist/bin/next build",
     "start": "node --no-experimental-webstorage ./node_modules/next/dist/bin/next start",
     "lint": "eslint"
