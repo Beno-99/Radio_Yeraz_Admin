@@ -479,7 +479,7 @@ export default function AdminPage() {
           </p>
         </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+        <div className="flex flex-col gap-3 sm:flex-row">
           <button
             onClick={() => setShowFilterPanel(!showFilterPanel)}
             className={`flex min-h-11 items-center justify-center rounded-lg px-4 py-2 transition ${

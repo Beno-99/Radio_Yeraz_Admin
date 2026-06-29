@@ -106,7 +106,7 @@ export function DataTable<T extends { _id: string }>({
   };
 
   return (
-    <div className="max-w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow">
+    <div className="w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow">
       {/* Filters */}
       {filters && (
         <div className="min-w-0 border-b border-gray-200 bg-gray-50 p-4">
@@ -115,8 +115,8 @@ export function DataTable<T extends { _id: string }>({
       )}
 
       {/* Table */}
-      <div className="max-w-full overflow-x-auto">
-        <table className="w-full min-w-[760px] divide-y divide-gray-200">
+      <div className="w-full overflow-x-auto">
+        <table className="w-full min-w-[960px] table-fixed divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
               {columns.map((column) => (
@@ -137,7 +137,7 @@ export function DataTable<T extends { _id: string }>({
               ))}
 
               {actions && (
-                <th className="w-[220px] px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="w-[260px] px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
                 </th>
               )}
@@ -168,8 +168,8 @@ export function DataTable<T extends { _id: string }>({
                 ))}
 
                 {actions && (
-                  <td className="min-w-[220px] px-6 py-4 text-sm font-medium">
-                    <div className="flex flex-nowrap items-center gap-2">
+                  <td className="w-[260px] px-6 py-4 text-sm font-medium">
+                    <div className="flex items-center justify-end gap-2 whitespace-nowrap">
                       {actions.onView && (
                         <Button
                           onClick={() => actions.onView!(item)}
