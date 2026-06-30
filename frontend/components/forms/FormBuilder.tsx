@@ -120,6 +120,12 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
 
   const imageSelected = useMemo(() => isFile(mainImageValue), [mainImageValue]);
   const videoSelected = useMemo(() => isFile(videoValue), [videoValue]);
+  const youtubeUrlEntered = useMemo(
+    () =>
+      typeof youtubeUrlValue === "string" &&
+      youtubeUrlValue.trim().length > 0,
+    [youtubeUrlValue],
+  );
   const youtubePreview = useMemo(
     () =>
       typeof youtubeUrlValue === "string"
@@ -245,10 +251,15 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
 
       case "file": {
         const isVideo = field.name.toLowerCase().includes("video");
+        const imageBlockedByYoutube =
+          field.name === "mainImage" && youtubeUrlEntered;
+        const imageBlockedByVideo = field.name === "mainImage" && videoSelected;
+        const videoBlockedByImage = field.name === "video" && imageSelected;
         const isDisabled =
           loading ||
-          (field.name === "mainImage" && videoSelected) ||
-          (field.name === "video" && imageSelected);
+          imageBlockedByYoutube ||
+          imageBlockedByVideo ||
+          videoBlockedByImage;
 
         return (
           <div className={fieldContainerClass}>
@@ -262,7 +273,7 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
               control={control}
               render={({ field: controllerField }) => {
                 const hasFile = isFile(controllerField.value);
-                const otherFieldSelected = isDisabled && !hasFile;
+                const otherFieldSelected = !loading && isDisabled && !hasFile;
 
                 return (
                   <>
@@ -282,12 +293,16 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
                           <div className="text-center p-4">
                             <Ban className="h-10 w-10 text-gray-400 mx-auto mb-2" />
                             <p className="text-sm font-medium text-gray-700">
-                              {isVideo
-                                ? "Cannot upload video when an image is selected"
-                                : "Cannot upload image when a video is selected"}
+                              {imageBlockedByYoutube
+                                ? "Cannot upload image when a YouTube URL is entered"
+                                : isVideo
+                                  ? "Cannot upload video when an image is selected"
+                                  : "Cannot upload image when a video is selected"}
                             </p>
                             <p className="text-xs text-gray-500 mt-1">
-                              Remove the {isVideo ? "image" : "video"} first
+                              {imageBlockedByYoutube
+                                ? "Remove the YouTube URL first"
+                                : `Remove the ${isVideo ? "image" : "video"} first`}
                             </p>
                           </div>
                         </div>
@@ -470,6 +485,8 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
       default:
         const isTextarea = field.type === "textarea";
         const isDate = field.type === "date";
+        const isYoutubeUrl = field.name === "youtubeUrl";
+        const isYoutubeDisabled = isYoutubeUrl && imageSelected;
 
         return (
           <div className={fieldContainerClass}>
@@ -530,12 +547,14 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
                       value={controllerField.value ?? ""}
                       type={field.type}
                       placeholder={field.placeholder}
-                      disabled={loading}
+                      disabled={loading || isYoutubeDisabled}
                       className={cn(
                         "block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm transition-colors",
                         Icon ? "pl-10" : "pl-4",
                         "pr-4 py-3",
-                        error
+                        isYoutubeDisabled
+                          ? "cursor-not-allowed bg-gray-100 text-gray-400"
+                          : error
                           ? "border-red-300 focus:border-red-500 focus:ring-red-500 bg-red-50"
                           : "bg-white",
                       )}
@@ -545,7 +564,11 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
               />
             </div>
             {field.description && (
-              <p className="mt-2 text-sm text-gray-600">{field.description}</p>
+              <p className="mt-2 text-sm text-gray-600">
+                {isYoutubeDisabled
+                  ? "Remove the selected image first to add a YouTube URL"
+                  : field.description}
+              </p>
             )}
             {field.name === "youtubeUrl" && youtubePreview && (
               <div className="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-black">
