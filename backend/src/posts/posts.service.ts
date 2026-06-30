@@ -7,6 +7,7 @@ import {
   Admin as PrismaAdmin,
   AdminRole,
   Post as PrismaPost,
+  PostLiveStatus,
   PostStatus,
   PostVideoSource,
   Prisma,
@@ -113,6 +114,8 @@ export class PostsService {
       eventTime: post.eventTime,
       location: post.location,
       isLive: post.isLive,
+      liveStatus: post.liveStatus,
+      liveStatusCheckedAt: post.liveStatusCheckedAt,
       isPublished: post.isPublished,
       status: post.status,
       postedDate: post.postedDate,
@@ -214,6 +217,162 @@ export class PostsService {
     return typeof value === 'string' ? value.trim() : '';
   }
 
+  private hasVideoMedia(
+    post: Pick<
+      PrismaPost,
+      'videoSource' | 'youtubeUrl' | 'youtubeVideoId' | 'facebookUrl'
+    >,
+  ): boolean {
+    return Boolean(
+      post.videoSource ||
+        post.youtubeUrl ||
+        post.youtubeVideoId ||
+        post.facebookUrl,
+    );
+  }
+
+  private getManualLiveStatus(
+    isLive: boolean,
+    post: Pick<
+      PrismaPost,
+      'videoSource' | 'youtubeUrl' | 'youtubeVideoId' | 'facebookUrl'
+    >,
+  ): PostLiveStatus {
+    if (isLive) return PostLiveStatus.LIVE;
+    return this.hasVideoMedia(post)
+      ? PostLiveStatus.WAS_LIVE
+      : PostLiveStatus.NOT_LIVE;
+  }
+
+  private parseFacebookVideoId(value?: string | null): string | null {
+    const input = this.getTrimmedValue(value);
+    if (!input) return null;
+
+    try {
+      const parsed = new URL(input);
+      const watchId = parsed.searchParams.get('v');
+      if (watchId) return watchId;
+
+      const segments = parsed.pathname.split('/').filter(Boolean);
+      const videoSegmentIndex = segments.findIndex((segment) =>
+        ['videos', 'live_videos', 'watch'].includes(segment),
+      );
+      if (videoSegmentIndex >= 0 && segments[videoSegmentIndex + 1]) {
+        return segments[videoSegmentIndex + 1];
+      }
+
+      const numericSegment = [...segments]
+        .reverse()
+        .find((segment) => /^\d+$/.test(segment));
+      return numericSegment ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async fetchYoutubeLiveStatus(
+    videoId?: string | null,
+  ): Promise<PostLiveStatus | null> {
+    const apiKey = process.env.YOUTUBE_API_KEY;
+    if (!apiKey || !videoId) return null;
+
+    try {
+      const url = new URL('https://www.googleapis.com/youtube/v3/videos');
+      url.searchParams.set('part', 'snippet,liveStreamingDetails');
+      url.searchParams.set('id', videoId);
+      url.searchParams.set('key', apiKey);
+
+      const response = await fetch(url);
+      if (!response.ok) return null;
+
+      const payload = (await response.json()) as {
+        items?: Array<{
+          snippet?: { liveBroadcastContent?: string };
+          liveStreamingDetails?: {
+            actualStartTime?: string;
+            actualEndTime?: string;
+            scheduledStartTime?: string;
+          };
+        }>;
+      };
+      const item = payload.items?.[0];
+      if (!item) return PostLiveStatus.NOT_LIVE;
+
+      const liveContent = item.snippet?.liveBroadcastContent;
+      const liveDetails = item.liveStreamingDetails;
+
+      if (liveDetails?.actualEndTime) return PostLiveStatus.WAS_LIVE;
+      if (liveContent === 'live' || liveDetails?.actualStartTime) {
+        return PostLiveStatus.LIVE;
+      }
+      if (liveContent === 'upcoming' || liveDetails?.scheduledStartTime) {
+        return PostLiveStatus.UPCOMING;
+      }
+
+      return PostLiveStatus.NOT_LIVE;
+    } catch (error) {
+      console.error('Failed to fetch YouTube live status:', error);
+      return null;
+    }
+  }
+
+  private async fetchFacebookLiveStatus(
+    facebookUrl?: string | null,
+  ): Promise<PostLiveStatus | null> {
+    const accessToken = process.env.FACEBOOK_ACCESS_TOKEN;
+    const videoId = this.parseFacebookVideoId(facebookUrl);
+    if (!accessToken || !videoId) return null;
+
+    try {
+      const url = new URL(`https://graph.facebook.com/v21.0/${videoId}`);
+      url.searchParams.set('fields', 'live_status,status');
+      url.searchParams.set('access_token', accessToken);
+
+      const response = await fetch(url);
+      if (!response.ok) return null;
+
+      const payload = (await response.json()) as {
+        live_status?: string;
+        status?: string;
+      };
+      const status = (payload.live_status || payload.status || '').toUpperCase();
+
+      if (['LIVE', 'LIVE_NOW'].includes(status)) return PostLiveStatus.LIVE;
+      if (['SCHEDULED', 'SCHEDULED_UNPUBLISHED'].includes(status)) {
+        return PostLiveStatus.UPCOMING;
+      }
+      if (['VOD', 'LIVE_STOPPED', 'UNPUBLISHED', 'FINISHED'].includes(status)) {
+        return PostLiveStatus.WAS_LIVE;
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Failed to fetch Facebook live status:', error);
+      return null;
+    }
+  }
+
+  private async fetchProviderLiveStatus(
+    post: Pick<
+      PrismaPost,
+      'videoSource' | 'youtubeVideoId' | 'youtubeUrl' | 'facebookUrl'
+    >,
+  ): Promise<PostLiveStatus | null> {
+    if (post.videoSource === PostVideoSource.YOUTUBE) {
+      return this.fetchYoutubeLiveStatus(post.youtubeVideoId);
+    }
+
+    if (post.videoSource === PostVideoSource.FACEBOOK) {
+      return this.fetchFacebookLiveStatus(post.facebookUrl);
+    }
+
+    return null;
+  }
+
+  private liveStatusToIsLive(liveStatus: PostLiveStatus): boolean {
+    return liveStatus === PostLiveStatus.LIVE;
+  }
+
   private deleteMediaFileIfExists(filePath?: string): void {
     if (!filePath || filePath.trim() === '') return;
 
@@ -289,12 +448,64 @@ export class PostsService {
       data: {
         isPublished: false,
         isLive: false,
+        liveStatus: PostLiveStatus.NOT_LIVE,
+        liveStatusCheckedAt: now,
         status: PostStatus.expired,
         updatedAt: now,
       },
     });
 
     return result.count;
+  }
+
+  async syncMediaLiveStatuses(): Promise<number> {
+    const posts = await this.prisma.post.findMany({
+      where: {
+        videoSource: { not: null },
+        status: { not: PostStatus.expired },
+        OR: [
+          { isLive: true },
+          {
+            liveStatus: {
+              in: [
+                PostLiveStatus.UNKNOWN,
+                PostLiveStatus.UPCOMING,
+                PostLiveStatus.LIVE,
+              ],
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        videoSource: true,
+        youtubeUrl: true,
+        youtubeVideoId: true,
+        facebookUrl: true,
+        isLive: true,
+        liveStatus: true,
+      },
+    });
+
+    let updatedCount = 0;
+
+    for (const post of posts) {
+      const liveStatus = await this.fetchProviderLiveStatus(post);
+      if (!liveStatus || liveStatus === post.liveStatus) continue;
+
+      await this.prisma.post.update({
+        where: { id: post.id },
+        data: {
+          liveStatus,
+          liveStatusCheckedAt: new Date(),
+          isLive: this.liveStatusToIsLive(liveStatus),
+          updatedAt: new Date(),
+        },
+      });
+      updatedCount += 1;
+    }
+
+    return updatedCount;
   }
 
   async create(
@@ -333,6 +544,7 @@ export class PostsService {
     const facebookMedia = facebookInput
       ? normalizeFacebookUrl(facebookInput)
       : null;
+    const hasVideoMedia = Boolean(youtubeMedia || facebookMedia);
 
     const savedPost = await this.prisma.post.create({
       data: {
@@ -353,6 +565,11 @@ export class PostsService {
         eventTime: createPostDto.eventTime,
         location: createPostDto.location,
         isLive: isLiveValue,
+        liveStatus: isLiveValue
+          ? PostLiveStatus.LIVE
+          : hasVideoMedia
+            ? PostLiveStatus.UNKNOWN
+            : PostLiveStatus.NOT_LIVE,
         isPublished: isPublishedValue,
         status: isPublishedValue ? PostStatus.published : PostStatus.draft,
         postedDate,
@@ -536,7 +753,11 @@ export class PostsService {
     }
 
     const parsedIsLive = this.parseOptionalBoolean(updatePostDto.isLive);
-    if (parsedIsLive !== undefined) data.isLive = parsedIsLive;
+    if (parsedIsLive !== undefined) {
+      data.isLive = parsedIsLive;
+      data.liveStatus = this.getManualLiveStatus(parsedIsLive, oldPost);
+      data.liveStatusCheckedAt = new Date();
+    }
 
     const parsedIsPublished = this.parseOptionalBoolean(
       updatePostDto.isPublished,
@@ -576,6 +797,7 @@ export class PostsService {
     const hasFacebookUpdate = updatePostDto.facebookUrl !== undefined;
     const youtubeInput = this.getTrimmedValue(updatePostDto.youtubeUrl);
     const facebookInput = this.getTrimmedValue(updatePostDto.facebookUrl);
+    const requestedIsLive = parsedIsLive ?? oldPost.isLive;
 
     if (youtubeInput && facebookInput) {
       throw new BadRequestException(
@@ -600,6 +822,10 @@ export class PostsService {
       data.youtubeUrl = null;
       data.youtubeVideoId = null;
       data.facebookUrl = null;
+      data.liveStatus = requestedIsLive
+        ? PostLiveStatus.LIVE
+        : PostLiveStatus.NOT_LIVE;
+      data.liveStatusCheckedAt = new Date();
     }
     if (shouldRemoveImage) data.mainImage = '';
 
@@ -609,12 +835,20 @@ export class PostsService {
       data.youtubeUrl = youtubeMedia?.youtubeUrl ?? null;
       data.youtubeVideoId = youtubeMedia?.youtubeVideoId ?? null;
       data.facebookUrl = null;
+      data.liveStatus = requestedIsLive
+        ? PostLiveStatus.LIVE
+        : PostLiveStatus.UNKNOWN;
+      data.liveStatusCheckedAt = requestedIsLive ? new Date() : null;
     } else if (facebookMedia) {
       data.mainImage = '';
       data.videoSource = PostVideoSource.FACEBOOK;
       data.youtubeUrl = null;
       data.youtubeVideoId = null;
       data.facebookUrl = facebookMedia.facebookUrl;
+      data.liveStatus = requestedIsLive
+        ? PostLiveStatus.LIVE
+        : PostLiveStatus.UNKNOWN;
+      data.liveStatusCheckedAt = requestedIsLive ? new Date() : null;
     } else if (
       (hasYoutubeUpdate &&
         !youtubeInput &&
@@ -628,6 +862,8 @@ export class PostsService {
       data.youtubeUrl = null;
       data.youtubeVideoId = null;
       data.facebookUrl = null;
+      data.liveStatus = PostLiveStatus.NOT_LIVE;
+      data.liveStatusCheckedAt = new Date();
     }
 
     const post = await this.prisma.post.update({
@@ -679,10 +915,13 @@ export class PostsService {
     });
     if (!existingPost) throw new NotFoundException('Post not found');
 
+    const nextIsLive = !existingPost.isLive;
     const post = await this.prisma.post.update({
       where: { id },
       data: {
-        isLive: !existingPost.isLive,
+        isLive: nextIsLive,
+        liveStatus: this.getManualLiveStatus(nextIsLive, existingPost),
+        liveStatusCheckedAt: new Date(),
         updatedAt: new Date(),
       },
       include: postInclude,
@@ -719,6 +958,8 @@ export class PostsService {
         status: PostStatus.published,
         isPublished: true,
         isLive: true,
+        liveStatus: PostLiveStatus.LIVE,
+        liveStatusCheckedAt: new Date(),
         postedDate,
         expiresAt: this.calculateExpiryFromDays(
           postedDate,
@@ -846,7 +1087,12 @@ export class PostsService {
   async bulkUpdateIsLive(ids: string[], isLive: boolean): Promise<number> {
     const result = await this.prisma.post.updateMany({
       where: { id: { in: ids } },
-      data: { isLive, updatedAt: new Date() },
+      data: {
+        isLive,
+        liveStatus: isLive ? PostLiveStatus.LIVE : PostLiveStatus.WAS_LIVE,
+        liveStatusCheckedAt: new Date(),
+        updatedAt: new Date(),
+      },
     });
     return result.count;
   }

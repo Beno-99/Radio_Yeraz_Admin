@@ -14,6 +14,11 @@ import { Post } from "@/types";
 import { toast } from "sonner";
 import { postsAPI } from "@/lib/api/api";
 import { parseFacebookUrl } from "@/lib/facebook";
+import {
+  getEffectiveLiveStatus,
+  getMediaLiveBadgeClass,
+  getMediaLiveLabel,
+} from "@/lib/postLiveStatus";
 import { getYouTubeEmbedUrl, parseYouTubeUrl } from "@/lib/youtube";
 import Swal from "sweetalert2";
 
@@ -72,30 +77,66 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
     const now = new Date();
     const expiresAt = post.expiresAt ? new Date(post.expiresAt) : null;
     const postedDate = post.postedDate ? new Date(post.postedDate) : null;
+    const effectiveLiveStatus = getEffectiveLiveStatus(
+      post.liveStatus,
+      post.isLive,
+    );
 
     if (expiresAt && expiresAt < now) return "Expired";
     if (postedDate && postedDate > now) return "Scheduled";
-    if (post.isLive) return "Live";
+    if (effectiveLiveStatus === "LIVE") return "Live";
+    if (effectiveLiveStatus === "UPCOMING") return "Upcoming";
+    if (effectiveLiveStatus === "WAS_LIVE") return "Was Live";
     if (post.isPublished) return "Published";
     return "Draft";
-  }, [post.expiresAt, post.postedDate, post.isLive, post.isPublished]);
+  }, [
+    post.expiresAt,
+    post.liveStatus,
+    post.postedDate,
+    post.isLive,
+    post.isPublished,
+  ]);
 
-  const statusBadgeClass =
-    postStatus === "Live"
-      ? "bg-red-50 text-red-600 border-red-100"
-      : postStatus === "Published"
-        ? "bg-green-50 text-green-600 border-green-100"
-        : postStatus === "Scheduled"
-          ? "bg-blue-50 text-blue-600 border-blue-100"
-          : postStatus === "Expired"
-            ? "bg-gray-50 text-gray-600 border-gray-200"
-            : "bg-yellow-50 text-yellow-700 border-yellow-100";
+  const getStatusBadgeClass = () => {
+    if (postStatus === "Live") return "bg-red-50 text-red-600 border-red-100";
+    if (postStatus === "Published") {
+      return "bg-green-50 text-green-600 border-green-100";
+    }
+    if (postStatus === "Scheduled" || postStatus === "Upcoming") {
+      return "bg-blue-50 text-blue-600 border-blue-100";
+    }
+    if (postStatus === "Expired" || postStatus === "Was Live") {
+      return "bg-gray-50 text-gray-600 border-gray-200";
+    }
+
+    return "bg-yellow-50 text-yellow-700 border-yellow-100";
+  };
+
+  const statusBadgeClass = getStatusBadgeClass();
+
+  const getStatusDotClass = () => {
+    if (postStatus === "Live") return "bg-red-500 animate-pulse";
+    if (postStatus === "Published") return "bg-green-500";
+    if (postStatus === "Scheduled" || postStatus === "Upcoming") {
+      return "bg-blue-500";
+    }
+    if (postStatus === "Expired" || postStatus === "Was Live") {
+      return "bg-gray-400";
+    }
+
+    return "bg-yellow-500";
+  };
 
   const getMediaPreview = () => {
     const youtubeEmbedUrl =
       (post.youtubeVideoId ? getYouTubeEmbedUrl(post.youtubeVideoId) : null) ||
       parseYouTubeUrl(post.youtubeUrl)?.embedUrl;
     const facebookEmbedUrl = parseFacebookUrl(post.facebookUrl)?.embedUrl;
+    const effectiveLiveStatus = getEffectiveLiveStatus(
+      post.liveStatus,
+      post.isLive,
+    );
+    const showLiveDot = effectiveLiveStatus === "LIVE";
 
     if (youtubeEmbedUrl) {
       return (
@@ -111,11 +152,11 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
           </div>
           <div
             className={`absolute top-2 left-2 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-bold text-white flex items-center gap-1 uppercase tracking-wider ${
-              post.isLive ? "bg-red-600" : "bg-black/60"
+              getMediaLiveBadgeClass(post.liveStatus, post.isLive)
             }`}
           >
-            {post.isLive && <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />}
-            {post.isLive ? "Live on YouTube" : "YouTube"}
+            {showLiveDot && <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />}
+            {getMediaLiveLabel("YouTube", post.liveStatus, post.isLive)}
           </div>
         </div>
       );
@@ -135,11 +176,15 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
           </div>
           <div
             className={`absolute top-2 left-2 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-bold text-white flex items-center gap-1 uppercase tracking-wider ${
-              post.isLive ? "bg-red-600" : "bg-blue-700/80"
+              getMediaLiveBadgeClass(
+                post.liveStatus,
+                post.isLive,
+                "bg-blue-700/80",
+              )
             }`}
           >
-            {post.isLive && <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />}
-            {post.isLive ? "Facebook Live" : "Facebook"}
+            {showLiveDot && <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />}
+            {getMediaLiveLabel("Facebook", post.liveStatus, post.isLive)}
           </div>
         </div>
       );
@@ -206,17 +251,7 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
               className={`flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded-full uppercase border whitespace-nowrap ${statusBadgeClass}`}
             >
               <span
-                className={`h-1.5 w-1.5 rounded-full ${
-                  postStatus === "Live"
-                    ? "bg-red-500 animate-pulse"
-                    : postStatus === "Published"
-                      ? "bg-green-500"
-                      : postStatus === "Scheduled"
-                        ? "bg-blue-500"
-                        : postStatus === "Expired"
-                          ? "bg-gray-400"
-                          : "bg-yellow-500"
-                }`}
+                className={`h-1.5 w-1.5 rounded-full ${getStatusDotClass()}`}
               />
               {postStatus}
             </span>

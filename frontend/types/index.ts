@@ -17,6 +17,8 @@ export interface Admin extends BaseEntity {
 export interface Post extends BaseEntity {
   isPublished: boolean;
   status?: "draft" | "published" | "expired";
+  liveStatus?: "UNKNOWN" | "UPCOMING" | "LIVE" | "WAS_LIVE" | "NOT_LIVE";
+  liveStatusCheckedAt?: string | null;
   title: string;
   description: string;
   mainImage: string;

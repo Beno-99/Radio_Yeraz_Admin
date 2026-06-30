@@ -44,6 +44,16 @@ export class Post {
   @Prop({ type: Boolean, default: false })
   isLive: boolean;
 
+  @Prop({
+    type: String,
+    enum: ['UNKNOWN', 'UPCOMING', 'LIVE', 'WAS_LIVE', 'NOT_LIVE'],
+    default: 'UNKNOWN',
+  })
+  liveStatus: 'UNKNOWN' | 'UPCOMING' | 'LIVE' | 'WAS_LIVE' | 'NOT_LIVE';
+
+  @Prop({ type: Date, default: null })
+  liveStatusCheckedAt?: Date;
+
   @Prop({ type: Boolean, default: false })
   isPublished: boolean;
 

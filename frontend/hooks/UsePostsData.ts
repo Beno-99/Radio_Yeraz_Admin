@@ -5,6 +5,7 @@ import { postsAPI } from "@/lib/api/api";
 import { toast } from "sonner";
 
 const PAGE_LIMIT = 12;
+const POST_REFRESH_INTERVAL_MS = 60 * 1000;
 
 export function usePostsData() {
   const [allPosts, setAllPosts] = useState<Post[]>([]);
@@ -14,23 +15,34 @@ export function usePostsData() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchAllPosts = useCallback(async () => {
+  const fetchAllPosts = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false;
+
     try {
-      setIsLoading(true);
+      if (!silent) setIsLoading(true);
       setError(null);
       const response = await postsAPI.getAllPosts({ limit: 1000 });
       setAllPosts(response.data?.data || []);
     } catch (error) {
       console.error("Error fetching all posts:", error);
       setError("Failed to load posts");
-      toast.error("Failed to load posts");
+      if (!silent) toast.error("Failed to load posts");
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
     fetchAllPosts();
+  }, [fetchAllPosts]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void fetchAllPosts({ silent: true });
+    }, POST_REFRESH_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
   }, [fetchAllPosts]);
 
   return {

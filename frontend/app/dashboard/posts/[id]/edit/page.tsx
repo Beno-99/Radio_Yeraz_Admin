@@ -7,6 +7,10 @@ import { toast } from "sonner";
 import { postsAPI } from "@/lib/api/api";
 import { SimpleImageUpload } from "@/components/posts/PostImageUpload";
 import { parseFacebookUrl } from "@/lib/facebook";
+import {
+  getEffectiveLiveStatus,
+  type PostLiveStatus,
+} from "@/lib/postLiveStatus";
 import { getYouTubeEmbedUrl, parseYouTubeUrl } from "@/lib/youtube";
 import Swal from "sweetalert2";
 
@@ -63,6 +67,7 @@ export default function EditPostPage() {
     youtubeUrl: "",
     facebookUrl: "",
     isLive: false,
+    liveStatus: "UNKNOWN" as PostLiveStatus,
     isPublished: false,
     autoExpire: true,
     expireAfterDays: String(DEFAULT_EXPIRE_AFTER_DAYS),
@@ -87,6 +92,7 @@ export default function EditPostPage() {
           youtubeUrl: post.youtubeUrl || "",
           facebookUrl: post.facebookUrl || "",
           isLive: post.isLive ?? false,
+          liveStatus: post.liveStatus || "UNKNOWN",
           isPublished: post.isPublished ?? false,
           autoExpire: Boolean(post.expiresAt),
           expireAfterDays: String(
@@ -131,16 +137,23 @@ export default function EditPostPage() {
       ? getExpiryDateFromDays(postMeta.postedDate, formData.expireAfterDays)
       : null;
     const postedDate = postMeta.postedDate ? new Date(postMeta.postedDate) : null;
+    const effectiveLiveStatus = getEffectiveLiveStatus(
+      formData.liveStatus,
+      formData.isLive,
+    );
 
     if (expiresAt && expiresAt < now) return "Expired";
     if (postedDate && postedDate > now) return "Scheduled";
-    if (formData.isLive) return "Live";
+    if (effectiveLiveStatus === "LIVE") return "Live";
+    if (effectiveLiveStatus === "UPCOMING") return "Upcoming";
+    if (effectiveLiveStatus === "WAS_LIVE") return "Was Live";
     if (formData.isPublished) return "Published";
     return "Draft";
   }, [
     formData.autoExpire,
     formData.expireAfterDays,
     formData.isLive,
+    formData.liveStatus,
     formData.isPublished,
     postMeta.postedDate,
   ]);
@@ -325,16 +338,20 @@ export default function EditPostPage() {
   const facebookPreview = parseFacebookUrl(formData.facebookUrl);
   const currentFacebookEmbedUrl = facebookPreview?.embedUrl ?? null;
 
-  const badgeClass =
-    postStatus === "Live"
-      ? "bg-red-100 text-red-700"
-      : postStatus === "Published"
-        ? "bg-green-100 text-green-700"
-        : postStatus === "Scheduled"
-          ? "bg-blue-100 text-blue-700"
-          : postStatus === "Expired"
-            ? "bg-gray-100 text-gray-700"
-            : "bg-yellow-100 text-yellow-700";
+  const getBadgeClass = () => {
+    if (postStatus === "Live") return "bg-red-100 text-red-700";
+    if (postStatus === "Published") return "bg-green-100 text-green-700";
+    if (postStatus === "Scheduled" || postStatus === "Upcoming") {
+      return "bg-blue-100 text-blue-700";
+    }
+    if (postStatus === "Expired" || postStatus === "Was Live") {
+      return "bg-gray-100 text-gray-700";
+    }
+
+    return "bg-yellow-100 text-yellow-700";
+  };
+
+  const badgeClass = getBadgeClass();
 
   const projectedExpiryDate = formData.autoExpire
     ? getExpiryDateFromDays(postMeta.postedDate, formData.expireAfterDays)
@@ -633,7 +650,11 @@ export default function EditPostPage() {
               checked={formData.isLive}
               onChange={(e) => {
                 const newValue = e.target.checked;
-                setFormData({ ...formData, isLive: newValue });
+                setFormData({
+                  ...formData,
+                  isLive: newValue,
+                  liveStatus: newValue ? "LIVE" : "WAS_LIVE",
+                });
               }}
               className="w-5 h-5 text-purple-600 rounded"
             />

@@ -5,6 +5,7 @@ const {
   AdminRole,
   CarouselStatus,
   NotificationType,
+  PostLiveStatus,
   PostStatus,
   PostVideoSource,
   PrismaClient,
@@ -69,6 +70,13 @@ function toPostVideoSource(doc) {
   if (doc.facebookUrl) return PostVideoSource.FACEBOOK;
   if (doc.youtubeUrl || doc.youtubeVideoId) return PostVideoSource.YOUTUBE;
   return null;
+}
+
+function toPostLiveStatus(doc) {
+  if (doc.liveStatus && PostLiveStatus[doc.liveStatus]) {
+    return PostLiveStatus[doc.liveStatus];
+  }
+  return doc.isLive === true ? PostLiveStatus.LIVE : PostLiveStatus.UNKNOWN;
 }
 
 function toCarouselStatus(value) {
@@ -191,6 +199,8 @@ async function migratePosts(prisma, database) {
         eventTime: doc.eventTime || null,
         location: doc.location || null,
         isLive: doc.isLive === true,
+        liveStatus: toPostLiveStatus(doc),
+        liveStatusCheckedAt: toNullableDate(doc.liveStatusCheckedAt),
         isPublished: doc.isPublished === true,
         status: toPostStatus(doc.status),
         postedDate: toDate(doc.postedDate),
@@ -215,6 +225,8 @@ async function migratePosts(prisma, database) {
         eventTime: doc.eventTime || null,
         location: doc.location || null,
         isLive: doc.isLive === true,
+        liveStatus: toPostLiveStatus(doc),
+        liveStatusCheckedAt: toNullableDate(doc.liveStatusCheckedAt),
         isPublished: doc.isPublished === true,
         status: toPostStatus(doc.status),
         postedDate: toDate(doc.postedDate),

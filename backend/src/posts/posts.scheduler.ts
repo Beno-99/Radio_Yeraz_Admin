@@ -27,4 +27,25 @@ export class PostsScheduler {
       );
     }
   }
+
+  @Cron('*/5 * * * *', {
+    timeZone: 'Asia/Damascus',
+  })
+  async syncMediaLiveStatuses(): Promise<void> {
+    try {
+      const updatedCount = await this.postsService.syncMediaLiveStatuses();
+
+      if (updatedCount > 0) {
+        this.logger.log(
+          `Media live-status sync completed. Updated: ${updatedCount}`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Media live-status sync failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
 }

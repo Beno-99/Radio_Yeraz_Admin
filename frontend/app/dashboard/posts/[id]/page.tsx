@@ -22,7 +22,14 @@ import { toast } from "sonner";
 import Swal from "sweetalert2";
 import { postsAPI } from "@/lib/api/api";
 import { parseFacebookUrl } from "@/lib/facebook";
+import {
+  getEffectiveLiveStatus,
+  getMediaLiveBadgeClass,
+  getMediaLiveLabel,
+} from "@/lib/postLiveStatus";
 import { getYouTubeEmbedUrl, parseYouTubeUrl } from "@/lib/youtube";
+
+const POST_REFRESH_INTERVAL_MS = 60 * 1000;
 
 interface Post {
   _id: string;
@@ -41,6 +48,8 @@ interface Post {
   youtubeVideoId?: string | null;
   facebookUrl?: string | null;
   isLive: boolean;
+  liveStatus?: "UNKNOWN" | "UPCOMING" | "LIVE" | "WAS_LIVE" | "NOT_LIVE";
+  liveStatusCheckedAt?: string | null;
   isPublished: boolean;
 }
 
@@ -58,9 +67,11 @@ export default function PostDetailPage() {
     process.env.NEXT_PUBLIC_MEDIA_GET_URL || "https://api.radioyeraz.com";
 
   // Fetch post data
-  const fetchPost = useCallback(async () => {
+  const fetchPost = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false;
+
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const response = await postsAPI.getPost(postId);
       const postData = response.data.data;
 
@@ -84,10 +95,12 @@ export default function PostDetailPage() {
       ).response?.data?.message || "Failed to load post"
     : "Failed to load post";
 
-toast.error(message);
-      router.push("/dashboard/posts");
+      if (!silent) {
+        toast.error(message);
+        router.push("/dashboard/posts");
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [postId, router]);
 
@@ -97,6 +110,15 @@ toast.error(message);
   };
 
   void loadPost();
+}, [fetchPost]);
+
+ useEffect(() => {
+  const intervalId = window.setInterval(() => {
+    if (document.visibilityState !== "visible") return;
+    void fetchPost({ silent: true });
+  }, POST_REFRESH_INTERVAL_MS);
+
+  return () => window.clearInterval(intervalId);
 }, [fetchPost]);
 
   
@@ -135,6 +157,7 @@ toast.error(message);
       const updatedPost: Post = {
         ...prev,
         isLive: !prev.isLive,
+        liveStatus: !prev.isLive ? "LIVE" : "WAS_LIVE",
       };
 
       return updatedPost;
@@ -199,6 +222,11 @@ toast.error(message);
   const imageUrl = getImageUrl();
   const youtubeEmbedUrl = getYoutubeEmbedUrl();
   const facebookEmbedUrl = getFacebookEmbedUrl();
+  const effectiveLiveStatus = getEffectiveLiveStatus(
+    post?.liveStatus,
+    post?.isLive,
+  );
+  const showLiveDot = effectiveLiveStatus === "LIVE";
 
   if (loading) {
     return (
@@ -253,13 +281,19 @@ toast.error(message);
           <button
             onClick={handleToggleLive}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-              post.isLive
+              effectiveLiveStatus === "LIVE"
                 ? "bg-red-100 text-red-700 hover:bg-red-200"
                 : "bg-gray-100 text-gray-700 hover:bg-gray-200"
             }`}
           >
             <Eye size={16} />
-            {post.isLive ? "Live" : "Offline"}
+            {effectiveLiveStatus === "LIVE"
+              ? "Live"
+              : effectiveLiveStatus === "WAS_LIVE"
+                ? "Was Live"
+                : effectiveLiveStatus === "UPCOMING"
+                  ? "Upcoming"
+                  : "Offline"}
           </button>
 
           {/* Edit Button */}
@@ -297,15 +331,15 @@ toast.error(message);
               />
               <div
                 className={`absolute top-4 right-4 px-3 py-1.5 text-white text-sm font-medium rounded-full flex items-center gap-1.5 ${
-                  post.isLive ? "bg-red-500" : "bg-red-600"
+                  getMediaLiveBadgeClass(post.liveStatus, post.isLive, "bg-red-600")
                 }`}
               >
-                {post.isLive ? (
+                {showLiveDot ? (
                   <span className="h-2 w-2 bg-white rounded-full animate-pulse"></span>
                 ) : (
                   <Video size={16} />
                 )}
-                {post.isLive ? "Live on YouTube" : "YouTube Post"}
+                {getMediaLiveLabel("YouTube", post.liveStatus, post.isLive)}
               </div>
             </div>
           ) : facebookEmbedUrl ? (
@@ -319,15 +353,15 @@ toast.error(message);
               />
               <div
                 className={`absolute top-4 right-4 px-3 py-1.5 text-white text-sm font-medium rounded-full flex items-center gap-1.5 ${
-                  post.isLive ? "bg-red-500" : "bg-blue-600"
+                  getMediaLiveBadgeClass(post.liveStatus, post.isLive, "bg-blue-600")
                 }`}
               >
-                {post.isLive ? (
+                {showLiveDot ? (
                   <span className="h-2 w-2 bg-white rounded-full animate-pulse"></span>
                 ) : (
                   <Video size={16} />
                 )}
-                {post.isLive ? "Facebook Live" : "Facebook Video"}
+                {getMediaLiveLabel("Facebook", post.liveStatus, post.isLive)}
               </div>
             </div>
           ) : imageUrl ? (
@@ -371,9 +405,15 @@ toast.error(message);
               <span className="text-sm text-gray-500">ID: {post._id}</span>
               <span className="text-gray-300">•</span>
               <span
-                className={`text-sm font-medium ${post.isLive ? "text-red-600" : "text-gray-500"}`}
+                className={`text-sm font-medium ${effectiveLiveStatus === "LIVE" ? "text-red-600" : "text-gray-500"}`}
               >
-                {post.isLive ? "🔴 Live" : "⚫ Offline"}
+                {effectiveLiveStatus === "LIVE"
+                  ? "🔴 Live"
+                  : effectiveLiveStatus === "WAS_LIVE"
+                    ? "Was Live"
+                    : effectiveLiveStatus === "UPCOMING"
+                      ? "Upcoming"
+                      : "⚫ Offline"}
               </span>
               <span className="text-gray-300">•</span>
               <span

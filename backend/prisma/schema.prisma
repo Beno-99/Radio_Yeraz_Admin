@@ -22,6 +22,14 @@ enum PostVideoSource {
   FACEBOOK
 }
 
+enum PostLiveStatus {
+  UNKNOWN
+  UPCOMING
+  LIVE
+  WAS_LIVE
+  NOT_LIVE
+}
+
 enum CarouselStatus {
   pending
   active
@@ -96,6 +104,8 @@ model Post {
   eventTime      String?    @db.VarChar(50)
   location       String?    @db.VarChar(255)
   isLive         Boolean    @default(false)
+  liveStatus     PostLiveStatus @default(UNKNOWN)
+  liveStatusCheckedAt DateTime?
   isPublished    Boolean    @default(false)
   status         PostStatus @default(draft)
   postedDate     DateTime   @default(now())
