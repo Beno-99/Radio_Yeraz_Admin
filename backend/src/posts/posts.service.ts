@@ -22,6 +22,7 @@ import { NotificationGateway } from '../notifications/notification.gateway';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
+import { normalizeFacebookUrl } from './facebook-url.util';
 import { normalizeYoutubeUrl } from './youtube-url.util';
 
 const postAuthorSelect = {
@@ -106,6 +107,7 @@ export class PostsService {
       videoSource: post.videoSource,
       youtubeUrl: post.youtubeUrl,
       youtubeVideoId: post.youtubeVideoId,
+      facebookUrl: post.facebookUrl,
       profileName: post.profileName,
       eventDate: post.eventDate,
       eventTime: post.eventTime,
@@ -208,6 +210,10 @@ export class PostsService {
     return Boolean(value);
   }
 
+  private getTrimmedValue(value?: string | null): string {
+    return typeof value === 'string' ? value.trim() : '';
+  }
+
   private deleteMediaFileIfExists(filePath?: string): void {
     if (!filePath || filePath.trim() === '') return;
 
@@ -306,8 +312,26 @@ export class PostsService {
     const eventDate = this.parseOptionalDate(createPostDto.eventDate);
     const postedDate = new Date();
     const expiresAt = this.resolveCreateExpiresAt(createPostDto, postedDate);
-    const youtubeMedia = createPostDto.youtubeUrl?.trim()
-      ? normalizeYoutubeUrl(createPostDto.youtubeUrl)
+    const youtubeInput = this.getTrimmedValue(createPostDto.youtubeUrl);
+    const facebookInput = this.getTrimmedValue(createPostDto.facebookUrl);
+
+    if (youtubeInput && facebookInput) {
+      throw new BadRequestException(
+        'Choose either a YouTube URL or a Facebook URL, not both',
+      );
+    }
+
+    if (createPostDto.mainImage && (youtubeInput || facebookInput)) {
+      throw new BadRequestException(
+        'Choose either an image or a video URL, not both',
+      );
+    }
+
+    const youtubeMedia = youtubeInput
+      ? normalizeYoutubeUrl(youtubeInput)
+      : null;
+    const facebookMedia = facebookInput
+      ? normalizeFacebookUrl(facebookInput)
       : null;
 
     const savedPost = await this.prisma.post.create({
@@ -315,10 +339,15 @@ export class PostsService {
         id: createObjectIdString(),
         title: createPostDto.title,
         description: createPostDto.description,
-        mainImage: createPostDto.mainImage || '',
-        videoSource: youtubeMedia ? PostVideoSource.YOUTUBE : null,
+        mainImage: youtubeMedia || facebookMedia ? '' : createPostDto.mainImage || '',
+        videoSource: youtubeMedia
+          ? PostVideoSource.YOUTUBE
+          : facebookMedia
+            ? PostVideoSource.FACEBOOK
+            : null,
         youtubeUrl: youtubeMedia?.youtubeUrl ?? null,
         youtubeVideoId: youtubeMedia?.youtubeVideoId ?? null,
+        facebookUrl: facebookMedia?.facebookUrl ?? null,
         profileName: createPostDto.profileName || 'Radio Yeraz',
         eventDate,
         eventTime: createPostDto.eventTime,
@@ -531,7 +560,6 @@ export class PostsService {
         data.isPublished = true;
         data.status = PostStatus.published;
       }
-
     }
 
     const updatedExpiresAt = this.resolveUpdateExpiresAt(
@@ -545,17 +573,61 @@ export class PostsService {
     const shouldRemoveImage = updatePostDto.removeImage === 'true';
     const hasNewImage = !!updatePostDto.mainImage;
     const hasYoutubeUpdate = updatePostDto.youtubeUrl !== undefined;
-    const youtubeMedia =
-      hasYoutubeUpdate && updatePostDto.youtubeUrl?.trim()
-        ? normalizeYoutubeUrl(updatePostDto.youtubeUrl)
-        : null;
+    const hasFacebookUpdate = updatePostDto.facebookUrl !== undefined;
+    const youtubeInput = this.getTrimmedValue(updatePostDto.youtubeUrl);
+    const facebookInput = this.getTrimmedValue(updatePostDto.facebookUrl);
 
-    if (hasNewImage) data.mainImage = updatePostDto.mainImage;
+    if (youtubeInput && facebookInput) {
+      throw new BadRequestException(
+        'Choose either a YouTube URL or a Facebook URL, not both',
+      );
+    }
+
+    if (hasNewImage && (youtubeInput || facebookInput)) {
+      throw new BadRequestException(
+        'Choose either an image or a video URL, not both',
+      );
+    }
+
+    const youtubeMedia = youtubeInput ? normalizeYoutubeUrl(youtubeInput) : null;
+    const facebookMedia = facebookInput
+      ? normalizeFacebookUrl(facebookInput)
+      : null;
+
+    if (hasNewImage) {
+      data.mainImage = updatePostDto.mainImage;
+      data.videoSource = null;
+      data.youtubeUrl = null;
+      data.youtubeVideoId = null;
+      data.facebookUrl = null;
+    }
     if (shouldRemoveImage) data.mainImage = '';
-    if (hasYoutubeUpdate) {
-      data.videoSource = youtubeMedia ? PostVideoSource.YOUTUBE : null;
+
+    if (youtubeMedia) {
+      data.mainImage = '';
+      data.videoSource = PostVideoSource.YOUTUBE;
       data.youtubeUrl = youtubeMedia?.youtubeUrl ?? null;
       data.youtubeVideoId = youtubeMedia?.youtubeVideoId ?? null;
+      data.facebookUrl = null;
+    } else if (facebookMedia) {
+      data.mainImage = '';
+      data.videoSource = PostVideoSource.FACEBOOK;
+      data.youtubeUrl = null;
+      data.youtubeVideoId = null;
+      data.facebookUrl = facebookMedia.facebookUrl;
+    } else if (
+      (hasYoutubeUpdate &&
+        !youtubeInput &&
+        oldPost.videoSource === PostVideoSource.YOUTUBE) ||
+      (hasFacebookUpdate &&
+        !facebookInput &&
+        oldPost.videoSource === PostVideoSource.FACEBOOK) ||
+      (hasYoutubeUpdate && hasFacebookUpdate && !youtubeInput && !facebookInput)
+    ) {
+      data.videoSource = null;
+      data.youtubeUrl = null;
+      data.youtubeVideoId = null;
+      data.facebookUrl = null;
     }
 
     const post = await this.prisma.post.update({

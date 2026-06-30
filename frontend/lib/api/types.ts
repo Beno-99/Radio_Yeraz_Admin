@@ -46,9 +46,10 @@ export interface Post {
   title: string;
   description: string;
   mainImage: string;
-  videoSource?: "YOUTUBE" | null;
+  videoSource?: "YOUTUBE" | "FACEBOOK" | null;
   youtubeUrl?: string | null;
   youtubeVideoId?: string | null;
+  facebookUrl?: string | null;
   profileName: string;
   eventDate: string;
   location: string;

@@ -6,10 +6,11 @@ import { ArrowLeft, Upload, Image as ImageIcon, Video } from "lucide-react";
 import { toast } from "sonner";
 import { postsAPI } from "@/lib/api/api";
 import { SimpleImageUpload } from "@/components/posts/PostImageUpload";
+import { parseFacebookUrl } from "@/lib/facebook";
 import { getYouTubeEmbedUrl, parseYouTubeUrl } from "@/lib/youtube";
 import Swal from "sweetalert2";
 
-type MediaType = "image" | "youtube" | "none";
+type MediaType = "image" | "youtube" | "facebook" | "none";
 
 const DEFAULT_EXPIRE_AFTER_DAYS = 5;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -60,6 +61,7 @@ export default function EditPostPage() {
     location: "",
     link: "",
     youtubeUrl: "",
+    facebookUrl: "",
     isLive: false,
     isPublished: false,
     autoExpire: true,
@@ -83,6 +85,7 @@ export default function EditPostPage() {
           location: post.location || "",
           link: post.link || "",
           youtubeUrl: post.youtubeUrl || "",
+          facebookUrl: post.facebookUrl || "",
           isLive: post.isLive ?? false,
           isPublished: post.isPublished ?? false,
           autoExpire: Boolean(post.expiresAt),
@@ -95,7 +98,11 @@ export default function EditPostPage() {
           postedDate: post.postedDate || "",
         });
 
-        if (post.youtubeVideoId || post.youtubeUrl || post.videoSource === "YOUTUBE") {
+        if (post.facebookUrl || post.videoSource === "FACEBOOK") {
+          setMediaType("facebook");
+          setCurrentYoutubeVideoId("");
+          setCurrentImagePath("");
+        } else if (post.youtubeVideoId || post.youtubeUrl || post.videoSource === "YOUTUBE") {
           const parsedYoutube = parseYouTubeUrl(post.youtubeUrl || "");
           setMediaType("youtube");
           setCurrentYoutubeVideoId(post.youtubeVideoId || parsedYoutube?.videoId || "");
@@ -161,6 +168,16 @@ export default function EditPostPage() {
       return;
     }
 
+    if (mediaType === "facebook" && !parseFacebookUrl(formData.facebookUrl)) {
+      await Swal.fire({
+        icon: "warning",
+        title: "Validation Error",
+        text: "Enter a valid public Facebook video or live URL",
+        confirmButtonColor: "#7c3aed",
+      });
+      return;
+    }
+
     const expireAfterDays = Number(formData.expireAfterDays);
     if (
       formData.autoExpire &&
@@ -212,16 +229,25 @@ export default function EditPostPage() {
           formDataToSend.append("mainImage", selectedFile);
         }
         formDataToSend.append("youtubeUrl", "");
+        formDataToSend.append("facebookUrl", "");
       }
 
       if (mediaType === "youtube") {
         formDataToSend.append("youtubeUrl", formData.youtubeUrl.trim());
+        formDataToSend.append("facebookUrl", "");
+        formDataToSend.append("removeImage", "true");
+      }
+
+      if (mediaType === "facebook") {
+        formDataToSend.append("facebookUrl", formData.facebookUrl.trim());
+        formDataToSend.append("youtubeUrl", "");
         formDataToSend.append("removeImage", "true");
       }
 
       if (mediaType === "none") {
         formDataToSend.append("removeImage", "true");
         formDataToSend.append("youtubeUrl", "");
+        formDataToSend.append("facebookUrl", "");
       }
 
       Swal.fire({
@@ -296,6 +322,8 @@ export default function EditPostPage() {
   const currentYoutubeEmbedUrl =
     youtubePreview?.embedUrl ||
     (currentYoutubeVideoId ? getYouTubeEmbedUrl(currentYoutubeVideoId) : null);
+  const facebookPreview = parseFacebookUrl(formData.facebookUrl);
+  const currentFacebookEmbedUrl = facebookPreview?.embedUrl ?? null;
 
   const badgeClass =
     postStatus === "Live"
@@ -324,8 +352,11 @@ export default function EditPostPage() {
   const hasYoutubeMedia =
     mediaType === "youtube" &&
     (Boolean(currentYoutubeVideoId) || formData.youtubeUrl.trim().length > 0);
-  const imageChoiceDisabled = hasYoutubeMedia;
-  const youtubeChoiceDisabled = hasImageMedia;
+  const hasFacebookMedia =
+    mediaType === "facebook" && formData.facebookUrl.trim().length > 0;
+  const imageChoiceDisabled = hasYoutubeMedia || hasFacebookMedia;
+  const youtubeChoiceDisabled = hasImageMedia || hasFacebookMedia;
+  const facebookChoiceDisabled = hasImageMedia || hasYoutubeMedia;
 
   return (
     <div className="max-w-3xl mx-auto p-6">
@@ -350,14 +381,14 @@ export default function EditPostPage() {
               Media Type
             </label>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
               <button
                 type="button"
                 disabled={imageChoiceDisabled}
                 onClick={() => {
                   setMediaType("image");
                   setCurrentYoutubeVideoId("");
-                  setFormData({ ...formData, youtubeUrl: "" });
+                  setFormData({ ...formData, youtubeUrl: "", facebookUrl: "" });
                 }}
                 className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 ${
                   imageChoiceDisabled
@@ -378,6 +409,7 @@ export default function EditPostPage() {
                   setMediaType("youtube");
                   setSelectedFile(null);
                   setCurrentImagePath("");
+                  setFormData({ ...formData, facebookUrl: "" });
                 }}
                 className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 ${
                   youtubeChoiceDisabled
@@ -393,12 +425,34 @@ export default function EditPostPage() {
 
               <button
                 type="button"
+                disabled={facebookChoiceDisabled}
+                onClick={() => {
+                  setMediaType("facebook");
+                  setSelectedFile(null);
+                  setCurrentImagePath("");
+                  setCurrentYoutubeVideoId("");
+                  setFormData({ ...formData, youtubeUrl: "" });
+                }}
+                className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 ${
+                  facebookChoiceDisabled
+                    ? "bg-gray-100 text-gray-400 border-gray-200"
+                    : mediaType === "facebook"
+                    ? "bg-purple-600 text-white border-purple-600"
+                    : "bg-white text-gray-700 border-gray-300"
+                }`}
+              >
+                <Video size={16} />
+                Facebook
+              </button>
+
+              <button
+                type="button"
                 onClick={() => {
                   setMediaType("none");
                   setSelectedFile(null);
                   setCurrentImagePath("");
                   setCurrentYoutubeVideoId("");
-                  setFormData({ ...formData, youtubeUrl: "" });
+                  setFormData({ ...formData, youtubeUrl: "", facebookUrl: "" });
                 }}
                 className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium ${
                   mediaType === "none"
@@ -446,6 +500,34 @@ export default function EditPostPage() {
                     title="YouTube preview"
                     className="h-full w-full"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {mediaType === "facebook" && (
+            <div className="space-y-3">
+              <label className="block text-sm font-medium mb-2">
+                Facebook Live URL
+              </label>
+              <input
+                type="url"
+                value={formData.facebookUrl}
+                onChange={(e) =>
+                  setFormData({ ...formData, facebookUrl: e.target.value })
+                }
+                placeholder="https://www.facebook.com/page/videos/VIDEO_ID"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+              />
+              {currentFacebookEmbedUrl && (
+                <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
+                  <iframe
+                    src={currentFacebookEmbedUrl}
+                    title="Facebook preview"
+                    className="h-full w-full"
+                    allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
                     allowFullScreen
                   />
                 </div>

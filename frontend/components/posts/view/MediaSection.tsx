@@ -1,10 +1,12 @@
 // components/forms/MediaSection.tsx
+import { parseFacebookUrl } from "@/lib/facebook";
 import { getYouTubeEmbedUrl, parseYouTubeUrl } from "@/lib/youtube";
 
 interface MediaSectionProps {
   mainImage?: string;
   youtubeUrl?: string | null;
   youtubeVideoId?: string | null;
+  facebookUrl?: string | null;
   title: string;
 }
 
@@ -12,6 +14,7 @@ export function MediaSection({
   mainImage,
   youtubeUrl,
   youtubeVideoId,
+  facebookUrl,
   title,
 }: MediaSectionProps) {
   const mediaUrl =
@@ -20,6 +23,7 @@ export function MediaSection({
   const youtubeEmbedUrl =
     (youtubeVideoId ? getYouTubeEmbedUrl(youtubeVideoId) : null) ||
     parseYouTubeUrl(youtubeUrl)?.embedUrl;
+  const facebookEmbedUrl = parseFacebookUrl(facebookUrl)?.embedUrl;
 
   if (youtubeEmbedUrl) {
     return (
@@ -29,6 +33,20 @@ export function MediaSection({
           title={title}
           className="h-full w-full"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+        />
+      </div>
+    );
+  }
+
+  if (facebookEmbedUrl) {
+    return (
+      <div className="relative aspect-video max-h-[600px] overflow-hidden bg-black">
+        <iframe
+          src={facebookEmbedUrl}
+          title={title}
+          className="h-full w-full"
+          allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
           allowFullScreen
         />
       </div>

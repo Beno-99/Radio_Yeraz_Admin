@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Image from "next/image"; // Import Next.js Image component
+import { parseFacebookUrl } from "@/lib/facebook";
 import { parseYouTubeUrl } from "@/lib/youtube";
 
 export type FieldType =
@@ -115,6 +116,10 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
     control,
     name: "youtubeUrl" as Path<T>,
   });
+  const facebookUrlValue = useWatch({
+    control,
+    name: "facebookUrl" as Path<T>,
+  });
   const autoExpireValue = useWatch({
     control,
     name: "autoExpire" as Path<T>,
@@ -130,12 +135,25 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
       youtubeUrlValue.trim().length > 0,
     [youtubeUrlValue],
   );
+  const facebookUrlEntered = useMemo(
+    () =>
+      typeof facebookUrlValue === "string" &&
+      facebookUrlValue.trim().length > 0,
+    [facebookUrlValue],
+  );
   const youtubePreview = useMemo(
     () =>
       typeof youtubeUrlValue === "string"
         ? parseYouTubeUrl(youtubeUrlValue)
         : null,
     [youtubeUrlValue],
+  );
+  const facebookPreview = useMemo(
+    () =>
+      typeof facebookUrlValue === "string"
+        ? parseFacebookUrl(facebookUrlValue)
+        : null,
+    [facebookUrlValue],
   );
 
   // Fix: Use useMemo instead of useEffect to avoid synchronous setState
@@ -185,6 +203,7 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
         return <ImageIcon className="h-4 w-4 text-gray-400" />;
       case "video":
       case "youtubeUrl":
+      case "facebookUrl":
         return <VideoIcon className="h-4 w-4 text-gray-400" />;
       case "profileName":
         return <User className="h-4 w-4 text-gray-400" />;
@@ -259,11 +278,14 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
         const isVideo = field.name.toLowerCase().includes("video");
         const imageBlockedByYoutube =
           field.name === "mainImage" && youtubeUrlEntered;
+        const imageBlockedByFacebook =
+          field.name === "mainImage" && facebookUrlEntered;
         const imageBlockedByVideo = field.name === "mainImage" && videoSelected;
         const videoBlockedByImage = field.name === "video" && imageSelected;
         const isDisabled =
           loading ||
           imageBlockedByYoutube ||
+          imageBlockedByFacebook ||
           imageBlockedByVideo ||
           videoBlockedByImage;
 
@@ -301,6 +323,8 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
                             <p className="text-sm font-medium text-gray-700">
                               {imageBlockedByYoutube
                                 ? "Cannot upload image when a YouTube URL is entered"
+                                : imageBlockedByFacebook
+                                  ? "Cannot upload image when a Facebook URL is entered"
                                 : isVideo
                                   ? "Cannot upload video when an image is selected"
                                   : "Cannot upload image when a video is selected"}
@@ -308,6 +332,8 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
                             <p className="text-xs text-gray-500 mt-1">
                               {imageBlockedByYoutube
                                 ? "Remove the YouTube URL first"
+                                : imageBlockedByFacebook
+                                  ? "Remove the Facebook URL first"
                                 : `Remove the ${isVideo ? "image" : "video"} first`}
                             </p>
                           </div>
@@ -492,7 +518,11 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
         const isTextarea = field.type === "textarea";
         const isDate = field.type === "date";
         const isYoutubeUrl = field.name === "youtubeUrl";
-        const isYoutubeDisabled = isYoutubeUrl && imageSelected;
+        const isFacebookUrl = field.name === "facebookUrl";
+        const isYoutubeDisabled =
+          isYoutubeUrl && (imageSelected || facebookUrlEntered);
+        const isFacebookDisabled =
+          isFacebookUrl && (imageSelected || youtubeUrlEntered);
         const isExpireDays = field.name === "expireAfterDays";
         const isExpireDaysDisabled = isExpireDays && autoExpireValue === false;
 
@@ -557,12 +587,17 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
                       min={isExpireDays ? 1 : undefined}
                       max={isExpireDays ? 365 : undefined}
                       placeholder={field.placeholder}
-                      disabled={loading || isYoutubeDisabled || isExpireDaysDisabled}
+                      disabled={
+                        loading ||
+                        isYoutubeDisabled ||
+                        isFacebookDisabled ||
+                        isExpireDaysDisabled
+                      }
                       className={cn(
                         "block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm transition-colors",
                         Icon ? "pl-10" : "pl-4",
                         "pr-4 py-3",
-                        isYoutubeDisabled || isExpireDaysDisabled
+                        isYoutubeDisabled || isFacebookDisabled || isExpireDaysDisabled
                           ? "cursor-not-allowed bg-gray-100 text-gray-400"
                           : error
                           ? "border-red-300 focus:border-red-500 focus:ring-red-500 bg-red-50"
@@ -576,7 +611,13 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
             {field.description && (
               <p className="mt-2 text-sm text-gray-600">
                 {isYoutubeDisabled
-                  ? "Remove the selected image first to add a YouTube URL"
+                  ? imageSelected
+                    ? "Remove the selected image first to add a YouTube URL"
+                    : "Remove the Facebook URL first to add a YouTube URL"
+                  : isFacebookDisabled
+                  ? imageSelected
+                    ? "Remove the selected image first to add a Facebook URL"
+                    : "Remove the YouTube URL first to add a Facebook URL"
                   : isExpireDaysDisabled
                   ? "Turn on Auto Expire to choose how many days to keep this post"
                   : field.description}
@@ -590,6 +631,19 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
                     title="YouTube preview"
                     className="h-full w-full"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                  />
+                </div>
+              </div>
+            )}
+            {field.name === "facebookUrl" && facebookPreview && (
+              <div className="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-black">
+                <div className="aspect-video w-full">
+                  <iframe
+                    src={facebookPreview.embedUrl}
+                    title="Facebook preview"
+                    className="h-full w-full"
+                    allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
                     allowFullScreen
                   />
                 </div>

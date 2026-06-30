@@ -19,6 +19,7 @@ enum PostStatus {
 
 enum PostVideoSource {
   YOUTUBE
+  FACEBOOK
 }
 
 enum CarouselStatus {
@@ -89,6 +90,7 @@ model Post {
   videoSource    PostVideoSource?
   youtubeUrl     String?    @db.VarChar(2048)
   youtubeVideoId String?    @db.VarChar(32)
+  facebookUrl    String?    @db.VarChar(2048)
   profileName    String     @default("Radio Yeraz") @db.VarChar(191)
   eventDate      DateTime?
   eventTime      String?    @db.VarChar(50)

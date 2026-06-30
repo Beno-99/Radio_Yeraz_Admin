@@ -22,6 +22,10 @@ export class CreatePostDto {
 
   @IsOptional()
   @IsString()
+  facebookUrl?: string;
+
+  @IsOptional()
+  @IsString()
   profileName?: string = 'Radio Yeraz';
 
   @IsOptional()

@@ -1,0 +1,3 @@
+ALTER TABLE `posts`
+    MODIFY `videoSource` ENUM('YOUTUBE', 'FACEBOOK') NULL,
+    ADD COLUMN `facebookUrl` VARCHAR(2048) NULL;

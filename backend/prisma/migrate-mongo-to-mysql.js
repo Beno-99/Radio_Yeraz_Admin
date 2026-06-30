@@ -6,6 +6,7 @@ const {
   CarouselStatus,
   NotificationType,
   PostStatus,
+  PostVideoSource,
   PrismaClient,
 } = require('@prisma/client');
 const mongoose = require('mongoose');
@@ -62,6 +63,12 @@ function toPostStatus(value) {
   if (value === PostStatus.published) return PostStatus.published;
   if (value === PostStatus.expired) return PostStatus.expired;
   return PostStatus.draft;
+}
+
+function toPostVideoSource(doc) {
+  if (doc.facebookUrl) return PostVideoSource.FACEBOOK;
+  if (doc.youtubeUrl || doc.youtubeVideoId) return PostVideoSource.YOUTUBE;
+  return null;
 }
 
 function toCarouselStatus(value) {
@@ -175,9 +182,10 @@ async function migratePosts(prisma, database) {
         title: doc.title,
         description: doc.description,
         mainImage: toStringOrDefault(doc.mainImage, ''),
-        videoSource: null,
+        videoSource: toPostVideoSource(doc),
         youtubeUrl: doc.youtubeUrl || null,
         youtubeVideoId: doc.youtubeVideoId || null,
+        facebookUrl: doc.facebookUrl || null,
         profileName: toStringOrDefault(doc.profileName, 'Radio Yeraz'),
         eventDate: toNullableDate(doc.eventDate),
         eventTime: doc.eventTime || null,
@@ -198,9 +206,10 @@ async function migratePosts(prisma, database) {
         title: doc.title,
         description: doc.description,
         mainImage: toStringOrDefault(doc.mainImage, ''),
-        videoSource: null,
+        videoSource: toPostVideoSource(doc),
         youtubeUrl: doc.youtubeUrl || null,
         youtubeVideoId: doc.youtubeVideoId || null,
+        facebookUrl: doc.facebookUrl || null,
         profileName: toStringOrDefault(doc.profileName, 'Radio Yeraz'),
         eventDate: toNullableDate(doc.eventDate),
         eventTime: doc.eventTime || null,

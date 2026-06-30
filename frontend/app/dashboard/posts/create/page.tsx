@@ -116,6 +116,8 @@ export default function CreatePostPage() {
             isPublished: false,
             autoExpire: true,
             expireAfterDays: 5,
+            youtubeUrl: "",
+            facebookUrl: "",
             location: "",
           }}
           submitText="Create Post"

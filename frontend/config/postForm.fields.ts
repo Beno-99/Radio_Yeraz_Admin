@@ -32,6 +32,13 @@ export const postFormFields: FormField[] = [
     description: "Optional YouTube video for this post",
   },
   {
+    name: "facebookUrl",
+    label: "Facebook Live URL",
+    type: "url",
+    placeholder: "https://www.facebook.com/page/videos/VIDEO_ID",
+    description: "Optional public Facebook Live or video URL for this post",
+  },
+  {
     name: "profileName",
     label: "Author Name",
     type: "text",

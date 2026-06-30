@@ -13,6 +13,7 @@ import {
 import { Post } from "@/types";
 import { toast } from "sonner";
 import { postsAPI } from "@/lib/api/api";
+import { parseFacebookUrl } from "@/lib/facebook";
 import { getYouTubeEmbedUrl, parseYouTubeUrl } from "@/lib/youtube";
 import Swal from "sweetalert2";
 
@@ -94,6 +95,7 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
     const youtubeEmbedUrl =
       (post.youtubeVideoId ? getYouTubeEmbedUrl(post.youtubeVideoId) : null) ||
       parseYouTubeUrl(post.youtubeUrl)?.embedUrl;
+    const facebookEmbedUrl = parseFacebookUrl(post.facebookUrl)?.embedUrl;
 
     if (youtubeEmbedUrl) {
       return (
@@ -107,8 +109,37 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
               allowFullScreen
             />
           </div>
-          <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-bold text-white flex items-center gap-1 uppercase tracking-wider">
-            YouTube
+          <div
+            className={`absolute top-2 left-2 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-bold text-white flex items-center gap-1 uppercase tracking-wider ${
+              post.isLive ? "bg-red-600" : "bg-black/60"
+            }`}
+          >
+            {post.isLive && <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />}
+            {post.isLive ? "Live on YouTube" : "YouTube"}
+          </div>
+        </div>
+      );
+    }
+
+    if (facebookEmbedUrl) {
+      return (
+        <div className="relative h-56 w-full overflow-hidden rounded-t-lg bg-black sm:h-72">
+          <div className="h-full w-full">
+            <iframe
+              src={facebookEmbedUrl}
+              title={post.title}
+              className="h-full w-full"
+              allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+              allowFullScreen
+            />
+          </div>
+          <div
+            className={`absolute top-2 left-2 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-bold text-white flex items-center gap-1 uppercase tracking-wider ${
+              post.isLive ? "bg-red-600" : "bg-blue-700/80"
+            }`}
+          >
+            {post.isLive && <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />}
+            {post.isLive ? "Facebook Live" : "Facebook"}
           </div>
         </div>
       );

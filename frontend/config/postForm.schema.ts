@@ -1,5 +1,6 @@
 // postForm.schema.ts
 import { z } from "zod";
+import { isValidFacebookUrl } from "@/lib/facebook";
 import { isValidYouTubeUrl } from "@/lib/youtube";
 
 export const postFormSchema = z.object({
@@ -13,6 +14,14 @@ export const postFormSchema = z.object({
     .or(z.literal(""))
     .refine((value) => !value || isValidYouTubeUrl(value), {
       message: "Enter a valid YouTube URL",
+    }),
+  facebookUrl: z
+    .string()
+    .trim()
+    .optional()
+    .or(z.literal(""))
+    .refine((value) => !value || isValidFacebookUrl(value), {
+      message: "Enter a valid Facebook video or live URL",
     }),
   profileName: z.string().default("Radio Yeraz"),
   eventDate: z.string().optional(),

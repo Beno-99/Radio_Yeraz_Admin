@@ -21,6 +21,7 @@ import {
 import { toast } from "sonner";
 import Swal from "sweetalert2";
 import { postsAPI } from "@/lib/api/api";
+import { parseFacebookUrl } from "@/lib/facebook";
 import { getYouTubeEmbedUrl, parseYouTubeUrl } from "@/lib/youtube";
 
 interface Post {
@@ -35,9 +36,10 @@ interface Post {
   createdAt?: string;
   updatedAt?: string;
   mainImage?: string;
-  videoSource?: "YOUTUBE" | null;
+  videoSource?: "YOUTUBE" | "FACEBOOK" | null;
   youtubeUrl?: string | null;
   youtubeVideoId?: string | null;
+  facebookUrl?: string | null;
   isLive: boolean;
   isPublished: boolean;
 }
@@ -189,8 +191,14 @@ toast.error(message);
     return parseYouTubeUrl(post.youtubeUrl)?.embedUrl ?? null;
   };
 
+  const getFacebookEmbedUrl = () => {
+    if (!post) return null;
+    return parseFacebookUrl(post.facebookUrl)?.embedUrl ?? null;
+  };
+
   const imageUrl = getImageUrl();
   const youtubeEmbedUrl = getYoutubeEmbedUrl();
+  const facebookEmbedUrl = getFacebookEmbedUrl();
 
   if (loading) {
     return (
@@ -287,9 +295,39 @@ toast.error(message);
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                 allowFullScreen
               />
-              <div className="absolute top-4 right-4 px-3 py-1.5 bg-red-500 text-white text-sm font-medium rounded-full flex items-center gap-1.5">
-                <Video size={16} />
-                YouTube Post
+              <div
+                className={`absolute top-4 right-4 px-3 py-1.5 text-white text-sm font-medium rounded-full flex items-center gap-1.5 ${
+                  post.isLive ? "bg-red-500" : "bg-red-600"
+                }`}
+              >
+                {post.isLive ? (
+                  <span className="h-2 w-2 bg-white rounded-full animate-pulse"></span>
+                ) : (
+                  <Video size={16} />
+                )}
+                {post.isLive ? "Live on YouTube" : "YouTube Post"}
+              </div>
+            </div>
+          ) : facebookEmbedUrl ? (
+            <div className="relative aspect-video w-full bg-black">
+              <iframe
+                src={facebookEmbedUrl}
+                title={post.title}
+                className="h-full w-full"
+                allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+                allowFullScreen
+              />
+              <div
+                className={`absolute top-4 right-4 px-3 py-1.5 text-white text-sm font-medium rounded-full flex items-center gap-1.5 ${
+                  post.isLive ? "bg-red-500" : "bg-blue-600"
+                }`}
+              >
+                {post.isLive ? (
+                  <span className="h-2 w-2 bg-white rounded-full animate-pulse"></span>
+                ) : (
+                  <Video size={16} />
+                )}
+                {post.isLive ? "Facebook Live" : "Facebook Video"}
               </div>
             </div>
           ) : imageUrl ? (
