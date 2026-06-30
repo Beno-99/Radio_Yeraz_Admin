@@ -255,6 +255,14 @@ export default function EditPostPage() {
             ? "bg-gray-100 text-gray-700"
             : "bg-yellow-100 text-yellow-700";
 
+  const hasImageMedia =
+    mediaType === "image" && (Boolean(currentImagePath) || Boolean(selectedFile));
+  const hasYoutubeMedia =
+    mediaType === "youtube" &&
+    (Boolean(currentYoutubeVideoId) || formData.youtubeUrl.trim().length > 0);
+  const imageChoiceDisabled = hasYoutubeMedia;
+  const youtubeChoiceDisabled = hasImageMedia;
+
   return (
     <div className="max-w-3xl mx-auto p-6">
       <button
@@ -281,11 +289,16 @@ export default function EditPostPage() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <button
                 type="button"
+                disabled={imageChoiceDisabled}
                 onClick={() => {
                   setMediaType("image");
+                  setCurrentYoutubeVideoId("");
+                  setFormData({ ...formData, youtubeUrl: "" });
                 }}
-                className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium ${
-                  mediaType === "image"
+                className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 ${
+                  imageChoiceDisabled
+                    ? "bg-gray-100 text-gray-400 border-gray-200"
+                    : mediaType === "image"
                     ? "bg-purple-600 text-white border-purple-600"
                     : "bg-white text-gray-700 border-gray-300"
                 }`}
@@ -296,12 +309,16 @@ export default function EditPostPage() {
 
               <button
                 type="button"
+                disabled={youtubeChoiceDisabled}
                 onClick={() => {
                   setMediaType("youtube");
                   setSelectedFile(null);
+                  setCurrentImagePath("");
                 }}
-                className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium ${
-                  mediaType === "youtube"
+                className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 ${
+                  youtubeChoiceDisabled
+                    ? "bg-gray-100 text-gray-400 border-gray-200"
+                    : mediaType === "youtube"
                     ? "bg-purple-600 text-white border-purple-600"
                     : "bg-white text-gray-700 border-gray-300"
                 }`}
@@ -334,6 +351,10 @@ export default function EditPostPage() {
           {mediaType === "image" && (
             <SimpleImageUpload
               onImageSelect={setSelectedFile}
+              onImageRemove={() => {
+                setSelectedFile(null);
+                setCurrentImagePath("");
+              }}
               currentImageUrl={currentImageUrl}
               label="Post Image"
             />
@@ -347,9 +368,10 @@ export default function EditPostPage() {
               <input
                 type="url"
                 value={formData.youtubeUrl}
-                onChange={(e) =>
-                  setFormData({ ...formData, youtubeUrl: e.target.value })
-                }
+                onChange={(e) => {
+                  setCurrentYoutubeVideoId("");
+                  setFormData({ ...formData, youtubeUrl: e.target.value });
+                }}
                 placeholder="https://www.youtube.com/watch?v=VIDEO_ID"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
               />
