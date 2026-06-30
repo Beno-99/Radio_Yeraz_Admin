@@ -71,6 +71,19 @@ export const postFormFields: FormField[] = [
     description: "Make visible to public users",
   },
   {
+    name: "autoExpire",
+    label: "Auto Expire",
+    type: "checkbox",
+    description: "Hide this post automatically after the selected number of days",
+  },
+  {
+    name: "expireAfterDays",
+    label: "Keep Post For (Days)",
+    type: "number",
+    placeholder: "5",
+    description: "Default is 5 days from the posted date",
+  },
+  {
     name: "link",
     label: "External Link",
     type: "text",

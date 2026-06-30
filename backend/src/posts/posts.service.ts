@@ -35,6 +35,9 @@ const postInclude = {
   author: { select: postAuthorSelect },
 } satisfies Prisma.PostInclude;
 
+const DEFAULT_POST_EXPIRY_DAYS = 5;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 type PostWithAuthor = Prisma.PostGetPayload<{ include: typeof postInclude }>;
 
 export type PostSortField =
@@ -129,11 +132,63 @@ export class PostsService {
     };
   }
 
-  private calculateExpiryFromEventDate(eventDate?: string | Date | null): Date | null {
-    if (!eventDate) return null;
-    const event = new Date(eventDate);
-    if (Number.isNaN(event.getTime())) return null;
-    return new Date(event.getTime() + 5 * 24 * 60 * 60 * 1000);
+  private calculateExpiryFromDays(
+    postedDate: Date,
+    expireAfterDays?: number | null,
+  ): Date {
+    const days =
+      Number.isInteger(expireAfterDays) && Number(expireAfterDays) > 0
+        ? Number(expireAfterDays)
+        : DEFAULT_POST_EXPIRY_DAYS;
+
+    return new Date(postedDate.getTime() + days * DAY_MS);
+  }
+
+  private resolveCreateExpiresAt(
+    createPostDto: CreatePostDto,
+    postedDate: Date,
+  ): Date | null {
+    const autoExpire = this.parseOptionalBoolean(createPostDto.autoExpire);
+
+    if (autoExpire === false) return null;
+    if (autoExpire === true || createPostDto.expireAfterDays !== undefined) {
+      return this.calculateExpiryFromDays(
+        postedDate,
+        createPostDto.expireAfterDays,
+      );
+    }
+
+    const explicitExpiresAt = this.parseOptionalDate(createPostDto.expiresAt);
+    if (explicitExpiresAt !== undefined) return explicitExpiresAt;
+
+    return this.calculateExpiryFromDays(postedDate, DEFAULT_POST_EXPIRY_DAYS);
+  }
+
+  private resolveUpdateExpiresAt(
+    updatePostDto: UpdatePostDto,
+    postedDate: Date,
+  ): Date | null | undefined {
+    const autoExpire = this.parseOptionalBoolean(updatePostDto.autoExpire);
+
+    if (autoExpire === false) return null;
+    if (autoExpire === true || updatePostDto.expireAfterDays !== undefined) {
+      return this.calculateExpiryFromDays(
+        postedDate,
+        updatePostDto.expireAfterDays,
+      );
+    }
+
+    if (updatePostDto.expiresAt !== undefined) {
+      return this.parseOptionalDate(updatePostDto.expiresAt);
+    }
+
+    return undefined;
+  }
+
+  private buildVisibleExpiryWhere(now: Date = new Date()): Prisma.PostWhereInput {
+    return {
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    };
   }
 
   private parseOptionalDate(
@@ -216,14 +271,14 @@ export class PostsService {
     return where;
   }
 
-  async expirePostsPastEventWindow(): Promise<number> {
+  async expirePostsPastExpiryDate(): Promise<number> {
     const now = new Date();
-    const cutoff = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
 
     const result = await this.prisma.post.updateMany({
       where: {
-        eventDate: { lte: cutoff },
+        expiresAt: { lte: now },
         isPublished: true,
+        status: { not: PostStatus.expired },
       },
       data: {
         isPublished: false,
@@ -249,7 +304,8 @@ export class PostsService {
       this.parseOptionalBoolean(createPostDto.isPublished) ?? false;
     const isLiveValue = this.parseOptionalBoolean(createPostDto.isLive) ?? false;
     const eventDate = this.parseOptionalDate(createPostDto.eventDate);
-    const calculatedExpiresAt = this.calculateExpiryFromEventDate(eventDate);
+    const postedDate = new Date();
+    const expiresAt = this.resolveCreateExpiresAt(createPostDto, postedDate);
     const youtubeMedia = createPostDto.youtubeUrl?.trim()
       ? normalizeYoutubeUrl(createPostDto.youtubeUrl)
       : null;
@@ -270,12 +326,10 @@ export class PostsService {
         isLive: isLiveValue,
         isPublished: isPublishedValue,
         status: isPublishedValue ? PostStatus.published : PostStatus.draft,
-        postedDate: new Date(),
+        postedDate,
         authorId,
         link: createPostDto.link,
-        expiresAt:
-          calculatedExpiresAt ||
-          new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+        expiresAt,
       },
       include: postInclude,
     });
@@ -312,7 +366,7 @@ export class PostsService {
     page: number;
     pages: number;
   }> {
-    await this.expirePostsPastEventWindow();
+    await this.expirePostsPastExpiryDate();
 
     const skip = (page - 1) * limit;
     const where = this.buildFindAllWhere(filters, search);
@@ -338,7 +392,7 @@ export class PostsService {
   }
 
   async findById(id: string): Promise<PostResponse> {
-    await this.expirePostsPastEventWindow();
+    await this.expirePostsPastExpiryDate();
 
     if (!isObjectIdString(id)) {
       throw new BadRequestException('Invalid post id');
@@ -354,7 +408,7 @@ export class PostsService {
   }
 
   async findByAuthor(authorId: string): Promise<PostResponse[]> {
-    await this.expirePostsPastEventWindow();
+    await this.expirePostsPastExpiryDate();
 
     const posts = await this.prisma.post.findMany({
       where: { authorId },
@@ -366,16 +420,14 @@ export class PostsService {
   }
 
   async findLivePosts(): Promise<PostResponse[]> {
-    await this.expirePostsPastEventWindow();
-
-    const cutoff = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+    await this.expirePostsPastExpiryDate();
 
     const posts = await this.prisma.post.findMany({
       where: {
         isLive: true,
         isPublished: true,
         status: PostStatus.published,
-        OR: [{ eventDate: null }, { eventDate: { gt: cutoff } }],
+        ...this.buildVisibleExpiryWhere(),
       },
       include: postInclude,
       orderBy: { postedDate: 'desc' },
@@ -385,15 +437,13 @@ export class PostsService {
   }
 
   async findRecentPosts(limit: number = 5): Promise<PostResponse[]> {
-    await this.expirePostsPastEventWindow();
-
-    const cutoff = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+    await this.expirePostsPastExpiryDate();
 
     const posts = await this.prisma.post.findMany({
       where: {
         isPublished: true,
         status: PostStatus.published,
-        OR: [{ eventDate: null }, { eventDate: { gt: cutoff } }],
+        ...this.buildVisibleExpiryWhere(),
       },
       include: postInclude,
       orderBy: { postedDate: 'desc' },
@@ -404,18 +454,14 @@ export class PostsService {
   }
 
   async searchPosts(query: string, limit: number = 20): Promise<PostResponse[]> {
-    await this.expirePostsPastEventWindow();
-
-    const cutoff = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+    await this.expirePostsPastExpiryDate();
 
     const posts = await this.prisma.post.findMany({
       where: {
         isPublished: true,
         status: PostStatus.published,
         AND: [
-          {
-            OR: [{ eventDate: null }, { eventDate: { gt: cutoff } }],
-          },
+          this.buildVisibleExpiryWhere(),
           {
             OR: [
               { title: { contains: query } },
@@ -486,15 +532,14 @@ export class PostsService {
         data.status = PostStatus.published;
       }
 
-      const recalculatedExpiresAt =
-        this.calculateExpiryFromEventDate(parsedEventDate);
-      if (recalculatedExpiresAt) {
-        data.expiresAt = recalculatedExpiresAt;
-      }
     }
 
-    if (updatePostDto.expiresAt !== undefined) {
-      data.expiresAt = this.parseOptionalDate(updatePostDto.expiresAt);
+    const updatedExpiresAt = this.resolveUpdateExpiresAt(
+      updatePostDto,
+      oldPost.postedDate,
+    );
+    if (updatedExpiresAt !== undefined) {
+      data.expiresAt = updatedExpiresAt;
     }
 
     const shouldRemoveImage = updatePostDto.removeImage === 'true';
@@ -595,14 +640,18 @@ export class PostsService {
     const existingPost = await this.prisma.post.findUnique({ where: { id } });
     if (!existingPost) throw new NotFoundException('Post not found');
 
+    const postedDate = new Date();
     const post = await this.prisma.post.update({
       where: { id },
       data: {
         status: PostStatus.published,
         isPublished: true,
         isLive: true,
-        postedDate: new Date(),
-        expiresAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+        postedDate,
+        expiresAt: this.calculateExpiryFromDays(
+          postedDate,
+          DEFAULT_POST_EXPIRY_DAYS,
+        ),
         updatedAt: new Date(),
       },
       include: postInclude,

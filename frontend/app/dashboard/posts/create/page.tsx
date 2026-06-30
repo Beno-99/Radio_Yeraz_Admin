@@ -114,6 +114,8 @@ export default function CreatePostPage() {
           defaultValues={{
             isLive: false,
             isPublished: false,
+            autoExpire: true,
+            expireAfterDays: 5,
             location: "",
           }}
           submitText="Create Post"

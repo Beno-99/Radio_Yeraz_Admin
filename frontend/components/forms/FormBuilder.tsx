@@ -115,6 +115,10 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
     control,
     name: "youtubeUrl" as Path<T>,
   });
+  const autoExpireValue = useWatch({
+    control,
+    name: "autoExpire" as Path<T>,
+  });
 
   const isFile = (value: unknown): value is File => value instanceof File;
 
@@ -185,6 +189,8 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
       case "profileName":
         return <User className="h-4 w-4 text-gray-400" />;
       case "eventDate":
+      case "expireAfterDays":
+      case "autoExpire":
         return <Calendar className="h-4 w-4 text-gray-400" />;
       case "location":
         return <MapPin className="h-4 w-4 text-gray-400" />;
@@ -487,6 +493,8 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
         const isDate = field.type === "date";
         const isYoutubeUrl = field.name === "youtubeUrl";
         const isYoutubeDisabled = isYoutubeUrl && imageSelected;
+        const isExpireDays = field.name === "expireAfterDays";
+        const isExpireDaysDisabled = isExpireDays && autoExpireValue === false;
 
         return (
           <div className={fieldContainerClass}>
@@ -546,13 +554,15 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
                       {...controllerField}
                       value={controllerField.value ?? ""}
                       type={field.type}
+                      min={isExpireDays ? 1 : undefined}
+                      max={isExpireDays ? 365 : undefined}
                       placeholder={field.placeholder}
-                      disabled={loading || isYoutubeDisabled}
+                      disabled={loading || isYoutubeDisabled || isExpireDaysDisabled}
                       className={cn(
                         "block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm transition-colors",
                         Icon ? "pl-10" : "pl-4",
                         "pr-4 py-3",
-                        isYoutubeDisabled
+                        isYoutubeDisabled || isExpireDaysDisabled
                           ? "cursor-not-allowed bg-gray-100 text-gray-400"
                           : error
                           ? "border-red-300 focus:border-red-500 focus:ring-red-500 bg-red-50"
@@ -567,6 +577,8 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
               <p className="mt-2 text-sm text-gray-600">
                 {isYoutubeDisabled
                   ? "Remove the selected image first to add a YouTube URL"
+                  : isExpireDaysDisabled
+                  ? "Turn on Auto Expire to choose how many days to keep this post"
                   : field.description}
               </p>
             )}

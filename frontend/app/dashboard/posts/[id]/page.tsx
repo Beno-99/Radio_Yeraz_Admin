@@ -31,6 +31,7 @@ interface Post {
   location?: string;
   eventDate?: string;
   postedDate?: string;
+  expiresAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
   mainImage?: string;
@@ -424,6 +425,22 @@ toast.error(message);
                 </div>
               </div>
             )}
+
+            <div className="bg-gray-50 rounded-xl p-4">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-green-100 rounded-lg">
+                  <CalendarDays className="w-5 h-5 text-green-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Expires</p>
+                  <p className="font-medium text-gray-900">
+                    {post.expiresAt
+                      ? formatDate(post.expiresAt)
+                      : "No auto expiration"}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Metadata */}

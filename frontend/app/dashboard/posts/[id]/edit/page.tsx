@@ -11,6 +11,33 @@ import Swal from "sweetalert2";
 
 type MediaType = "image" | "youtube" | "none";
 
+const DEFAULT_EXPIRE_AFTER_DAYS = 5;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const getExpireAfterDays = (postedDate?: string, expiresAt?: string) => {
+  if (!postedDate || !expiresAt) return DEFAULT_EXPIRE_AFTER_DAYS;
+
+  const posted = new Date(postedDate);
+  const expiry = new Date(expiresAt);
+
+  if (Number.isNaN(posted.getTime()) || Number.isNaN(expiry.getTime())) {
+    return DEFAULT_EXPIRE_AFTER_DAYS;
+  }
+
+  return Math.max(
+    1,
+    Math.ceil((expiry.getTime() - posted.getTime()) / DAY_MS),
+  );
+};
+
+const getExpiryDateFromDays = (postedDate: string, daysValue: string) => {
+  const posted = postedDate ? new Date(postedDate) : new Date();
+  const days = Number(daysValue) || DEFAULT_EXPIRE_AFTER_DAYS;
+  const baseDate = Number.isNaN(posted.getTime()) ? new Date() : posted;
+
+  return new Date(baseDate.getTime() + days * DAY_MS);
+};
+
 export default function EditPostPage() {
   const router = useRouter();
   const params = useParams();
@@ -24,7 +51,6 @@ export default function EditPostPage() {
   const [mediaType, setMediaType] = useState<MediaType>("image");
   const [postMeta, setPostMeta] = useState({
     postedDate: "",
-    expiresAt: "",
   });
   const [formData, setFormData] = useState({
     title: "",
@@ -36,6 +62,8 @@ export default function EditPostPage() {
     youtubeUrl: "",
     isLive: false,
     isPublished: false,
+    autoExpire: true,
+    expireAfterDays: String(DEFAULT_EXPIRE_AFTER_DAYS),
   });
 
   const mediaUrl =
@@ -57,11 +85,14 @@ export default function EditPostPage() {
           youtubeUrl: post.youtubeUrl || "",
           isLive: post.isLive ?? false,
           isPublished: post.isPublished ?? false,
+          autoExpire: Boolean(post.expiresAt),
+          expireAfterDays: String(
+            getExpireAfterDays(post.postedDate, post.expiresAt),
+          ),
         });
 
         setPostMeta({
           postedDate: post.postedDate || "",
-          expiresAt: post.expiresAt || "",
         });
 
         if (post.youtubeVideoId || post.youtubeUrl || post.videoSource === "YOUTUBE") {
@@ -89,21 +120,23 @@ export default function EditPostPage() {
 
   const postStatus = useMemo(() => {
     const now = new Date();
-    const eventDate = formData.eventDate ? new Date(formData.eventDate) : null;
-    const eventExpiry =
-      eventDate && !Number.isNaN(eventDate.getTime())
-        ? new Date(eventDate.getTime() + 5 * 24 * 60 * 60 * 1000)
-        : null;
-    const expiresAt = postMeta.expiresAt ? new Date(postMeta.expiresAt) : null;
+    const expiresAt = formData.autoExpire
+      ? getExpiryDateFromDays(postMeta.postedDate, formData.expireAfterDays)
+      : null;
     const postedDate = postMeta.postedDate ? new Date(postMeta.postedDate) : null;
 
-    if (eventExpiry && eventExpiry < now) return "Expired";
-    if (!eventExpiry && expiresAt && expiresAt < now) return "Expired";
+    if (expiresAt && expiresAt < now) return "Expired";
     if (postedDate && postedDate > now) return "Scheduled";
     if (formData.isLive) return "Live";
     if (formData.isPublished) return "Published";
     return "Draft";
-  }, [formData.eventDate, formData.isLive, formData.isPublished, postMeta]);
+  }, [
+    formData.autoExpire,
+    formData.expireAfterDays,
+    formData.isLive,
+    formData.isPublished,
+    postMeta.postedDate,
+  ]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,6 +156,22 @@ export default function EditPostPage() {
         icon: "warning",
         title: "Validation Error",
         text: "Enter a valid YouTube URL",
+        confirmButtonColor: "#7c3aed",
+      });
+      return;
+    }
+
+    const expireAfterDays = Number(formData.expireAfterDays);
+    if (
+      formData.autoExpire &&
+      (!Number.isInteger(expireAfterDays) ||
+        expireAfterDays < 1 ||
+        expireAfterDays > 365)
+    ) {
+      await Swal.fire({
+        icon: "warning",
+        title: "Validation Error",
+        text: "Keep days must be between 1 and 365",
         confirmButtonColor: "#7c3aed",
       });
       return;
@@ -153,6 +202,10 @@ export default function EditPostPage() {
       formDataToSend.append("link", formData.link || "");
       formDataToSend.append("isLive", String(formData.isLive));
       formDataToSend.append("isPublished", String(formData.isPublished));
+      formDataToSend.append("autoExpire", String(formData.autoExpire));
+      if (formData.autoExpire) {
+        formDataToSend.append("expireAfterDays", String(expireAfterDays));
+      }
 
       if (mediaType === "image") {
         if (selectedFile) {
@@ -254,6 +307,17 @@ export default function EditPostPage() {
           : postStatus === "Expired"
             ? "bg-gray-100 text-gray-700"
             : "bg-yellow-100 text-yellow-700";
+
+  const projectedExpiryDate = formData.autoExpire
+    ? getExpiryDateFromDays(postMeta.postedDate, formData.expireAfterDays)
+    : null;
+  const projectedExpiryText = projectedExpiryDate
+    ? projectedExpiryDate.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })
+    : null;
 
   const hasImageMedia =
     mediaType === "image" && (Boolean(currentImagePath) || Boolean(selectedFile));
@@ -517,6 +581,53 @@ export default function EditPostPage() {
               Published (Currently:{" "}
               {formData.isPublished ? "✅ Published" : "📝 Draft"})
             </label>
+          </div>
+
+          <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
+            <div className="flex items-start gap-4">
+              <input
+                type="checkbox"
+                id="autoExpire"
+                checked={formData.autoExpire}
+                onChange={(e) => {
+                  setFormData({ ...formData, autoExpire: e.target.checked });
+                }}
+                className="mt-1 w-5 h-5 text-purple-600 rounded"
+              />
+              <div>
+                <label
+                  htmlFor="autoExpire"
+                  className="text-sm font-medium cursor-pointer"
+                >
+                  Auto Expire
+                </label>
+                <p className="text-sm text-gray-500">
+                  Hide this post automatically after the selected number of days.
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Keep Post For (Days)
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={365}
+                value={formData.expireAfterDays}
+                disabled={!formData.autoExpire}
+                onChange={(e) =>
+                  setFormData({ ...formData, expireAfterDays: e.target.value })
+                }
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+              />
+              <p className="mt-2 text-sm text-gray-500">
+                {formData.autoExpire && projectedExpiryText
+                  ? `This post will expire on ${projectedExpiryText}.`
+                  : "This post will stay visible until you unpublish it."}
+              </p>
+            </div>
           </div>
 
           <button

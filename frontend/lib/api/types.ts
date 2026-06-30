@@ -55,6 +55,7 @@ export interface Post {
   isLive: boolean;
   isPublished: boolean;
   postedDate: string;
+  expiresAt?: string | null;
   author:
     | string
     | {

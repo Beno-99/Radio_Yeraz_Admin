@@ -69,21 +69,15 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
 
   const postStatus = useMemo(() => {
     const now = new Date();
-    const eventDate = post.eventDate ? new Date(post.eventDate) : null;
-    const eventExpiry =
-      eventDate && !Number.isNaN(eventDate.getTime())
-        ? new Date(eventDate.getTime() + 5 * 24 * 60 * 60 * 1000)
-        : null;
     const expiresAt = post.expiresAt ? new Date(post.expiresAt) : null;
     const postedDate = post.postedDate ? new Date(post.postedDate) : null;
 
-    if (eventExpiry && eventExpiry < now) return "Expired";
-    if (!eventExpiry && expiresAt && expiresAt < now) return "Expired";
+    if (expiresAt && expiresAt < now) return "Expired";
     if (postedDate && postedDate > now) return "Scheduled";
     if (post.isLive) return "Live";
     if (post.isPublished) return "Published";
     return "Draft";
-  }, [post.eventDate, post.expiresAt, post.postedDate, post.isLive, post.isPublished]);
+  }, [post.expiresAt, post.postedDate, post.isLive, post.isPublished]);
 
   const statusBadgeClass =
     postStatus === "Live"

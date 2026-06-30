@@ -12,16 +12,16 @@ export class PostsScheduler {
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT, {
     timeZone: 'Asia/Damascus',
   })
-  async unpublishOldEventPosts(): Promise<void> {
+  async unpublishExpiredPosts(): Promise<void> {
     try {
-      const expiredCount = await this.postsService.expirePostsPastEventWindow();
+      const expiredCount = await this.postsService.expirePostsPastExpiryDate();
 
       this.logger.log(
-        `Midnight event-date cleanup completed. Unpublished: ${expiredCount}`,
+        `Midnight post-expiry cleanup completed. Unpublished: ${expiredCount}`,
       );
     } catch (error) {
       this.logger.error(
-        `Midnight event-date cleanup failed: ${
+        `Midnight post-expiry cleanup failed: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );

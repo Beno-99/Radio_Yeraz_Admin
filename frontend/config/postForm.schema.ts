@@ -21,6 +21,13 @@ export const postFormSchema = z.object({
   isLive: z.boolean().default(false),
   reminderSentAt: z.string().optional(),
   isPublished: z.boolean().default(false),
+  autoExpire: z.boolean().default(true),
+  expireAfterDays: z.coerce
+    .number()
+    .int("Days must be a whole number")
+    .min(1, "Keep days must be at least 1")
+    .max(365, "Keep days cannot be more than 365")
+    .default(5),
   link: z.string().url("Must be a valid URL").optional().or(z.literal("")),
 });
 
