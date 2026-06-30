@@ -4,18 +4,9 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { join } from 'path';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { buildAllowedOrigins } from './common/utils/cors-origins.util';
 
-const allowedOrigins = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(',')
-      .map((origin) => origin.trim())
-      .filter(Boolean)
-  : [
-      'https://player.radioyeraz.com',
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://127.0.0.1:3000',
-      'http://127.0.0.1:3001',
-    ];
+const allowedOrigins = buildAllowedOrigins();
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);

@@ -15,18 +15,9 @@ import {
   NotificationResponse,
   NotificationService,
 } from './notification.service';
+import { buildAllowedOrigins } from '../common/utils/cors-origins.util';
 
-const socketAllowedOrigins = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(',')
-      .map((origin) => origin.trim())
-      .filter(Boolean)
-  : [
-      'https://player.radioyeraz.com',
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://127.0.0.1:3000',
-      'http://127.0.0.1:3001',
-    ];
+const socketAllowedOrigins = buildAllowedOrigins();
 
 interface JwtPayload {
   sub?: string;
