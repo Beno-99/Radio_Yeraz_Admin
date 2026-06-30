@@ -1,13 +1,41 @@
 // components/forms/MediaSection.tsx
+import { getYouTubeEmbedUrl, parseYouTubeUrl } from "@/lib/youtube";
+
 interface MediaSectionProps {
   mainImage?: string;
-  video?: string;
+  video?: string | null;
+  youtubeUrl?: string | null;
+  youtubeVideoId?: string | null;
   title: string;
 }
 
-export function MediaSection({ mainImage, video, title }: MediaSectionProps) {
+export function MediaSection({
+  mainImage,
+  video,
+  youtubeUrl,
+  youtubeVideoId,
+  title,
+}: MediaSectionProps) {
   const mediaUrl =
     process.env.NEXT_PUBLIC_MEDIA_GET_URL || "https://api.radioyeraz.com";
+
+  const youtubeEmbedUrl =
+    (youtubeVideoId ? getYouTubeEmbedUrl(youtubeVideoId) : null) ||
+    parseYouTubeUrl(youtubeUrl)?.embedUrl;
+
+  if (youtubeEmbedUrl) {
+    return (
+      <div className="relative aspect-video max-h-[600px] overflow-hidden bg-black">
+        <iframe
+          src={youtubeEmbedUrl}
+          title={title}
+          className="h-full w-full"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+        />
+      </div>
+    );
+  }
 
   if (mainImage) {
     // ✅ Build the full URL

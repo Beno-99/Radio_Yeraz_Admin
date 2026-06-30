@@ -33,7 +33,7 @@ const results = [];
 const created = {
   admins: [],
   posts: [],
-  ads: [],
+  carousels: [],
   streamLinks: [],
   refreshTokens: [],
   files: [],
@@ -121,8 +121,8 @@ function addUploadedFile(relativePath) {
 }
 
 async function cleanup() {
-  for (const adId of created.ads.reverse()) {
-    await api(`/ads/${adId}`, { method: 'DELETE', token: cleanup.superToken }).catch(() => undefined);
+  for (const carouselId of created.carousels.reverse()) {
+    await api(`/carousels/${carouselId}`, { method: 'DELETE', token: cleanup.superToken }).catch(() => undefined);
   }
   for (const postId of created.posts.reverse()) {
     await api(`/posts/${postId}`, { method: 'DELETE', token: cleanup.superToken }).catch(() => undefined);
@@ -153,7 +153,7 @@ async function cleanup() {
   });
   await prisma.streamLink.deleteMany({ where: { title: { contains: runId } } });
   await prisma.post.deleteMany({ where: { title: { contains: runId } } });
-  await prisma.ad.deleteMany({ where: { name: { contains: runId } } });
+  await prisma.carousel.deleteMany({ where: { name: { contains: runId } } });
   await prisma.admin.deleteMany({ where: { username: { startsWith: runId } } });
 
   for (const filePath of created.files) {
@@ -178,7 +178,7 @@ function imageForm(fields = {}) {
   return form;
 }
 
-function postForm(fields = {}, includeImage = false, includeVideo = false) {
+function postForm(fields = {}, includeImage = false) {
   const form = new FormData();
   for (const [key, value] of Object.entries(fields)) {
     if (value !== undefined && value !== null) form.append(key, String(value));
@@ -188,13 +188,6 @@ function postForm(fields = {}, includeImage = false, includeVideo = false) {
       'mainImage',
       new Blob([Buffer.from('89504e470d0a1a0a', 'hex')], { type: 'image/png' }),
       `${runId}.png`,
-    );
-  }
-  if (includeVideo) {
-    form.append(
-      'video',
-      new Blob([Buffer.from('00000018667479706d703432', 'hex')], { type: 'video/mp4' }),
-      `${runId}.mp4`,
     );
   }
   return form;
@@ -433,7 +426,8 @@ async function runPostTests(superToken) {
   await expectStatus('post search', api(`/posts/search?q=${encodeURIComponent(runId)}&limit=5`), 200);
   await expectStatus('post pagination and filters', api('/posts?page=1&limit=1&isPublished=false'), 200);
 
-  const mediaPost = await expectStatus('create post with image and video', api('/posts', {
+  const youtubeId = 'dQw4w9WgXcQ';
+  const mediaPost = await expectStatus('create post with image and YouTube URL', api('/posts', {
     method: 'POST',
     token: superToken,
     form: postForm({
@@ -441,14 +435,27 @@ async function runPostTests(superToken) {
       description: 'Smoke media post description',
       isPublished: 'true',
       isLive: 'true',
-    }, true, true),
+      youtubeUrl: `https://youtu.be/${youtubeId}`,
+    }, true),
   }), 201);
   const mediaPostId = mediaPost.data.data._id;
   created.posts.push(mediaPostId);
   addUploadedFile(mediaPost.data.data.mainImage);
-  addUploadedFile(mediaPost.data.data.video);
   assert(mediaPost.data.data.mainImage.startsWith('/uploads/posts/images/'), 'post image path is not relative upload path');
-  assert(mediaPost.data.data.video.startsWith('/uploads/posts/videos/'), 'post video path is not relative upload path');
+  assert(mediaPost.data.data.video === null, 'YouTube media should not store an uploaded video path');
+  assert(mediaPost.data.data.videoSource === 'YOUTUBE', 'YouTube media source was not returned');
+  assert(mediaPost.data.data.youtubeUrl === `https://www.youtube.com/watch?v=${youtubeId}`, 'YouTube URL was not normalized');
+  assert(mediaPost.data.data.youtubeVideoId === youtubeId, 'YouTube video ID was not extracted');
+
+  await expectStatus('reject non-YouTube post video URL', api('/posts', {
+    method: 'POST',
+    token: superToken,
+    form: postForm({
+      title: `${runId} invalid youtube post`,
+      description: 'Smoke invalid youtube post description',
+      youtubeUrl: 'https://youtube.example.com/watch?v=dQw4w9WgXcQ',
+    }),
+  }), 400);
 
   const updated = await expectStatus('edit post title and description and replace media', api(`/posts/${mediaPostId}`, {
     method: 'PUT',
@@ -458,9 +465,11 @@ async function runPostTests(superToken) {
       description: 'Smoke media post edited description',
       isPublished: 'false',
       isLive: 'false',
-    }, true, false),
+      youtubeUrl: 'https://www.youtube.com/shorts/dQw4w9WgXcQ',
+    }, true),
   }), 200);
   addUploadedFile(updated.data.data.mainImage);
+  assert(updated.data.data.videoSource === 'YOUTUBE', 'edited post did not keep YouTube media source');
 
   await expectStatus('publish/unpublish through toggle-live', api(`/posts/${mediaPostId}/toggle-live`, {
     method: 'PUT',
@@ -485,74 +494,76 @@ async function runPostTests(superToken) {
   created.posts = created.posts.filter((id) => id !== postId);
 }
 
-async function runAdTests(superToken) {
-  await expectStatus('list ads', api('/ads?limit=2'), 200);
-  await expectStatus('list public ads', api('/ads/public?limit=2'), 200);
+async function runCarouselTests(superToken) {
+  await expectStatus('list carousels', api('/carousels?limit=2'), 200);
+  await expectStatus('list public carousels', api('/carousels/public?limit=2'), 200);
 
-  const ad = await expectStatus('create ad with image', api('/ads', {
+  const carousel = await expectStatus('create carousel with image', api('/carousels', {
     method: 'POST',
     token: superToken,
     form: imageForm({
-      name: `${runId} active ad`,
+      name: `${runId} active carousel`,
       targetUrl: 'https://example.com',
       startDate: new Date(Date.now() - 60_000).toISOString(),
       endDate: new Date(Date.now() + 86_400_000).toISOString(),
+      displayOrder: 7,
     }),
   }), 201);
-  const adId = ad.data.data._id;
-  created.ads.push(adId);
-  addUploadedFile(ad.data.data.image);
-  assert(ad.data.data.image.startsWith('/uploads/ads/'), 'ad image path is not relative upload path');
-  assert(ad.data.data.status === 'active', 'active ad status was not calculated correctly');
+  const carouselId = carousel.data.data._id;
+  created.carousels.push(carouselId);
+  addUploadedFile(carousel.data.data.image);
+  assert(carousel.data.data.image.startsWith('/uploads/carousels/'), 'carousel image path is not relative upload path');
+  assert(carousel.data.data.status === 'active', 'active carousel status was not calculated correctly');
+  assert(carousel.data.data.displayOrder === 7, 'carousel displayOrder was not stored');
 
-  await expectStatus('get one ad', api(`/ads/${adId}`), 200);
-  await expectStatus('ad pagination and filtering', api('/ads?page=1&limit=1&status=active'), 200);
-  await expectStatus('edit ad', api(`/ads/${adId}`, {
+  await expectStatus('get one carousel', api(`/carousels/${carouselId}`), 200);
+  await expectStatus('carousel pagination and filtering', api('/carousels?page=1&limit=1&status=active'), 200);
+  await expectStatus('edit carousel', api(`/carousels/${carouselId}`, {
     method: 'PUT',
     token: superToken,
-    body: { name: `${runId} active ad edited`, targetUrl: 'https://example.org' },
+    body: { name: `${runId} active carousel edited`, targetUrl: 'https://example.org', displayOrder: 3 },
   }), 200);
-  await expectStatus('deactivate ad', api(`/ads/${adId}/toggle-active`, {
+  await expectStatus('deactivate carousel', api(`/carousels/${carouselId}/toggle-active`, {
     method: 'PUT',
     token: superToken,
   }), 200);
-  await expectStatus('activate ad', api(`/ads/${adId}/toggle-active`, {
+  await expectStatus('activate carousel', api(`/carousels/${carouselId}/toggle-active`, {
     method: 'PUT',
     token: superToken,
   }), 200);
 
-  const pendingAd = await expectStatus('future start date creates pending ad', api('/ads', {
+  const pendingCarousel = await expectStatus('future start date creates pending carousel', api('/carousels', {
     method: 'POST',
     token: superToken,
     form: imageForm({
-      name: `${runId} pending ad`,
+      name: `${runId} pending carousel`,
       startDate: new Date(Date.now() + 86_400_000).toISOString(),
     }),
   }), 201);
-  created.ads.push(pendingAd.data.data._id);
-  addUploadedFile(pendingAd.data.data.image);
-  assert(pendingAd.data.data.status === 'pending', 'pending ad status was not calculated correctly');
+  created.carousels.push(pendingCarousel.data.data._id);
+  addUploadedFile(pendingCarousel.data.data.image);
+  assert(pendingCarousel.data.data.status === 'pending', 'pending carousel status was not calculated correctly');
 
-  const expiredAd = await expectStatus('past end date creates expired ad', api('/ads', {
+  const expiredCarousel = await expectStatus('past end date creates expired carousel', api('/carousels', {
     method: 'POST',
     token: superToken,
     form: imageForm({
-      name: `${runId} expired ad`,
+      name: `${runId} expired carousel`,
       startDate: new Date(Date.now() - 172_800_000).toISOString(),
       endDate: new Date(Date.now() - 86_400_000).toISOString(),
     }),
   }), 201);
-  created.ads.push(expiredAd.data.data._id);
-  addUploadedFile(expiredAd.data.data.image);
-  assert(expiredAd.data.data.status === 'expired', 'expired ad status was not calculated correctly');
+  created.carousels.push(expiredCarousel.data.data._id);
+  addUploadedFile(expiredCarousel.data.data.image);
+  assert(expiredCarousel.data.data.status === 'expired', 'expired carousel status was not calculated correctly');
 
-  await expectStatus('invalid ad ID returns not found', api('/ads/not-valid-id'), 404);
-  for (const id of [...created.ads]) {
-    await expectStatus(`delete ad ${id}`, api(`/ads/${id}`, {
+  await expectStatus('invalid carousel ID returns not found', api('/carousels/not-valid-id'), 404);
+  for (const id of [...created.carousels]) {
+    await expectStatus(`delete carousel ${id}`, api(`/carousels/${id}`, {
       method: 'DELETE',
       token: superToken,
     }), 200);
-    created.ads = created.ads.filter((adIdValue) => adIdValue !== id);
+    created.carousels = created.carousels.filter((carouselIdValue) => carouselIdValue !== id);
   }
 }
 
@@ -726,7 +737,7 @@ async function main() {
   const auth = await runAuthTests(seedUsername, seedPassword);
   await runAdminPermissionTests(auth.accessToken, auth.adminId);
   await runPostTests(auth.accessToken);
-  await runAdTests(auth.accessToken);
+  await runCarouselTests(auth.accessToken);
   await runStreamLinkTests(auth.accessToken);
   await runNotificationTests(auth.accessToken);
   await runDashboardChecks();

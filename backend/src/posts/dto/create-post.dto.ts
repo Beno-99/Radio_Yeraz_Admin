@@ -14,6 +14,10 @@ export class CreatePostDto {
 
   @IsOptional()
   @IsString()
+  youtubeUrl?: string;
+
+  @IsOptional()
+  @IsString()
   profileName?: string = 'Radio Yeraz';
 
   @IsOptional()

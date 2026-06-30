@@ -32,10 +32,12 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Image from "next/image"; // Import Next.js Image component
+import { parseYouTubeUrl } from "@/lib/youtube";
 
 export type FieldType =
   | "text"
   | "email"
+  | "url"
   | "password"
   | "number"
   | "textarea"
@@ -109,11 +111,22 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
     control,
     name: "video" as Path<T>,
   });
+  const youtubeUrlValue = useWatch({
+    control,
+    name: "youtubeUrl" as Path<T>,
+  });
 
   const isFile = (value: unknown): value is File => value instanceof File;
 
   const imageSelected = useMemo(() => isFile(mainImageValue), [mainImageValue]);
   const videoSelected = useMemo(() => isFile(videoValue), [videoValue]);
+  const youtubePreview = useMemo(
+    () =>
+      typeof youtubeUrlValue === "string"
+        ? parseYouTubeUrl(youtubeUrlValue)
+        : null,
+    [youtubeUrlValue],
+  );
 
   // Fix: Use useMemo instead of useEffect to avoid synchronous setState
   const initialPreviews = useMemo(() => {
@@ -161,6 +174,7 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
       case "mainImage":
         return <ImageIcon className="h-4 w-4 text-gray-400" />;
       case "video":
+      case "youtubeUrl":
         return <VideoIcon className="h-4 w-4 text-gray-400" />;
       case "profileName":
         return <User className="h-4 w-4 text-gray-400" />;
@@ -532,6 +546,19 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
             </div>
             {field.description && (
               <p className="mt-2 text-sm text-gray-600">{field.description}</p>
+            )}
+            {field.name === "youtubeUrl" && youtubePreview && (
+              <div className="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-black">
+                <div className="aspect-video w-full">
+                  <iframe
+                    src={youtubePreview.embedUrl}
+                    title="YouTube preview"
+                    className="h-full w-full"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                  />
+                </div>
+              </div>
             )}
             {error && (
               <div className="mt-2 flex items-center text-red-600 text-sm">

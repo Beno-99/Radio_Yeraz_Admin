@@ -5,7 +5,7 @@ import { DatabaseModule } from './database/database.module';
 import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
 import { PostsModule } from './posts/posts.module';
-import { AdsModule } from './ads/ads.module';
+import { CarouselsModule } from './carousels/carousels.module';
 import { UploadModule } from './upload/upload.module';
 import { NotificationModule } from './notifications/notification.module';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -23,7 +23,7 @@ import { StreamLinkModule } from './stream-link/stream-link.module';
     AuthModule,
     AdminModule,
     PostsModule,
-    AdsModule,
+    CarouselsModule,
     NotificationModule,
     FirebaseModule,
     StreamLinkModule,

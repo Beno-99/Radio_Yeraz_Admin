@@ -139,10 +139,13 @@ export class NotificationService implements OnModuleInit {
     });
   }
 
-  async findTodayExpiry(adId: string, todayStart: Date): Promise<boolean> {
+  async findCarouselTodayExpiry(
+    carouselId: string,
+    todayStart: Date,
+  ): Promise<boolean> {
     const notifications = await this.prisma.notification.findMany({
       where: {
-        type: NotificationType.AD_EXPIRING,
+        type: NotificationType.CAROUSEL_EXPIRING,
         createdAt: { gte: todayStart },
       },
       select: { data: true },
@@ -150,7 +153,7 @@ export class NotificationService implements OnModuleInit {
 
     return notifications.some((notification) => {
       const data = notification.data;
-      return this.isJsonObject(data) && data.adId === adId;
+      return this.isJsonObject(data) && data.carouselId === carouselId;
     });
   }
 

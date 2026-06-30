@@ -17,7 +17,12 @@ enum PostStatus {
   expired
 }
 
-enum AdStatus {
+enum PostVideoSource {
+  UPLOAD
+  YOUTUBE
+}
+
+enum CarouselStatus {
   pending
   active
   inactive
@@ -30,11 +35,11 @@ enum NotificationType {
   POST_UPDATED
   POST_DELETED
   POST_PUBLISHED
-  AD_CREATED
-  AD_UPDATED
-  AD_DELETED
-  AD_TOGGLED
-  AD_EXPIRING
+  CAROUSEL_CREATED
+  CAROUSEL_UPDATED
+  CAROUSEL_DELETED
+  CAROUSEL_TOGGLED
+  CAROUSEL_EXPIRING
   ADMIN_CREATED
   ADMIN_UPDATED
   ADMIN_DELETED
@@ -52,7 +57,7 @@ model Admin {
   role          AdminRole      @default(ADMIN)
   updatedAt     DateTime       @updatedAt
   posts         Post[]
-  ads           Ad[]
+  carousels     Carousel[]
   refreshTokens RefreshToken[]
 
   @@index([role], map: "admins_role_idx")
@@ -82,7 +87,10 @@ model Post {
   title          String     @db.VarChar(255)
   description    String     @db.Text
   mainImage      String     @default("") @db.VarChar(1024)
-  video          String     @default("") @db.VarChar(1024)
+  video          String?    @db.VarChar(1024)
+  videoSource    PostVideoSource?
+  youtubeUrl     String?    @db.VarChar(2048)
+  youtubeVideoId String?    @db.VarChar(32)
   profileName    String     @default("Radio Yeraz") @db.VarChar(191)
   eventDate      DateTime?
   eventTime      String?    @db.VarChar(50)
@@ -105,33 +113,37 @@ model Post {
   @@index([status], map: "posts_status_idx")
   @@index([isLive], map: "posts_is_live_idx")
   @@index([isPublished], map: "posts_is_published_idx")
+  @@index([videoSource], map: "posts_video_source_idx")
+  @@index([youtubeVideoId], map: "posts_youtube_video_id_idx")
   @@index([isPublished, status, postedDate], map: "posts_public_listing_idx")
   @@map("posts")
 }
 
-model Ad {
-  id        String   @id @map("_id") @db.Char(24)
-  image     String   @db.VarChar(1024)
-  isActive  Boolean  @default(true)
-  status    AdStatus @default(pending)
-  clicks    Int      @default(0)
-  startDate DateTime @default(now())
-  endDate   DateTime?
-  authorId  String?  @map("author") @db.Char(24)
-  targetUrl String?  @db.VarChar(2048)
-  name      String   @db.VarChar(191)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  author    Admin?   @relation(fields: [authorId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+model Carousel {
+  id           String         @id @map("_id") @db.Char(24)
+  image        String         @db.VarChar(1024)
+  isActive     Boolean        @default(true)
+  status       CarouselStatus @default(pending)
+  clicks       Int            @default(0)
+  startDate    DateTime       @default(now())
+  endDate      DateTime?
+  authorId     String?        @map("author") @db.Char(24)
+  targetUrl    String?        @db.VarChar(2048)
+  name         String         @db.VarChar(191)
+  displayOrder Int            @default(0)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  author       Admin?         @relation(fields: [authorId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
-  @@index([authorId], map: "ads_author_idx")
-  @@index([isActive], map: "ads_is_active_idx")
-  @@index([name], map: "ads_name_idx")
-  @@index([status], map: "ads_status_idx")
-  @@index([startDate], map: "ads_start_date_idx")
-  @@index([endDate], map: "ads_end_date_idx")
-  @@index([isActive, status, startDate, endDate], map: "ads_public_listing_idx")
-  @@map("ads")
+  @@index([authorId], map: "carousels_author_idx")
+  @@index([isActive], map: "carousels_is_active_idx")
+  @@index([name], map: "carousels_name_idx")
+  @@index([status], map: "carousels_status_idx")
+  @@index([displayOrder], map: "carousels_display_order_idx")
+  @@index([startDate], map: "carousels_start_date_idx")
+  @@index([endDate], map: "carousels_end_date_idx")
+  @@index([isActive, status, startDate, endDate], map: "carousels_public_listing_idx")
+  @@map("Carousel")
 }
 
 model StreamLink {

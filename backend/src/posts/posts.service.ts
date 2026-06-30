@@ -8,6 +8,7 @@ import {
   AdminRole,
   Post as PrismaPost,
   PostStatus,
+  PostVideoSource,
   Prisma,
 } from '@prisma/client';
 import * as fs from 'fs';
@@ -21,6 +22,7 @@ import { NotificationGateway } from '../notifications/notification.gateway';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
+import { normalizeYoutubeUrl } from './youtube-url.util';
 
 const postAuthorSelect = {
   id: true,
@@ -99,6 +101,9 @@ export class PostsService {
       description: post.description,
       mainImage: post.mainImage,
       video: post.video,
+      videoSource: post.videoSource ?? (post.video ? PostVideoSource.UPLOAD : null),
+      youtubeUrl: post.youtubeUrl,
+      youtubeVideoId: post.youtubeVideoId,
       profileName: post.profileName,
       eventDate: post.eventDate,
       eventTime: post.eventTime,
@@ -246,6 +251,15 @@ export class PostsService {
     const isLiveValue = this.parseOptionalBoolean(createPostDto.isLive) ?? false;
     const eventDate = this.parseOptionalDate(createPostDto.eventDate);
     const calculatedExpiresAt = this.calculateExpiryFromEventDate(eventDate);
+    const youtubeMedia = createPostDto.youtubeUrl?.trim()
+      ? normalizeYoutubeUrl(createPostDto.youtubeUrl)
+      : null;
+
+    if (createPostDto.video) {
+      throw new BadRequestException(
+        'New uploaded videos are not supported. Use youtubeUrl instead.',
+      );
+    }
 
     const savedPost = await this.prisma.post.create({
       data: {
@@ -253,7 +267,10 @@ export class PostsService {
         title: createPostDto.title,
         description: createPostDto.description,
         mainImage: createPostDto.mainImage || '',
-        video: createPostDto.video || '',
+        video: null,
+        videoSource: youtubeMedia ? PostVideoSource.YOUTUBE : null,
+        youtubeUrl: youtubeMedia?.youtubeUrl ?? null,
+        youtubeVideoId: youtubeMedia?.youtubeVideoId ?? null,
         profileName: createPostDto.profileName || 'Radio Yeraz',
         eventDate,
         eventTime: createPostDto.eventTime,
@@ -492,12 +509,32 @@ export class PostsService {
     const shouldRemoveImage = updatePostDto.removeImage === 'true';
     const shouldRemoveVideo = updatePostDto.removeVideo === 'true';
     const hasNewImage = !!updatePostDto.mainImage;
-    const hasNewVideo = !!updatePostDto.video;
+    const hasYoutubeUpdate = updatePostDto.youtubeUrl !== undefined;
+    const youtubeMedia =
+      hasYoutubeUpdate && updatePostDto.youtubeUrl?.trim()
+        ? normalizeYoutubeUrl(updatePostDto.youtubeUrl)
+        : null;
+
+    if (updatePostDto.video) {
+      throw new BadRequestException(
+        'New uploaded videos are not supported. Use youtubeUrl instead.',
+      );
+    }
 
     if (hasNewImage) data.mainImage = updatePostDto.mainImage;
-    if (hasNewVideo) data.video = updatePostDto.video;
     if (shouldRemoveImage) data.mainImage = '';
-    if (shouldRemoveVideo) data.video = '';
+    if (hasYoutubeUpdate) {
+      data.video = null;
+      data.videoSource = youtubeMedia ? PostVideoSource.YOUTUBE : null;
+      data.youtubeUrl = youtubeMedia?.youtubeUrl ?? null;
+      data.youtubeVideoId = youtubeMedia?.youtubeVideoId ?? null;
+    }
+    if (shouldRemoveVideo) {
+      data.video = null;
+      data.videoSource = null;
+      data.youtubeUrl = null;
+      data.youtubeVideoId = null;
+    }
 
     const post = await this.prisma.post.update({
       where: { id },
@@ -515,11 +552,8 @@ export class PostsService {
         }
       }
 
-      if ((shouldRemoveVideo || hasNewVideo) && oldVideo.trim() !== '') {
-        const replacedWithDifferentVideo = hasNewVideo && oldVideo !== post.video;
-        if (shouldRemoveVideo || replacedWithDifferentVideo) {
-          this.deleteMediaFileIfExists(oldVideo);
-        }
+      if (shouldRemoveVideo && oldVideo.trim() !== '') {
+        this.deleteMediaFileIfExists(oldVideo);
       }
     } catch (fileError) {
       console.error('Failed to delete replaced/removed media file:', fileError);

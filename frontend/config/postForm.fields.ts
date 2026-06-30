@@ -25,10 +25,11 @@ export const postFormFields: FormField[] = [
     description: "Upload a high-quality image that represents your post",
   },
   {
-    name: "video",
-    label: "Video Content",
-    type: "file",
-    description: "Optional video to complement your post",
+    name: "youtubeUrl",
+    label: "YouTube URL",
+    type: "url",
+    placeholder: "https://www.youtube.com/watch?v=VIDEO_ID",
+    description: "Optional YouTube video for this post",
   },
   {
     name: "profileName",

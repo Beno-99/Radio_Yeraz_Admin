@@ -20,7 +20,10 @@ export interface Post extends BaseEntity {
   title: string;
   description: string;
   mainImage: string;
-  video?: string;
+  video?: string | null;
+  videoSource?: "UPLOAD" | "YOUTUBE" | null;
+  youtubeUrl?: string | null;
+  youtubeVideoId?: string | null;
   profileName: string;
   eventDate?: string;
   location?: string;
@@ -31,19 +34,21 @@ export interface Post extends BaseEntity {
   expiresAt?: string;
 }
 
-export interface Ad extends BaseEntity {
+export interface Carousel extends BaseEntity {
   name: string;
-  title: string;
-  description: string;
-  advertiserName: string;
-  platform: "web" | "mobile" | "both";
-  budget: number;
-  impressions: number;
+  title?: string;
+  description?: string;
+  advertiserName?: string;
+  platform?: "web" | "mobile" | "both";
+  budget?: number;
+  impressions?: number;
   videoUrl?: string;
   image: string;
-  targetUrl: string;
+  targetUrl?: string;
   isActive: boolean;
   clicks: number;
+  displayOrder: number;
+  status?: "pending" | "active" | "inactive" | "expired";
   startDate: string;
   endDate?: string;
   author: { _id: string; displayName: string };

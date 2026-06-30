@@ -21,6 +21,7 @@ import {
 import { toast } from "sonner";
 import Swal from "sweetalert2";
 import { postsAPI } from "@/lib/api/api";
+import { getYouTubeEmbedUrl, parseYouTubeUrl } from "@/lib/youtube";
 
 interface Post {
   _id: string;
@@ -33,7 +34,10 @@ interface Post {
   createdAt?: string;
   updatedAt?: string;
   mainImage?: string;
-  video?: string;
+  video?: string | null;
+  videoSource?: "UPLOAD" | "YOUTUBE" | null;
+  youtubeUrl?: string | null;
+  youtubeVideoId?: string | null;
   isLive: boolean;
   isPublished: boolean;
 }
@@ -183,8 +187,19 @@ toast.error(message);
       : `${mediaUrl}${post.video}`;
   };
 
+  const getYoutubeEmbedUrl = () => {
+    if (!post) return null;
+
+    if (post.youtubeVideoId) {
+      return getYouTubeEmbedUrl(post.youtubeVideoId);
+    }
+
+    return parseYouTubeUrl(post.youtubeUrl)?.embedUrl ?? null;
+  };
+
   const imageUrl = getImageUrl();
   const videoUrl = getVideoUrl();
+  const youtubeEmbedUrl = getYoutubeEmbedUrl();
 
   if (loading) {
     return (
@@ -272,7 +287,21 @@ toast.error(message);
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         {/* Media Section - Video or Image */}
         <div className="w-full bg-gray-100 border-b border-gray-200">
-          {videoUrl ? (
+          {youtubeEmbedUrl ? (
+            <div className="relative aspect-video w-full bg-black">
+              <iframe
+                src={youtubeEmbedUrl}
+                title={post.title}
+                className="h-full w-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+              />
+              <div className="absolute top-4 right-4 px-3 py-1.5 bg-red-500 text-white text-sm font-medium rounded-full flex items-center gap-1.5">
+                <Video size={16} />
+                YouTube Post
+              </div>
+            </div>
+          ) : videoUrl ? (
             <div className="relative w-full max-h-[500px] bg-black">
               <video
                 src={videoUrl}

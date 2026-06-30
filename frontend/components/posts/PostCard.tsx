@@ -14,6 +14,7 @@ import {
 import { Post } from "@/types";
 import { toast } from "sonner";
 import { postsAPI } from "@/lib/api/api";
+import { getYouTubeEmbedUrl, parseYouTubeUrl } from "@/lib/youtube";
 import Swal from "sweetalert2";
 
 interface PostCardProps {
@@ -97,6 +98,29 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
             : "bg-yellow-50 text-yellow-700 border-yellow-100";
 
   const getMediaPreview = () => {
+    const youtubeEmbedUrl =
+      (post.youtubeVideoId ? getYouTubeEmbedUrl(post.youtubeVideoId) : null) ||
+      parseYouTubeUrl(post.youtubeUrl)?.embedUrl;
+
+    if (youtubeEmbedUrl) {
+      return (
+        <div className="relative w-full overflow-hidden rounded-t-lg bg-black">
+          <div className="aspect-video w-full">
+            <iframe
+              src={youtubeEmbedUrl}
+              title={post.title}
+              className="h-full w-full"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+            />
+          </div>
+          <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-bold text-white flex items-center gap-1 uppercase tracking-wider">
+            YouTube
+          </div>
+        </div>
+      );
+    }
+
     if (post.video) {
       const videoUrl = post.video.startsWith("http")
         ? post.video

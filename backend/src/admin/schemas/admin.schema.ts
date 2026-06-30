@@ -2,7 +2,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema, Types } from 'mongoose';
 import { Post } from '../../posts/schemas/post.schema';
-import { Ad } from '../../ads/schemas/ad.schema';
+import { Carousel } from '../../carousels/schemas/carousel.schema';
 import { RefreshToken } from '../../auth/schemas/refresh-token.schema';
 
 export type AdminDocument = Admin &
@@ -50,7 +50,7 @@ export class Admin {
 
   // Virtual populate for relations (MongoDB doesn't have foreign keys)
   posts?: Post[];
-  ads?: Ad[];
+  carousels?: Carousel[];
   refreshTokens?: RefreshToken[];
 }
 

@@ -36,7 +36,6 @@ import {
 
 interface PostUploadFiles {
   mainImage?: Express.Multer.File[];
-  video?: Express.Multer.File[];
 }
 
 type CreatePostPayload = CreatePostDto & {
@@ -181,20 +180,11 @@ export class PostsController {
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   @UseInterceptors(
     FileFieldsInterceptor(
-      [
-        { name: 'mainImage', maxCount: 1 },
-        { name: 'video', maxCount: 1 },
-      ],
+      [{ name: 'mainImage', maxCount: 1 }],
       {
         storage: diskStorage({
           destination: (req, file, cb) => {
-            let uploadPath = './uploads';
-
-            if (file.fieldname === 'mainImage') {
-              uploadPath = './uploads/posts/images';
-            } else if (file.fieldname === 'video') {
-              uploadPath = './uploads/posts/videos';
-            }
+            const uploadPath = './uploads/posts/images';
 
             if (!fs.existsSync(uploadPath)) {
               fs.mkdirSync(uploadPath, { recursive: true });
@@ -231,10 +221,6 @@ export class PostsController {
       postData.mainImage = `/uploads/posts/images/${files.mainImage[0].filename}`;
     }
 
-    if (files?.video?.[0]) {
-      postData.video = `/uploads/posts/videos/${files.video[0].filename}`;
-    }
-
     const post = await this.postsService.create(postData, authorId);
 
     if (post.isPublished) {
@@ -267,17 +253,11 @@ export class PostsController {
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   @UseInterceptors(
     FileFieldsInterceptor(
-      [
-        { name: 'mainImage', maxCount: 1 },
-        { name: 'video', maxCount: 1 },
-      ],
+      [{ name: 'mainImage', maxCount: 1 }],
       {
         storage: diskStorage({
           destination: (req, file, cb) => {
-            const uploadPath =
-              file.fieldname === 'video'
-                ? './uploads/posts/videos'
-                : './uploads/posts/images';
+            const uploadPath = './uploads/posts/images';
             if (!fs.existsSync(uploadPath)) {
               fs.mkdirSync(uploadPath, { recursive: true });
             }
@@ -308,10 +288,6 @@ export class PostsController {
     if (files?.mainImage?.[0]) {
       updatePostDto.mainImage = `/uploads/posts/images/${files.mainImage[0].filename}`;
     }
-    if (files?.video?.[0]) {
-      updatePostDto.video = `/uploads/posts/videos/${files.video[0].filename}`;
-    }
-
     const updatedPost = await this.postsService.update(id, updatePostDto);
 
     const becamePublished =

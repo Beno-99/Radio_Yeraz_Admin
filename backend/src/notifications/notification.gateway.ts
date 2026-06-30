@@ -56,7 +56,7 @@ interface PostNotificationPayload extends IdentifiedPayload {
   title: string;
 }
 
-interface AdNotificationPayload extends IdentifiedPayload {
+interface CarouselNotificationPayload extends IdentifiedPayload {
   name: string;
   isActive?: boolean;
   endDate?: Date | string | null;
@@ -301,76 +301,79 @@ export class NotificationGateway
     this.server.emit('new_notification', this.buildPayload(notification));
   }
 
-  async emitAdCreated(
-    ad: AdNotificationPayload,
+  async emitCarouselCreated(
+    carousel: CarouselNotificationPayload,
     authorName: string,
   ): Promise<void> {
-    const adId = this.getEntityId(ad);
+    const carouselId = this.getEntityId(carousel);
     const notification = await this.notificationService.create({
-      title: ad.name,
-      message: `${authorName} created ad - ${new Date().toLocaleDateString(
+      title: carousel.name,
+      message: `${authorName} created carousel - ${new Date().toLocaleDateString(
         'en-US',
         { month: 'short', day: 'numeric', year: 'numeric' },
       )}`,
-      type: NotificationType.AD_CREATED,
+      type: NotificationType.CAROUSEL_CREATED,
       authorName,
-      data: { adId, name: ad.name, authorName },
+      data: { carouselId, name: carousel.name, authorName },
     });
 
     this.server.emit('admin_notification', this.buildPayload(notification));
   }
 
-  async emitAdUpdated(
-    ad: AdNotificationPayload,
+  async emitCarouselUpdated(
+    carousel: CarouselNotificationPayload,
     authorName: string,
   ): Promise<void> {
-    const adId = this.getEntityId(ad);
+    const carouselId = this.getEntityId(carousel);
     const notification = await this.notificationService.create({
-      title: ad.name,
-      message: `${authorName} updated ad - ${new Date().toLocaleDateString(
+      title: carousel.name,
+      message: `${authorName} updated carousel - ${new Date().toLocaleDateString(
         'en-US',
         { month: 'short', day: 'numeric', year: 'numeric' },
       )}`,
-      type: NotificationType.AD_UPDATED,
+      type: NotificationType.CAROUSEL_UPDATED,
       authorName,
-      data: { adId, name: ad.name, authorName },
+      data: { carouselId, name: carousel.name, authorName },
     });
 
     this.server.emit('admin_notification', this.buildPayload(notification));
   }
 
-  async emitAdDeleted(adName: string, authorName: string): Promise<void> {
+  async emitCarouselDeleted(
+    carouselName: string,
+    authorName: string,
+  ): Promise<void> {
     const notification = await this.notificationService.create({
-      title: adName,
-      message: `${authorName} deleted ad - ${new Date().toLocaleDateString(
+      title: carouselName,
+      message: `${authorName} deleted carousel - ${new Date().toLocaleDateString(
         'en-US',
         { month: 'short', day: 'numeric', year: 'numeric' },
       )}`,
-      type: NotificationType.AD_DELETED,
+      type: NotificationType.CAROUSEL_DELETED,
       authorName,
     });
 
     this.server.emit('admin_notification', this.buildPayload(notification));
   }
 
-  async emitAdToggled(
-    ad: AdNotificationPayload,
+  async emitCarouselToggled(
+    carousel: CarouselNotificationPayload,
     authorName: string,
   ): Promise<void> {
-    const adId = this.getEntityId(ad);
-    const status = ad.isActive ? 'activated' : 'deactivated';
+    const carouselId = this.getEntityId(carousel);
+    const status = carousel.isActive ? 'activated' : 'deactivated';
     const notification = await this.notificationService.create({
-      title: ad.name,
-      message: `${authorName} ${status} ad - ${new Date().toLocaleDateString(
+      title: carousel.name,
+      message: `${authorName} ${status} carousel - ${new Date().toLocaleDateString(
         'en-US',
         { month: 'short', day: 'numeric', year: 'numeric' },
       )}`,
-      type: NotificationType.AD_TOGGLED,
+      type: NotificationType.CAROUSEL_TOGGLED,
       authorName,
       data: {
-        adId,
-        name: ad.name,
-        isActive: ad.isActive ?? false,
+        carouselId,
+        name: carousel.name,
+        isActive: carousel.isActive ?? false,
         authorName,
       },
     });
@@ -378,13 +381,13 @@ export class NotificationGateway
     this.server.emit('admin_notification', this.buildPayload(notification));
   }
 
-  async emitAdExpiringSoon(
-    ad: AdNotificationPayload,
+  async emitCarouselExpiringSoon(
+    carousel: CarouselNotificationPayload,
     daysLeft: number,
   ): Promise<void> {
-    const adId = this.getEntityId(ad);
-    const endDate = ad.endDate
-      ? new Date(ad.endDate).toLocaleDateString('en-US', {
+    const carouselId = this.getEntityId(carousel);
+    const endDate = carousel.endDate
+      ? new Date(carousel.endDate).toLocaleDateString('en-US', {
           weekday: 'long',
           month: 'long',
           day: 'numeric',
@@ -393,11 +396,11 @@ export class NotificationGateway
       : 'its end date';
 
     const notification = await this.notificationService.create({
-      title: ad.name,
-      message: `This ad will expire in ${daysLeft} day${daysLeft > 1 ? 's' : ''} on ${endDate}. Consider renewing it before it stops showing.`,
-      type: NotificationType.AD_EXPIRING,
+      title: carousel.name,
+      message: `This carousel will expire in ${daysLeft} day${daysLeft > 1 ? 's' : ''} on ${endDate}. Consider renewing it before it stops showing.`,
+      type: NotificationType.CAROUSEL_EXPIRING,
       authorName: 'System',
-      data: { adId, name: ad.name, daysLeft },
+      data: { carouselId, name: carousel.name, daysLeft },
     });
 
     this.server.emit('admin_notification', this.buildPayload(notification));

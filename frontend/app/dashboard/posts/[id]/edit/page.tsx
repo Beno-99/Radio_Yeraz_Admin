@@ -6,9 +6,10 @@ import { ArrowLeft, Upload, Image as ImageIcon, Video } from "lucide-react";
 import { toast } from "sonner";
 import { postsAPI } from "@/lib/api/api";
 import { SimpleImageUpload } from "@/components/posts/PostImageUpload";
+import { getYouTubeEmbedUrl, parseYouTubeUrl } from "@/lib/youtube";
 import Swal from "sweetalert2";
 
-type MediaType = "image" | "video" | "none";
+type MediaType = "image" | "youtube" | "legacyVideo" | "none";
 
 export default function EditPostPage() {
   const router = useRouter();
@@ -18,9 +19,9 @@ export default function EditPostPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [selectedVideoFile, setSelectedVideoFile] = useState<File | null>(null);
   const [currentImagePath, setCurrentImagePath] = useState("");
   const [currentVideoPath, setCurrentVideoPath] = useState("");
+  const [currentYoutubeVideoId, setCurrentYoutubeVideoId] = useState("");
   const [mediaType, setMediaType] = useState<MediaType>("image");
   const [postMeta, setPostMeta] = useState({
     postedDate: "",
@@ -33,6 +34,7 @@ export default function EditPostPage() {
     eventDate: "",
     location: "",
     link: "",
+    youtubeUrl: "",
     isLive: false,
     isPublished: false,
   });
@@ -53,6 +55,7 @@ export default function EditPostPage() {
           eventDate: post.eventDate?.split("T")[0] || "",
           location: post.location || "",
           link: post.link || "",
+          youtubeUrl: post.youtubeUrl || "",
           isLive: post.isLive ?? false,
           isPublished: post.isPublished ?? false,
         });
@@ -62,16 +65,25 @@ export default function EditPostPage() {
           expiresAt: post.expiresAt || "",
         });
 
-        if (post.video && post.video !== "") {
-          setMediaType("video");
+        if (post.youtubeVideoId || post.youtubeUrl || post.videoSource === "YOUTUBE") {
+          const parsedYoutube = parseYouTubeUrl(post.youtubeUrl || "");
+          setMediaType("youtube");
+          setCurrentYoutubeVideoId(post.youtubeVideoId || parsedYoutube?.videoId || "");
+          setCurrentVideoPath("");
+          setCurrentImagePath("");
+        } else if (post.video && post.video !== "") {
+          setMediaType("legacyVideo");
           setCurrentVideoPath(post.video);
+          setCurrentYoutubeVideoId("");
           setCurrentImagePath("");
         } else if (post.mainImage && post.mainImage !== "[object Object]") {
           setMediaType("image");
           setCurrentImagePath(post.mainImage);
           setCurrentVideoPath("");
+          setCurrentYoutubeVideoId("");
         } else {
           setMediaType("none");
+          setCurrentYoutubeVideoId("");
         }
       } catch {
         toast.error("Failed to load post");
@@ -114,6 +126,16 @@ export default function EditPostPage() {
       return;
     }
 
+    if (mediaType === "youtube" && !parseYouTubeUrl(formData.youtubeUrl)) {
+      await Swal.fire({
+        icon: "warning",
+        title: "Validation Error",
+        text: "Enter a valid YouTube URL",
+        confirmButtonColor: "#7c3aed",
+      });
+      return;
+    }
+
     const confirm = await Swal.fire({
       title: "Are you sure?",
       text: "Do you want to save changes?",
@@ -144,19 +166,17 @@ export default function EditPostPage() {
         if (selectedFile) {
           formDataToSend.append("mainImage", selectedFile);
         }
-        formDataToSend.append("removeVideo", "true");
+        formDataToSend.append("youtubeUrl", "");
       }
 
-      if (mediaType === "video") {
-        if (selectedVideoFile) {
-          formDataToSend.append("video", selectedVideoFile);
-        }
+      if (mediaType === "youtube") {
+        formDataToSend.append("youtubeUrl", formData.youtubeUrl.trim());
         formDataToSend.append("removeImage", "true");
       }
 
       if (mediaType === "none") {
         formDataToSend.append("removeImage", "true");
-        formDataToSend.append("removeVideo", "true");
+        formDataToSend.append("youtubeUrl", "");
       }
 
       Swal.fire({
@@ -233,6 +253,11 @@ export default function EditPostPage() {
       : `${mediaUrl}${currentVideoPath}`
     : undefined;
 
+  const youtubePreview = parseYouTubeUrl(formData.youtubeUrl);
+  const currentYoutubeEmbedUrl =
+    youtubePreview?.embedUrl ||
+    (currentYoutubeVideoId ? getYouTubeEmbedUrl(currentYoutubeVideoId) : null);
+
   const badgeClass =
     postStatus === "Live"
       ? "bg-red-100 text-red-700"
@@ -267,12 +292,11 @@ export default function EditPostPage() {
               Media Type
             </label>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <button
                 type="button"
                 onClick={() => {
                   setMediaType("image");
-                  setSelectedVideoFile(null);
                 }}
                 className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium ${
                   mediaType === "image"
@@ -287,17 +311,35 @@ export default function EditPostPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setMediaType("video");
+                  setMediaType("youtube");
                   setSelectedFile(null);
                 }}
                 className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium ${
-                  mediaType === "video"
+                  mediaType === "youtube"
                     ? "bg-purple-600 text-white border-purple-600"
                     : "bg-white text-gray-700 border-gray-300"
                 }`}
               >
                 <Video size={16} />
-                Video
+                YouTube
+              </button>
+
+              <button
+                type="button"
+                disabled={!currentVideoPath}
+                onClick={() => {
+                  setMediaType("legacyVideo");
+                  setSelectedFile(null);
+                  setFormData({ ...formData, youtubeUrl: "" });
+                }}
+                className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 ${
+                  mediaType === "legacyVideo"
+                    ? "bg-purple-600 text-white border-purple-600"
+                    : "bg-white text-gray-700 border-gray-300"
+                }`}
+              >
+                <Video size={16} />
+                Legacy
               </button>
 
               <button
@@ -305,9 +347,10 @@ export default function EditPostPage() {
                 onClick={() => {
                   setMediaType("none");
                   setSelectedFile(null);
-                  setSelectedVideoFile(null);
                   setCurrentImagePath("");
                   setCurrentVideoPath("");
+                  setCurrentYoutubeVideoId("");
+                  setFormData({ ...formData, youtubeUrl: "" });
                 }}
                 className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium ${
                   mediaType === "none"
@@ -321,10 +364,10 @@ export default function EditPostPage() {
             </div>
           </div>
 
-          {mediaType === "video" && currentVideoUrl && !selectedVideoFile && (
+          {mediaType === "legacyVideo" && currentVideoUrl && (
             <div className="mb-4">
               <label className="block text-sm font-medium mb-2">
-                Current Video
+                Current Uploaded Video
               </label>
               <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
                 <video
@@ -344,20 +387,29 @@ export default function EditPostPage() {
             />
           )}
 
-          {mediaType === "video" && (
-            <div>
+          {mediaType === "youtube" && (
+            <div className="space-y-3">
               <label className="block text-sm font-medium mb-2">
-                Upload New Video
+                YouTube URL
               </label>
               <input
-                type="file"
-                accept="video/*"
-                onChange={(e) => setSelectedVideoFile(e.target.files?.[0] || null)}
+                type="url"
+                value={formData.youtubeUrl}
+                onChange={(e) =>
+                  setFormData({ ...formData, youtubeUrl: e.target.value })
+                }
+                placeholder="https://www.youtube.com/watch?v=VIDEO_ID"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
               />
-              {selectedVideoFile && (
-                <div className="bg-green-50 p-3 rounded-lg text-sm text-green-700 mt-3">
-                  ✅ New video selected: {selectedVideoFile.name}
+              {currentYoutubeEmbedUrl && (
+                <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
+                  <iframe
+                    src={currentYoutubeEmbedUrl}
+                    title="YouTube preview"
+                    className="h-full w-full"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                  />
                 </div>
               )}
             </div>

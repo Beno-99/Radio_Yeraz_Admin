@@ -17,8 +17,17 @@ export class Post {
   @Prop({ default: '' })
   mainImage: string;
 
-  @Prop({ default: '' })
-  video: string;
+  @Prop({ default: null })
+  video?: string;
+
+  @Prop({ type: String, enum: ['UPLOAD', 'YOUTUBE'], default: null })
+  videoSource?: 'UPLOAD' | 'YOUTUBE';
+
+  @Prop({ default: null })
+  youtubeUrl?: string;
+
+  @Prop({ default: null })
+  youtubeVideoId?: string;
 
   @Prop({ default: 'Radio Yeraz' })
   profileName: string;

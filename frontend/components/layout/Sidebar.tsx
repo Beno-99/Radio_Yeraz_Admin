@@ -30,7 +30,7 @@ const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Admins", href: "/dashboard/admin", icon: Users },
   { name: "Posts", href: "/dashboard/posts", icon: FileText },
-  { name: "Ads", href: "/dashboard/ads", icon: Megaphone },
+  { name: "Carousels", href: "/dashboard/carousels", icon: Megaphone },
   { name: "Stream Links", href: "/dashboard/streamLinks", icon: Radio },
 ];
 
