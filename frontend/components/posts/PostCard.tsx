@@ -6,7 +6,6 @@ import {
   Pencil,
   Trash2,
   MapPin,
-  Video,
   Image as ImageIcon,
   User,
   Radio,
@@ -116,32 +115,6 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
           </div>
           <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-bold text-white flex items-center gap-1 uppercase tracking-wider">
             YouTube
-          </div>
-        </div>
-      );
-    }
-
-    if (post.video) {
-      const videoUrl = post.video.startsWith("http")
-        ? post.video
-        : `${mediaUrl}${post.video}`;
-
-      return (
-        <div className="relative w-full h-72 bg-black rounded-t-lg overflow-hidden group/video">
-          <video
-            src={`${videoUrl}#t=0.1`}
-            className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover/video:opacity-100 transition-opacity"
-            muted
-            playsInline
-            preload="metadata"
-          />
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="bg-white/20 backdrop-blur-md p-3 rounded-full">
-              <Video className="w-8 h-8 text-white" />
-            </div>
-          </div>
-          <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-bold text-white flex items-center gap-1 uppercase tracking-wider">
-            Video Preview
           </div>
         </div>
       );

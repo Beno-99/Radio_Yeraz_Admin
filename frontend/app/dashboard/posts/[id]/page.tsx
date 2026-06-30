@@ -34,8 +34,7 @@ interface Post {
   createdAt?: string;
   updatedAt?: string;
   mainImage?: string;
-  video?: string | null;
-  videoSource?: "UPLOAD" | "YOUTUBE" | null;
+  videoSource?: "YOUTUBE" | null;
   youtubeUrl?: string | null;
   youtubeVideoId?: string | null;
   isLive: boolean;
@@ -179,14 +178,6 @@ toast.error(message);
     return `${baseUrl}?t=${imageTimestamp}`;
   };
 
-  // Get video URL
-  const getVideoUrl = () => {
-    if (!post?.video) return null;
-    return post.video.startsWith("http")
-      ? post.video
-      : `${mediaUrl}${post.video}`;
-  };
-
   const getYoutubeEmbedUrl = () => {
     if (!post) return null;
 
@@ -198,7 +189,6 @@ toast.error(message);
   };
 
   const imageUrl = getImageUrl();
-  const videoUrl = getVideoUrl();
   const youtubeEmbedUrl = getYoutubeEmbedUrl();
 
   if (loading) {
@@ -299,19 +289,6 @@ toast.error(message);
               <div className="absolute top-4 right-4 px-3 py-1.5 bg-red-500 text-white text-sm font-medium rounded-full flex items-center gap-1.5">
                 <Video size={16} />
                 YouTube Post
-              </div>
-            </div>
-          ) : videoUrl ? (
-            <div className="relative w-full max-h-[500px] bg-black">
-              <video
-                src={videoUrl}
-                controls
-                className="w-full h-auto max-h-[500px] object-contain mx-auto"
-                poster={imageUrl || undefined}
-              />
-              <div className="absolute top-4 right-4 px-3 py-1.5 bg-red-500 text-white text-sm font-medium rounded-full flex items-center gap-1.5">
-                <Video size={16} />
-                Video Post
               </div>
             </div>
           ) : imageUrl ? (

@@ -86,20 +86,8 @@ Post responses include:
 ```json
 {
   "videoSource": "YOUTUBE",
-  "video": null,
   "youtubeUrl": "https://www.youtube.com/watch?v=VIDEO_ID",
   "youtubeVideoId": "VIDEO_ID"
-}
-```
-
-Legacy uploaded-video posts remain supported:
-
-```json
-{
-  "videoSource": "UPLOAD",
-  "video": "/uploads/posts/videos/example.mp4",
-  "youtubeUrl": null,
-  "youtubeVideoId": null
 }
 ```
 
@@ -154,8 +142,6 @@ new uploaded video files
 
 Invalid YouTube inputs return `400 Bad Request`.
 
-## Legacy Uploaded Video Behavior
+## Uploaded Video Behavior
 
-Existing uploaded-video posts can continue to render from `video` when `videoSource` is `UPLOAD`.
-
-Creating or updating a post with a new uploaded video file is rejected. Updating a post to YouTube media clears the database video path but does not require downloading, proxying, or replacing the old uploaded file.
+Uploaded post videos are no longer supported. The legacy `video` database column has been removed, and new post video media must use `youtubeUrl`.

@@ -10,10 +10,6 @@ export class CreatePostDto {
 
   @IsOptional()
   @IsString()
-  video?: string;
-
-  @IsOptional()
-  @IsString()
   youtubeUrl?: string;
 
   @IsOptional()

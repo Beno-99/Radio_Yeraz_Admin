@@ -13,10 +13,6 @@ export class UpdatePostDto {
 
   @IsOptional()
   @IsString()
-  video?: string;
-
-  @IsOptional()
-  @IsString()
   youtubeUrl?: string;
 
   @IsOptional()
@@ -63,9 +59,6 @@ export class UpdatePostDto {
 
   @IsOptional()
   removeImage?: string;
-
-  @IsOptional()
-  removeVideo?: string;
 
   @IsOptional()
   expiresAt?: Date;

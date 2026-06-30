@@ -100,8 +100,7 @@ export class PostsService {
       title: post.title,
       description: post.description,
       mainImage: post.mainImage,
-      video: post.video,
-      videoSource: post.videoSource ?? (post.video ? PostVideoSource.UPLOAD : null),
+      videoSource: post.videoSource,
       youtubeUrl: post.youtubeUrl,
       youtubeVideoId: post.youtubeVideoId,
       profileName: post.profileName,
@@ -255,19 +254,12 @@ export class PostsService {
       ? normalizeYoutubeUrl(createPostDto.youtubeUrl)
       : null;
 
-    if (createPostDto.video) {
-      throw new BadRequestException(
-        'New uploaded videos are not supported. Use youtubeUrl instead.',
-      );
-    }
-
     const savedPost = await this.prisma.post.create({
       data: {
         id: createObjectIdString(),
         title: createPostDto.title,
         description: createPostDto.description,
         mainImage: createPostDto.mainImage || '',
-        video: null,
         videoSource: youtubeMedia ? PostVideoSource.YOUTUBE : null,
         youtubeUrl: youtubeMedia?.youtubeUrl ?? null,
         youtubeVideoId: youtubeMedia?.youtubeVideoId ?? null,
@@ -449,7 +441,6 @@ export class PostsService {
     if (!oldPost) throw new NotFoundException('Post not found');
 
     const oldMainImage = oldPost.mainImage || '';
-    const oldVideo = oldPost.video || '';
     const data: Prisma.PostUncheckedUpdateInput = {
       updatedAt: new Date(),
     };
@@ -507,7 +498,6 @@ export class PostsService {
     }
 
     const shouldRemoveImage = updatePostDto.removeImage === 'true';
-    const shouldRemoveVideo = updatePostDto.removeVideo === 'true';
     const hasNewImage = !!updatePostDto.mainImage;
     const hasYoutubeUpdate = updatePostDto.youtubeUrl !== undefined;
     const youtubeMedia =
@@ -515,25 +505,12 @@ export class PostsService {
         ? normalizeYoutubeUrl(updatePostDto.youtubeUrl)
         : null;
 
-    if (updatePostDto.video) {
-      throw new BadRequestException(
-        'New uploaded videos are not supported. Use youtubeUrl instead.',
-      );
-    }
-
     if (hasNewImage) data.mainImage = updatePostDto.mainImage;
     if (shouldRemoveImage) data.mainImage = '';
     if (hasYoutubeUpdate) {
-      data.video = null;
       data.videoSource = youtubeMedia ? PostVideoSource.YOUTUBE : null;
       data.youtubeUrl = youtubeMedia?.youtubeUrl ?? null;
       data.youtubeVideoId = youtubeMedia?.youtubeVideoId ?? null;
-    }
-    if (shouldRemoveVideo) {
-      data.video = null;
-      data.videoSource = null;
-      data.youtubeUrl = null;
-      data.youtubeVideoId = null;
     }
 
     const post = await this.prisma.post.update({
@@ -550,10 +527,6 @@ export class PostsService {
         if (shouldRemoveImage || replacedWithDifferentImage) {
           this.deleteMediaFileIfExists(oldMainImage);
         }
-      }
-
-      if (shouldRemoveVideo && oldVideo.trim() !== '') {
-        this.deleteMediaFileIfExists(oldVideo);
       }
     } catch (fileError) {
       console.error('Failed to delete replaced/removed media file:', fileError);
@@ -647,7 +620,6 @@ export class PostsService {
 
     try {
       this.deleteMediaFileIfExists(post.mainImage);
-      this.deleteMediaFileIfExists(post.video);
     } catch (error) {
       console.error('Error deleting media files:', error);
     }
@@ -761,13 +733,12 @@ export class PostsService {
   async deleteByAuthor(authorId: string): Promise<number> {
     const posts = await this.prisma.post.findMany({
       where: { authorId },
-      select: { id: true, mainImage: true, video: true },
+      select: { id: true, mainImage: true },
     });
 
     posts.forEach((post) => {
       try {
         this.deleteMediaFileIfExists(post.mainImage);
-        this.deleteMediaFileIfExists(post.video);
       } catch (error) {
         console.error(`Error deleting media for post ${post.id}:`, error);
       }

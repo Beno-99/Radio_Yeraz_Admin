@@ -94,7 +94,9 @@ export function usePostsStats(allPosts: Post[]) {
       publishedPosts: allPosts.filter((p) => p.isPublished).length,
       draftPosts: allPosts.filter((p) => p.status === "draft" || !p.isPublished)
         .length,
-      postsWithMedia: allPosts.filter((p) => p.video || p.mainImage).length,
+      postsWithMedia: allPosts.filter(
+        (p) => p.youtubeVideoId || p.youtubeUrl || p.mainImage,
+      ).length,
       expiredPosts: allPosts.filter((p) => p.status === "expired").length,
     };
   }, [allPosts]);

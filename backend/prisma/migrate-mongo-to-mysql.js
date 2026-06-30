@@ -6,7 +6,6 @@ const {
   CarouselStatus,
   NotificationType,
   PostStatus,
-  PostVideoSource,
   PrismaClient,
 } = require('@prisma/client');
 const mongoose = require('mongoose');
@@ -170,18 +169,15 @@ async function migratePosts(prisma, database) {
 
     const authorId = toId(doc.author);
     const author = (await adminExists(prisma, authorId)) ? authorId : null;
-    const legacyVideo = toStringOrDefault(doc.video, '') || null;
-
     await prisma.post.upsert({
       where: { id },
       update: {
         title: doc.title,
         description: doc.description,
         mainImage: toStringOrDefault(doc.mainImage, ''),
-        video: legacyVideo,
-        videoSource: legacyVideo ? PostVideoSource.UPLOAD : null,
-        youtubeUrl: null,
-        youtubeVideoId: null,
+        videoSource: null,
+        youtubeUrl: doc.youtubeUrl || null,
+        youtubeVideoId: doc.youtubeVideoId || null,
         profileName: toStringOrDefault(doc.profileName, 'Radio Yeraz'),
         eventDate: toNullableDate(doc.eventDate),
         eventTime: doc.eventTime || null,
@@ -202,10 +198,9 @@ async function migratePosts(prisma, database) {
         title: doc.title,
         description: doc.description,
         mainImage: toStringOrDefault(doc.mainImage, ''),
-        video: legacyVideo,
-        videoSource: legacyVideo ? PostVideoSource.UPLOAD : null,
-        youtubeUrl: null,
-        youtubeVideoId: null,
+        videoSource: null,
+        youtubeUrl: doc.youtubeUrl || null,
+        youtubeVideoId: doc.youtubeVideoId || null,
         profileName: toStringOrDefault(doc.profileName, 'Radio Yeraz'),
         eventDate: toNullableDate(doc.eventDate),
         eventTime: doc.eventTime || null,

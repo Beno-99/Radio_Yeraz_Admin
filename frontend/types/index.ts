@@ -20,8 +20,7 @@ export interface Post extends BaseEntity {
   title: string;
   description: string;
   mainImage: string;
-  video?: string | null;
-  videoSource?: "UPLOAD" | "YOUTUBE" | null;
+  videoSource?: "YOUTUBE" | null;
   youtubeUrl?: string | null;
   youtubeVideoId?: string | null;
   profileName: string;

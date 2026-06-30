@@ -3,7 +3,6 @@ import { getYouTubeEmbedUrl, parseYouTubeUrl } from "@/lib/youtube";
 
 interface MediaSectionProps {
   mainImage?: string;
-  video?: string | null;
   youtubeUrl?: string | null;
   youtubeVideoId?: string | null;
   title: string;
@@ -11,7 +10,6 @@ interface MediaSectionProps {
 
 export function MediaSection({
   mainImage,
-  video,
   youtubeUrl,
   youtubeVideoId,
   title,
@@ -52,16 +50,6 @@ export function MediaSection({
           alt={title}
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent"></div>
-      </div>
-    );
-  }
-
-  if (video) {
-    const videoUrl = video.startsWith("http") ? video : `${mediaUrl}${video}`;
-
-    return (
-      <div className="relative aspect-video max-h-[600px] overflow-hidden bg-black">
-        <video src={videoUrl} controls className="h-full w-full object-contain" />
       </div>
     );
   }

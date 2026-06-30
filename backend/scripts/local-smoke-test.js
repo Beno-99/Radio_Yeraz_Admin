@@ -442,7 +442,6 @@ async function runPostTests(superToken) {
   created.posts.push(mediaPostId);
   addUploadedFile(mediaPost.data.data.mainImage);
   assert(mediaPost.data.data.mainImage.startsWith('/uploads/posts/images/'), 'post image path is not relative upload path');
-  assert(mediaPost.data.data.video === null, 'YouTube media should not store an uploaded video path');
   assert(mediaPost.data.data.videoSource === 'YOUTUBE', 'YouTube media source was not returned');
   assert(mediaPost.data.data.youtubeUrl === `https://www.youtube.com/watch?v=${youtubeId}`, 'YouTube URL was not normalized');
   assert(mediaPost.data.data.youtubeVideoId === youtubeId, 'YouTube video ID was not extracted');

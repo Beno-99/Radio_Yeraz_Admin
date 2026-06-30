@@ -9,7 +9,7 @@ import { SimpleImageUpload } from "@/components/posts/PostImageUpload";
 import { getYouTubeEmbedUrl, parseYouTubeUrl } from "@/lib/youtube";
 import Swal from "sweetalert2";
 
-type MediaType = "image" | "youtube" | "legacyVideo" | "none";
+type MediaType = "image" | "youtube" | "none";
 
 export default function EditPostPage() {
   const router = useRouter();
@@ -20,7 +20,6 @@ export default function EditPostPage() {
   const [saving, setSaving] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [currentImagePath, setCurrentImagePath] = useState("");
-  const [currentVideoPath, setCurrentVideoPath] = useState("");
   const [currentYoutubeVideoId, setCurrentYoutubeVideoId] = useState("");
   const [mediaType, setMediaType] = useState<MediaType>("image");
   const [postMeta, setPostMeta] = useState({
@@ -69,17 +68,10 @@ export default function EditPostPage() {
           const parsedYoutube = parseYouTubeUrl(post.youtubeUrl || "");
           setMediaType("youtube");
           setCurrentYoutubeVideoId(post.youtubeVideoId || parsedYoutube?.videoId || "");
-          setCurrentVideoPath("");
-          setCurrentImagePath("");
-        } else if (post.video && post.video !== "") {
-          setMediaType("legacyVideo");
-          setCurrentVideoPath(post.video);
-          setCurrentYoutubeVideoId("");
           setCurrentImagePath("");
         } else if (post.mainImage && post.mainImage !== "[object Object]") {
           setMediaType("image");
           setCurrentImagePath(post.mainImage);
-          setCurrentVideoPath("");
           setCurrentYoutubeVideoId("");
         } else {
           setMediaType("none");
@@ -247,12 +239,6 @@ export default function EditPostPage() {
       : `${mediaUrl}${currentImagePath}`
     : undefined;
 
-  const currentVideoUrl = currentVideoPath
-    ? currentVideoPath.startsWith("http")
-      ? currentVideoPath
-      : `${mediaUrl}${currentVideoPath}`
-    : undefined;
-
   const youtubePreview = parseYouTubeUrl(formData.youtubeUrl);
   const currentYoutubeEmbedUrl =
     youtubePreview?.embedUrl ||
@@ -292,7 +278,7 @@ export default function EditPostPage() {
               Media Type
             </label>
 
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <button
                 type="button"
                 onClick={() => {
@@ -326,29 +312,10 @@ export default function EditPostPage() {
 
               <button
                 type="button"
-                disabled={!currentVideoPath}
-                onClick={() => {
-                  setMediaType("legacyVideo");
-                  setSelectedFile(null);
-                  setFormData({ ...formData, youtubeUrl: "" });
-                }}
-                className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 ${
-                  mediaType === "legacyVideo"
-                    ? "bg-purple-600 text-white border-purple-600"
-                    : "bg-white text-gray-700 border-gray-300"
-                }`}
-              >
-                <Video size={16} />
-                Legacy
-              </button>
-
-              <button
-                type="button"
                 onClick={() => {
                   setMediaType("none");
                   setSelectedFile(null);
                   setCurrentImagePath("");
-                  setCurrentVideoPath("");
                   setCurrentYoutubeVideoId("");
                   setFormData({ ...formData, youtubeUrl: "" });
                 }}
@@ -363,21 +330,6 @@ export default function EditPostPage() {
               </button>
             </div>
           </div>
-
-          {mediaType === "legacyVideo" && currentVideoUrl && (
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-2">
-                Current Uploaded Video
-              </label>
-              <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
-                <video
-                  src={currentVideoUrl}
-                  controls
-                  className="w-full h-full object-contain"
-                />
-              </div>
-            </div>
-          )}
 
           {mediaType === "image" && (
             <SimpleImageUpload

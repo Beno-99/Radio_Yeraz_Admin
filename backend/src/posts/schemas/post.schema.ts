@@ -17,11 +17,8 @@ export class Post {
   @Prop({ default: '' })
   mainImage: string;
 
-  @Prop({ default: null })
-  video?: string;
-
-  @Prop({ type: String, enum: ['UPLOAD', 'YOUTUBE'], default: null })
-  videoSource?: 'UPLOAD' | 'YOUTUBE';
+  @Prop({ type: String, enum: ['YOUTUBE'], default: null })
+  videoSource?: 'YOUTUBE';
 
   @Prop({ default: null })
   youtubeUrl?: string;
