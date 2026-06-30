@@ -103,8 +103,8 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
 
     if (youtubeEmbedUrl) {
       return (
-        <div className="relative w-full overflow-hidden rounded-t-lg bg-black">
-          <div className="aspect-video w-full">
+        <div className="relative h-56 w-full overflow-hidden rounded-t-lg bg-black sm:h-72">
+          <div className="h-full w-full">
             <iframe
               src={youtubeEmbedUrl}
               title={post.title}
