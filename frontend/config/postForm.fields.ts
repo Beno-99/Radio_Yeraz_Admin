@@ -58,6 +58,12 @@ export const postFormFields: FormField[] = [
     description: "What time does the event start?",
   },
   {
+    name: "reminderEnabled",
+    label: "Send Mobile Reminder",
+    type: "checkbox",
+    description: "Send a Firebase push notification to mobile users on the event day",
+  },
+  {
     name: "location",
     label: "Location",
     type: "text",

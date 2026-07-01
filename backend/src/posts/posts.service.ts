@@ -42,6 +42,11 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 type PostWithAuthor = Prisma.PostGetPayload<{ include: typeof postInclude }>;
 
+interface NotificationActor {
+  id?: string;
+  name: string;
+}
+
 export type PostSortField =
   | 'postedDate'
   | 'createdAt'
@@ -123,6 +128,7 @@ export class PostsService {
       createdAt: post.createdAt,
       updatedAt: post.updatedAt,
       expiresAt: post.expiresAt,
+      reminderEnabled: post.reminderEnabled,
       reminderSentAt: post.reminderSentAt,
       author: post.author
         ? {
@@ -521,10 +527,16 @@ export class PostsService {
       this.parseOptionalBoolean(createPostDto.isPublished) ?? false;
     const isLiveValue = this.parseOptionalBoolean(createPostDto.isLive) ?? false;
     const eventDate = this.parseOptionalDate(createPostDto.eventDate);
+    const reminderEnabledValue =
+      this.parseOptionalBoolean(createPostDto.reminderEnabled) ?? false;
     const postedDate = new Date();
     const expiresAt = this.resolveCreateExpiresAt(createPostDto, postedDate);
     const youtubeInput = this.getTrimmedValue(createPostDto.youtubeUrl);
     const facebookInput = this.getTrimmedValue(createPostDto.facebookUrl);
+
+    if (reminderEnabledValue && !eventDate) {
+      throw new BadRequestException('Reminder requires an event date');
+    }
 
     if (youtubeInput && facebookInput) {
       throw new BadRequestException(
@@ -576,6 +588,7 @@ export class PostsService {
         authorId,
         link: createPostDto.link,
         expiresAt,
+        reminderEnabled: reminderEnabledValue,
       },
       include: postInclude,
     });
@@ -586,9 +599,17 @@ export class PostsService {
       const authorName = author.displayName || author.username || 'Admin';
 
       if (savedPost.isPublished) {
-        await this.notificationGateway.emitNewPost(postResponse, authorName);
+        await this.notificationGateway.emitNewPost(
+          postResponse,
+          authorName,
+          authorId,
+        );
       } else {
-        await this.notificationGateway.emitNewDraft(postResponse, authorName);
+        await this.notificationGateway.emitNewDraft(
+          postResponse,
+          authorName,
+          authorId,
+        );
       }
     } catch (notifError: unknown) {
       console.error(
@@ -725,7 +746,11 @@ export class PostsService {
     return posts.map((post) => this.toPostResponse(post));
   }
 
-  async update(id: string, updatePostDto: UpdatePostDto): Promise<PostResponse> {
+  async update(
+    id: string,
+    updatePostDto: UpdatePostDto,
+    actor?: NotificationActor,
+  ): Promise<PostResponse> {
     const oldPost = await this.prisma.post.findUnique({
       where: { id },
       include: postInclude,
@@ -768,10 +793,33 @@ export class PostsService {
     }
 
     const parsedEventDate = this.parseOptionalDate(updatePostDto.eventDate);
+    const parsedReminderEnabled = this.parseOptionalBoolean(
+      updatePostDto.reminderEnabled,
+    );
+    const nextEventDate =
+      parsedEventDate !== undefined ? parsedEventDate : oldPost.eventDate;
+    let nextReminderEnabled =
+      parsedReminderEnabled !== undefined
+        ? parsedReminderEnabled
+        : oldPost.reminderEnabled;
+
+    if (nextReminderEnabled && !nextEventDate) {
+      if (parsedReminderEnabled === true) {
+        throw new BadRequestException('Reminder requires an event date');
+      }
+
+      nextReminderEnabled = false;
+      data.reminderEnabled = false;
+    } else if (parsedReminderEnabled !== undefined) {
+      data.reminderEnabled = parsedReminderEnabled;
+    }
+
     if (parsedEventDate !== undefined) {
       data.eventDate = parsedEventDate;
       const oldEventTime = oldPost.eventDate?.getTime();
       const newEventTime = parsedEventDate?.getTime();
+      const eventDateChanged =
+        (oldEventTime ?? null) !== (newEventTime ?? null);
 
       if (
         oldEventTime !== undefined &&
@@ -781,6 +829,14 @@ export class PostsService {
         data.isPublished = true;
         data.status = PostStatus.published;
       }
+
+      if (eventDateChanged) {
+        data.reminderSentAt = null;
+      }
+    }
+
+    if (parsedReminderEnabled === true && !oldPost.reminderEnabled) {
+      data.reminderSentAt = null;
     }
 
     const updatedExpiresAt = this.resolveUpdateExpiresAt(
@@ -886,7 +942,8 @@ export class PostsService {
     }
 
     try {
-      const authorName =
+      const actorName =
+        actor?.name ||
         post.author?.displayName || post.author?.username || 'Admin';
       const becamePublished =
         (!oldPost.isPublished && post.isPublished) ||
@@ -894,9 +951,17 @@ export class PostsService {
           post.status === PostStatus.published);
 
       if (becamePublished) {
-        await this.notificationGateway.emitNewPost(postResponse, authorName);
+        await this.notificationGateway.emitNewPost(
+          postResponse,
+          actorName,
+          actor?.id,
+        );
       } else {
-        await this.notificationGateway.emitPostUpdated(postResponse, authorName);
+        await this.notificationGateway.emitPostUpdated(
+          postResponse,
+          actorName,
+          actor?.id,
+        );
       }
     } catch (notifError: unknown) {
       console.error(
@@ -908,7 +973,10 @@ export class PostsService {
     return postResponse;
   }
 
-  async toggleLiveStatus(id: string): Promise<PostResponse> {
+  async toggleLiveStatus(
+    id: string,
+    actor?: NotificationActor,
+  ): Promise<PostResponse> {
     const existingPost = await this.prisma.post.findUnique({
       where: { id },
       include: postInclude,
@@ -930,11 +998,13 @@ export class PostsService {
 
     try {
       if (post.isLive) {
-        const authorName =
+        const actorName =
+          actor?.name ||
           post.author?.displayName || post.author?.username || 'Admin';
         await this.notificationGateway.emitPostPublished(
           postResponse,
-          authorName,
+          actorName,
+          actor?.id,
         );
       }
     } catch (notifError: unknown) {
@@ -973,7 +1043,7 @@ export class PostsService {
     return this.toPostResponse(post);
   }
 
-  async delete(id: string): Promise<PostResponse> {
+  async delete(id: string, actor?: NotificationActor): Promise<PostResponse> {
     const post = await this.prisma.post.findUnique({
       where: { id },
       include: postInclude,
@@ -987,9 +1057,14 @@ export class PostsService {
     }
 
     try {
-      const authorName =
+      const actorName =
+        actor?.name ||
         post.author?.displayName || post.author?.username || 'Admin';
-      await this.notificationGateway.emitPostDeleted(post.title, authorName);
+      await this.notificationGateway.emitPostDeleted(
+        post.title,
+        actorName,
+        actor?.id,
+      );
     } catch (notifError: unknown) {
       console.error(
         'Notification emit failed:',

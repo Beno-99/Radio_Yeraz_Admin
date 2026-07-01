@@ -69,6 +69,7 @@ export default function EditPostPage() {
     isLive: false,
     liveStatus: "UNKNOWN" as PostLiveStatus,
     isPublished: false,
+    reminderEnabled: false,
     autoExpire: true,
     expireAfterDays: String(DEFAULT_EXPIRE_AFTER_DAYS),
   });
@@ -94,6 +95,7 @@ export default function EditPostPage() {
           isLive: post.isLive ?? false,
           liveStatus: post.liveStatus || "UNKNOWN",
           isPublished: post.isPublished ?? false,
+          reminderEnabled: post.reminderEnabled ?? false,
           autoExpire: Boolean(post.expiresAt),
           expireAfterDays: String(
             getExpireAfterDays(post.postedDate, post.expiresAt),
@@ -232,6 +234,10 @@ export default function EditPostPage() {
       formDataToSend.append("link", formData.link || "");
       formDataToSend.append("isLive", String(formData.isLive));
       formDataToSend.append("isPublished", String(formData.isPublished));
+      formDataToSend.append(
+        "reminderEnabled",
+        String(Boolean(formData.eventDate && formData.reminderEnabled)),
+      );
       formDataToSend.append("autoExpire", String(formData.autoExpire));
       if (formData.autoExpire) {
         formDataToSend.append("expireAfterDays", String(expireAfterDays));
@@ -612,11 +618,51 @@ export default function EditPostPage() {
             <input
               type="date"
               value={formData.eventDate}
-              onChange={(e) =>
-                setFormData({ ...formData, eventDate: e.target.value })
-              }
+              onChange={(e) => {
+                const eventDate = e.target.value;
+                setFormData({
+                  ...formData,
+                  eventDate,
+                  reminderEnabled: eventDate
+                    ? formData.reminderEnabled
+                    : false,
+                });
+              }}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
             />
+          </div>
+
+          <div className="flex items-start gap-4 p-4 bg-gray-50 rounded-lg">
+            <input
+              type="checkbox"
+              id="reminderEnabled"
+              checked={formData.reminderEnabled}
+              disabled={!formData.eventDate}
+              onChange={(e) => {
+                setFormData({
+                  ...formData,
+                  reminderEnabled: e.target.checked,
+                });
+              }}
+              className="mt-1 w-5 h-5 text-purple-600 rounded disabled:cursor-not-allowed disabled:opacity-50"
+            />
+            <div>
+              <label
+                htmlFor="reminderEnabled"
+                className={`text-sm font-medium ${
+                  formData.eventDate
+                    ? "cursor-pointer text-gray-900"
+                    : "cursor-not-allowed text-gray-400"
+                }`}
+              >
+                Send Mobile Reminder
+              </label>
+              <p className="text-sm text-gray-500">
+                {formData.eventDate
+                  ? "Send a Firebase push notification to mobile users on the event day."
+                  : "Choose an event date before enabling the mobile reminder."}
+              </p>
+            </div>
           </div>
 
           <div>

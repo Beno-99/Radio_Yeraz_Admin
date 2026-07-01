@@ -76,8 +76,28 @@ export class NotificationService implements OnModuleInit {
     };
   }
 
-  private isJsonObject(value: Prisma.JsonValue): value is Prisma.JsonObject {
+  private isJsonObject(
+    value: Prisma.JsonValue | null,
+  ): value is Prisma.JsonObject {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
+  }
+
+  private getActorIdFromData(data: Prisma.JsonValue | null): string | null {
+    if (!this.isJsonObject(data)) return null;
+
+    const actorId = data.actorId;
+    return typeof actorId === 'string' && actorId.trim() !== ''
+      ? actorId
+      : null;
+  }
+
+  private isVisibleToAdmin(
+    notification: Pick<PrismaNotification, 'data'>,
+    adminId?: string,
+  ): boolean {
+    if (!adminId) return true;
+
+    return this.getActorIdFromData(notification.data) !== adminId;
   }
 
   async cleanupOldNotifications(): Promise<void> {
@@ -128,8 +148,50 @@ export class NotificationService implements OnModuleInit {
     );
   }
 
+  async findAllForAdmin(
+    adminId: string,
+    limit = 20,
+  ): Promise<NotificationResponse[]> {
+    const requestedLimit = Math.max(1, limit);
+    const pageSize = Math.min(Math.max(requestedLimit * 5, requestedLimit), 250);
+    const visibleNotifications: NotificationResponse[] = [];
+    let skip = 0;
+
+    while (visibleNotifications.length < requestedLimit) {
+      const batch = await this.prisma.notification.findMany({
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: pageSize,
+      });
+
+      if (batch.length === 0) break;
+
+      visibleNotifications.push(
+        ...batch
+          .filter((notification) => this.isVisibleToAdmin(notification, adminId))
+          .map((notification) => this.toNotificationResponse(notification)),
+      );
+
+      skip += batch.length;
+      if (batch.length < pageSize) break;
+    }
+
+    return visibleNotifications.slice(0, requestedLimit);
+  }
+
   async getUnreadCount(): Promise<number> {
     return this.prisma.notification.count({ where: { isRead: false } });
+  }
+
+  async getUnreadCountForAdmin(adminId: string): Promise<number> {
+    const unreadNotifications = await this.prisma.notification.findMany({
+      where: { isRead: false },
+      select: { data: true },
+    });
+
+    return unreadNotifications.filter((notification) =>
+      this.isVisibleToAdmin(notification, adminId),
+    ).length;
   }
 
   async markAllAsRead(): Promise<void> {

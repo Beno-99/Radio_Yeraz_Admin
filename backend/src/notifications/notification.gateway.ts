@@ -113,6 +113,10 @@ export class NotificationGateway
     console.log(`Client disconnected: ${client.id}`);
   }
 
+  private getAdminRoom(adminId: string): string {
+    return `admin:${adminId}`;
+  }
+
   private getEntityId(entity: IdentifiedPayload): string {
     return entity._id ?? entity.id ?? '';
   }
@@ -159,6 +163,8 @@ export class NotificationGateway
       throw new SocketAuthError('INACTIVE_ACCOUNT', 'Account is inactive');
     }
 
+    client.join(this.getAdminRoom(admin.id));
+
     return admin.id;
   }
 
@@ -178,198 +184,231 @@ export class NotificationGateway
     };
   }
 
+  private emitToAdmins(
+    eventName: 'admin_notification' | 'new_notification',
+    notification: NotificationResponse,
+    actorId?: string,
+  ): void {
+    const payload = this.buildPayload(notification);
+
+    if (actorId) {
+      this.server.except(this.getAdminRoom(actorId)).emit(eventName, payload);
+      return;
+    }
+
+    this.server.emit(eventName, payload);
+  }
+
   async emitNewDraft(
     post: PostNotificationPayload,
-    authorName: string,
+    actorName: string,
+    actorId?: string,
   ): Promise<void> {
     const postId = this.getEntityId(post);
     const notification = await this.notificationService.create({
       title: post.title,
-      message: `${authorName} saved a draft - ${new Date().toLocaleDateString(
-        'en-US',
-        { month: 'short', day: 'numeric', year: 'numeric' },
-      )}`,
+      message: `${actorName} saved "${post.title}" as a draft.`,
       type: NotificationType.NEW_DRAFT,
       postId,
-      authorName,
+      authorName: actorName,
       data: {
         postId,
         title: post.title,
-        authorName,
+        authorName: actorName,
+        actorId,
         isDraft: true,
+        action: 'post_draft_created',
       },
     });
 
-    this.server.emit('admin_notification', this.buildPayload(notification));
+    this.emitToAdmins('admin_notification', notification, actorId);
   }
 
   async emitNewPost(
     post: PostNotificationPayload,
-    authorName: string,
+    actorName: string,
+    actorId?: string,
   ): Promise<void> {
     const postId = this.getEntityId(post);
     const notification = await this.notificationService.create({
       title: post.title,
-      message: `${authorName} created - ${new Date().toLocaleDateString(
-        'en-US',
-        { month: 'short', day: 'numeric', year: 'numeric' },
-      )}`,
+      message: `${actorName} published "${post.title}".`,
       type: NotificationType.NEW_POST,
       postId,
-      authorName,
+      authorName: actorName,
       data: {
         postId,
         title: post.title,
-        authorName,
+        authorName: actorName,
+        actorId,
+        action: 'post_published',
       },
     });
 
-    this.server.emit('new_notification', this.buildPayload(notification));
+    this.emitToAdmins('new_notification', notification, actorId);
   }
 
   async emitPostUpdated(
     post: PostNotificationPayload,
-    authorName: string,
+    actorName: string,
+    actorId?: string,
   ): Promise<void> {
     const postId = this.getEntityId(post);
     const notification = await this.notificationService.create({
       title: post.title,
-      message: `${authorName} updated - ${new Date().toLocaleDateString(
-        'en-US',
-        { month: 'short', day: 'numeric', year: 'numeric' },
-      )}`,
+      message: `${actorName} updated "${post.title}".`,
       type: NotificationType.POST_UPDATED,
       postId,
-      authorName,
+      authorName: actorName,
       data: {
         postId,
         title: post.title,
-        authorName,
+        authorName: actorName,
+        actorId,
+        action: 'post_updated',
       },
     });
 
-    this.server.emit('admin_notification', this.buildPayload(notification));
+    this.emitToAdmins('admin_notification', notification, actorId);
   }
 
   async emitPostDeleted(
     postTitle: string,
-    authorName: string,
+    actorName: string,
+    actorId?: string,
   ): Promise<void> {
     const notification = await this.notificationService.create({
       title: postTitle,
-      message: `${authorName} deleted - ${new Date().toLocaleDateString(
-        'en-US',
-        { month: 'short', day: 'numeric', year: 'numeric' },
-      )}`,
+      message: `${actorName} deleted the post "${postTitle}".`,
       type: NotificationType.POST_DELETED,
-      authorName,
+      authorName: actorName,
+      data: {
+        title: postTitle,
+        authorName: actorName,
+        actorId,
+        action: 'post_deleted',
+      },
     });
 
-    this.server.emit('admin_notification', this.buildPayload(notification));
+    this.emitToAdmins('admin_notification', notification, actorId);
   }
 
   async emitPostPublished(
     post: PostNotificationPayload,
-    authorName: string,
+    actorName: string,
+    actorId?: string,
   ): Promise<void> {
     const postId = this.getEntityId(post);
     const notification = await this.notificationService.create({
       title: post.title,
-      message: `${authorName} went live - ${new Date().toLocaleDateString(
-        'en-US',
-        { month: 'short', day: 'numeric', year: 'numeric' },
-      )}`,
+      message: `${actorName} marked "${post.title}" as live.`,
       type: NotificationType.POST_PUBLISHED,
       postId,
-      authorName,
+      authorName: actorName,
       data: {
         postId,
         title: post.title,
-        authorName,
+        authorName: actorName,
+        actorId,
+        action: 'post_marked_live',
       },
     });
 
-    this.server.emit('new_notification', this.buildPayload(notification));
+    this.emitToAdmins('new_notification', notification, actorId);
   }
 
   async emitCarouselCreated(
     carousel: CarouselNotificationPayload,
-    authorName: string,
+    actorName: string,
+    actorId?: string,
   ): Promise<void> {
     const carouselId = this.getEntityId(carousel);
     const notification = await this.notificationService.create({
       title: carousel.name,
-      message: `${authorName} created carousel - ${new Date().toLocaleDateString(
-        'en-US',
-        { month: 'short', day: 'numeric', year: 'numeric' },
-      )}`,
+      message: `${actorName} created the carousel "${carousel.name}".`,
       type: NotificationType.CAROUSEL_CREATED,
-      authorName,
-      data: { carouselId, name: carousel.name, authorName },
+      authorName: actorName,
+      data: {
+        carouselId,
+        name: carousel.name,
+        authorName: actorName,
+        actorId,
+        action: 'carousel_created',
+      },
     });
 
-    this.server.emit('admin_notification', this.buildPayload(notification));
+    this.emitToAdmins('admin_notification', notification, actorId);
   }
 
   async emitCarouselUpdated(
     carousel: CarouselNotificationPayload,
-    authorName: string,
+    actorName: string,
+    actorId?: string,
   ): Promise<void> {
     const carouselId = this.getEntityId(carousel);
     const notification = await this.notificationService.create({
       title: carousel.name,
-      message: `${authorName} updated carousel - ${new Date().toLocaleDateString(
-        'en-US',
-        { month: 'short', day: 'numeric', year: 'numeric' },
-      )}`,
+      message: `${actorName} updated the carousel "${carousel.name}".`,
       type: NotificationType.CAROUSEL_UPDATED,
-      authorName,
-      data: { carouselId, name: carousel.name, authorName },
+      authorName: actorName,
+      data: {
+        carouselId,
+        name: carousel.name,
+        authorName: actorName,
+        actorId,
+        action: 'carousel_updated',
+      },
     });
 
-    this.server.emit('admin_notification', this.buildPayload(notification));
+    this.emitToAdmins('admin_notification', notification, actorId);
   }
 
   async emitCarouselDeleted(
     carouselName: string,
-    authorName: string,
+    actorName: string,
+    actorId?: string,
   ): Promise<void> {
     const notification = await this.notificationService.create({
       title: carouselName,
-      message: `${authorName} deleted carousel - ${new Date().toLocaleDateString(
-        'en-US',
-        { month: 'short', day: 'numeric', year: 'numeric' },
-      )}`,
+      message: `${actorName} deleted the carousel "${carouselName}".`,
       type: NotificationType.CAROUSEL_DELETED,
-      authorName,
+      authorName: actorName,
+      data: {
+        name: carouselName,
+        authorName: actorName,
+        actorId,
+        action: 'carousel_deleted',
+      },
     });
 
-    this.server.emit('admin_notification', this.buildPayload(notification));
+    this.emitToAdmins('admin_notification', notification, actorId);
   }
 
   async emitCarouselToggled(
     carousel: CarouselNotificationPayload,
-    authorName: string,
+    actorName: string,
+    actorId?: string,
   ): Promise<void> {
     const carouselId = this.getEntityId(carousel);
     const status = carousel.isActive ? 'activated' : 'deactivated';
     const notification = await this.notificationService.create({
       title: carousel.name,
-      message: `${authorName} ${status} carousel - ${new Date().toLocaleDateString(
-        'en-US',
-        { month: 'short', day: 'numeric', year: 'numeric' },
-      )}`,
+      message: `${actorName} ${status} the carousel "${carousel.name}".`,
       type: NotificationType.CAROUSEL_TOGGLED,
-      authorName,
+      authorName: actorName,
       data: {
         carouselId,
         name: carousel.name,
         isActive: carousel.isActive ?? false,
-        authorName,
+        authorName: actorName,
+        actorId,
+        action: carousel.isActive
+          ? 'carousel_activated'
+          : 'carousel_deactivated',
       },
     });
 
-    this.server.emit('admin_notification', this.buildPayload(notification));
+    this.emitToAdmins('admin_notification', notification, actorId);
   }
 
   async emitCarouselExpiringSoon(
@@ -394,21 +433,19 @@ export class NotificationGateway
       data: { carouselId, name: carousel.name, daysLeft },
     });
 
-    this.server.emit('admin_notification', this.buildPayload(notification));
+    this.emitToAdmins('admin_notification', notification);
   }
 
   async emitAdminCreated(
     admin: AdminNotificationPayload,
     creatorName: string,
+    creatorId?: string,
   ): Promise<void> {
     const adminId = this.getEntityId(admin);
     const title = admin.displayName || admin.username;
     const notification = await this.notificationService.create({
       title,
-      message: `${creatorName} created new admin - ${new Date().toLocaleDateString(
-        'en-US',
-        { month: 'short', day: 'numeric', year: 'numeric' },
-      )}`,
+      message: `${creatorName} created the admin account "${title}".`,
       type: NotificationType.ADMIN_CREATED,
       authorName: creatorName,
       data: {
@@ -416,82 +453,97 @@ export class NotificationGateway
         username: admin.username,
         displayName: admin.displayName || '',
         role: admin.role || '',
+        authorName: creatorName,
+        actorId: creatorId,
+        action: 'admin_created',
       },
     });
 
-    this.server.emit('admin_notification', this.buildPayload(notification));
+    this.emitToAdmins('admin_notification', notification, creatorId);
   }
 
   async emitAdminUpdated(
     admin: AdminNotificationPayload,
     updaterName: string,
+    updaterId?: string,
   ): Promise<void> {
     const adminId = this.getEntityId(admin);
     const title = admin.displayName || admin.username;
     const notification = await this.notificationService.create({
       title,
-      message: `${updaterName} updated account details - ${new Date().toLocaleDateString(
-        'en-US',
-        { month: 'short', day: 'numeric', year: 'numeric' },
-      )}`,
+      message: `${updaterName} updated the admin account "${title}".`,
       type: NotificationType.ADMIN_UPDATED,
       authorName: updaterName,
       data: {
         adminId,
         username: admin.username,
         displayName: admin.displayName || '',
+        authorName: updaterName,
+        actorId: updaterId,
+        action: 'admin_updated',
       },
     });
 
-    this.server.emit('admin_notification', this.buildPayload(notification));
+    this.emitToAdmins('admin_notification', notification, updaterId);
   }
 
   async emitAdminDeleted(
     adminName: string,
     deleterName: string,
+    deleterId?: string,
   ): Promise<void> {
     const notification = await this.notificationService.create({
       title: adminName,
-      message: `${deleterName} deleted admin - ${new Date().toLocaleDateString(
-        'en-US',
-        { month: 'short', day: 'numeric', year: 'numeric' },
-      )}`,
+      message: `${deleterName} deleted the admin account "${adminName}".`,
       type: NotificationType.ADMIN_DELETED,
       authorName: deleterName,
+      data: {
+        username: adminName,
+        authorName: deleterName,
+        actorId: deleterId,
+        action: 'admin_deleted',
+      },
     });
 
-    this.server.emit('admin_notification', this.buildPayload(notification));
+    this.emitToAdmins('admin_notification', notification, deleterId);
   }
 
   async emitAdminToggled(
     admin: AdminNotificationPayload,
     togglerName: string,
+    togglerId?: string,
   ): Promise<void> {
     const adminId = this.getEntityId(admin);
     const status = admin.isActive ? 'activated' : 'deactivated';
     const title = admin.displayName || admin.username;
     const notification = await this.notificationService.create({
       title,
-      message: `${togglerName} ${status} this account - ${new Date().toLocaleDateString(
-        'en-US',
-        { month: 'short', day: 'numeric', year: 'numeric' },
-      )}`,
+      message: `${togglerName} ${status} the admin account "${title}".`,
       type: NotificationType.ADMIN_TOGGLED,
       authorName: togglerName,
       data: {
         adminId,
         username: admin.username,
         isActive: admin.isActive ?? false,
+        authorName: togglerName,
+        actorId: togglerId,
+        action: admin.isActive ? 'admin_activated' : 'admin_deactivated',
       },
     });
 
-    this.server.emit('admin_notification', this.buildPayload(notification));
+    this.emitToAdmins('admin_notification', notification, togglerId);
   }
 
   @SubscribeMessage('get_notifications')
   async handleGetNotifications(client: Socket): Promise<void> {
-    const notifications = await this.notificationService.findAll(20);
-    const unreadCount = await this.notificationService.getUnreadCount();
+    const adminId =
+      typeof client.data.adminId === 'string' ? client.data.adminId : undefined;
+    const notifications = adminId
+      ? await this.notificationService.findAllForAdmin(adminId, 20)
+      : await this.notificationService.findAll(20);
+    const unreadCount = adminId
+      ? await this.notificationService.getUnreadCountForAdmin(adminId)
+      : await this.notificationService.getUnreadCount();
     const mapped = notifications.map((notification) =>
       this.buildPayload(notification),
     );

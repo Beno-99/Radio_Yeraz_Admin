@@ -7,6 +7,7 @@ import {
   SubmitHandler,
   FieldValues,
   Path,
+  PathValue,
   DefaultValues,
   useWatch,           // ← Changed to useWatch to reduce compiler warning
 } from "react-hook-form";
@@ -96,6 +97,7 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
     handleSubmit,
     formState: { errors, isDirty },
     reset,
+    setValue,
   } = useForm<T>({
     resolver: schema ? zodResolver(schema) : undefined,
     defaultValues: defaultValues as DefaultValues<T>,
@@ -120,6 +122,14 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
     control,
     name: "facebookUrl" as Path<T>,
   });
+  const eventDateValue = useWatch({
+    control,
+    name: "eventDate" as Path<T>,
+  });
+  const reminderEnabledValue = useWatch({
+    control,
+    name: "reminderEnabled" as Path<T>,
+  });
   const autoExpireValue = useWatch({
     control,
     name: "autoExpire" as Path<T>,
@@ -140,6 +150,12 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
       typeof facebookUrlValue === "string" &&
       facebookUrlValue.trim().length > 0,
     [facebookUrlValue],
+  );
+  const eventDateEntered = useMemo(
+    () =>
+      typeof eventDateValue === "string" &&
+      eventDateValue.trim().length > 0,
+    [eventDateValue],
   );
   const youtubePreview = useMemo(
     () =>
@@ -187,6 +203,16 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
     return () => clearTimeout(timer);
   }, [initialPreviews]);
 
+  useEffect(() => {
+    if (!eventDateEntered && reminderEnabledValue) {
+      const reminderPath = "reminderEnabled" as Path<T>;
+
+      setValue(reminderPath, false as PathValue<T, typeof reminderPath>, {
+        shouldDirty: true,
+      });
+    }
+  }, [eventDateEntered, reminderEnabledValue, setValue]);
+
   const submitHandler: SubmitHandler<T> = async (data) => {
     await onSubmit(data);
     reset();
@@ -233,6 +259,9 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
 
     switch (field.type) {
       case "checkbox":
+        const reminderBlocked =
+          field.name === "reminderEnabled" && !eventDateEntered;
+
         return (
           <div className={fieldContainerClass}>
             <Controller
@@ -245,10 +274,11 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
                       type="checkbox"
                       checked={!!controllerField.value}
                       onChange={(e) => controllerField.onChange(e.target.checked)}
-                      disabled={loading}
+                      disabled={loading || reminderBlocked}
                       className={cn(
                         "h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 transition-colors",
                         error && "border-red-300 focus:ring-red-500",
+                        reminderBlocked && "cursor-not-allowed opacity-50",
                       )}
                     />
                   </div>
@@ -258,7 +288,11 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
                       {field.required && <span className="text-red-500 ml-1">*</span>}
                     </label>
                     {field.description && (
-                      <p className="text-gray-600 text-sm mt-1">{field.description}</p>
+                      <p className="text-gray-600 text-sm mt-1">
+                        {reminderBlocked
+                          ? "Choose an event date before enabling the mobile reminder"
+                          : field.description}
+                      </p>
                     )}
                   </div>
                   {controllerField.value && <Check className="h-5 w-5 text-green-500" />}

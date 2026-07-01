@@ -27,6 +27,7 @@ export class PostReminderService {
       where: {
         isPublished: true,
         status: PostStatus.published,
+        reminderEnabled: true,
         reminderSentAt: null,
         eventDate: { gte: startOfToday, lte: endOfToday },
       },

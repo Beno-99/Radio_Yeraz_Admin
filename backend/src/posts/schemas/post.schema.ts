@@ -82,6 +82,9 @@ export class Post {
   @Prop({ type: Date, default: null })
   expiresAt: Date;
 
+  @Prop({ type: Boolean, default: false })
+  reminderEnabled: boolean;
+
   @Prop({ type: Date, default: null })
   reminderSentAt?: Date;
 }

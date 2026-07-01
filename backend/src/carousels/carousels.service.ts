@@ -260,7 +260,11 @@ export class CarouselsService {
     const authorName = author.displayName || author.username || 'Admin';
 
     try {
-      await this.notificationGateway.emitCarouselCreated(carouselResponse, authorName);
+      await this.notificationGateway.emitCarouselCreated(
+        carouselResponse,
+        authorName,
+        authorId,
+      );
     } catch (e: unknown) {
       console.error(
         'Carousel notification failed:',
@@ -333,6 +337,7 @@ export class CarouselsService {
     id: string,
     updateCarouselDto: UpdateCarouselDto,
     authorName: string = 'Admin',
+    authorId?: string,
   ): Promise<CarouselResponse> {
     const oldCarousel = await this.prisma.carousel.findUnique({
       where: { id },
@@ -403,9 +408,17 @@ export class CarouselsService {
 
     try {
       if (oldCarousel.isActive !== carousel.isActive) {
-        await this.notificationGateway.emitCarouselToggled(carouselResponse, authorName);
+        await this.notificationGateway.emitCarouselToggled(
+          carouselResponse,
+          authorName,
+          authorId,
+        );
       } else {
-        await this.notificationGateway.emitCarouselUpdated(carouselResponse, authorName);
+        await this.notificationGateway.emitCarouselUpdated(
+          carouselResponse,
+          authorName,
+          authorId,
+        );
       }
     } catch (e: unknown) {
       console.error(
@@ -431,6 +444,7 @@ export class CarouselsService {
   async toggleActive(
     id: string,
     authorName: string = 'Admin',
+    authorId?: string,
   ): Promise<CarouselResponse> {
     const existingCarousel = await this.prisma.carousel.findUnique({
       where: { id },
@@ -438,12 +452,18 @@ export class CarouselsService {
     });
     if (!existingCarousel) throw new NotFoundException('Carousel not found');
 
-    return this.update(id, { isActive: !existingCarousel.isActive }, authorName);
+    return this.update(
+      id,
+      { isActive: !existingCarousel.isActive },
+      authorName,
+      authorId,
+    );
   }
 
   async delete(
     id: string,
     authorName: string = 'Admin',
+    authorId?: string,
   ): Promise<CarouselResponse> {
     const carousel = await this.prisma.carousel.findUnique({
       where: { id },
@@ -463,7 +483,11 @@ export class CarouselsService {
     await this.prisma.carousel.delete({ where: { id } });
 
     try {
-      await this.notificationGateway.emitCarouselDeleted(carousel.name, authorName);
+      await this.notificationGateway.emitCarouselDeleted(
+        carousel.name,
+        authorName,
+        authorId,
+      );
     } catch (e: unknown) {
       console.error(
         'Carousel notification failed:',

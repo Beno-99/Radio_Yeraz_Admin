@@ -79,6 +79,13 @@ export class PostsController {
     return value === true || value === 'true';
   }
 
+  private getNotificationActor(req: AuthenticatedRequest) {
+    return {
+      id: req.user.sub,
+      name: req.user.displayName || req.user.username || 'Admin',
+    };
+  }
+
   @Get()
   async getAllPosts(
     @Query('page') page: string = '1',
@@ -275,6 +282,7 @@ export class PostsController {
     ),
   )
   async updatePost(
+    @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
     @Body() updatePostDto: UpdatePostDto,
     @UploadedFiles() files?: PostUploadFiles,
@@ -288,7 +296,11 @@ export class PostsController {
     if (files?.mainImage?.[0]) {
       updatePostDto.mainImage = `/uploads/posts/images/${files.mainImage[0].filename}`;
     }
-    const updatedPost = await this.postsService.update(id, updatePostDto);
+    const updatedPost = await this.postsService.update(
+      id,
+      updatePostDto,
+      this.getNotificationActor(req),
+    );
 
     const becamePublished =
       (!previousPost.isPublished && updatedPost.isPublished) ||
@@ -336,7 +348,7 @@ export class PostsController {
       };
     }
 
-    await this.postsService.delete(id);
+    await this.postsService.delete(id, this.getNotificationActor(req));
 
     return {
       success: true,
@@ -363,7 +375,10 @@ export class PostsController {
       };
     }
 
-    const post = await this.postsService.toggleLiveStatus(id);
+    const post = await this.postsService.toggleLiveStatus(
+      id,
+      this.getNotificationActor(req),
+    );
 
     return {
       success: true,

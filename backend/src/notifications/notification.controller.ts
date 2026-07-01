@@ -8,6 +8,7 @@ import {
   Post,
   Put,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { NotificationService } from './notification.service';
@@ -16,6 +17,7 @@ import { Role } from '../admin/schemas/admin.schema';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import { AuthenticatedRequest } from '../auth/interfaces/authenticated-request.interface';
 
 @Controller('notifications')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -27,16 +29,26 @@ export class NotificationController {
   ) {}
 
   @Get()
-  async getAll(@Query('limit') limit: string = '20') {
+  async getAll(
+    @Req() req: AuthenticatedRequest,
+    @Query('limit') limit: string = '20',
+  ) {
     const limitNum = parseInt(limit, 10) || 20;
-    const notifications = await this.notificationService.findAll(limitNum);
-    const unreadCount = await this.notificationService.getUnreadCount();
+    const notifications = await this.notificationService.findAllForAdmin(
+      req.user.sub,
+      limitNum,
+    );
+    const unreadCount = await this.notificationService.getUnreadCountForAdmin(
+      req.user.sub,
+    );
     return { success: true, data: notifications, unreadCount };
   }
 
   @Get('unread-count')
-  async getUnreadCount() {
-    const count = await this.notificationService.getUnreadCount();
+  async getUnreadCount(@Req() req: AuthenticatedRequest) {
+    const count = await this.notificationService.getUnreadCountForAdmin(
+      req.user.sub,
+    );
     return { success: true, count };
   }
 

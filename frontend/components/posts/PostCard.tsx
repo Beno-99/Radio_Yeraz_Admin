@@ -151,7 +151,7 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
             />
           </div>
           <div
-            className={`absolute top-2 left-2 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-bold text-white flex items-center gap-1 uppercase tracking-wider ${
+            className={`absolute top-2 right-2 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-bold text-white flex items-center gap-1 uppercase tracking-wider ${
               getMediaLiveBadgeClass(post.liveStatus, post.isLive)
             }`}
           >
@@ -175,7 +175,7 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
             />
           </div>
           <div
-            className={`absolute top-2 left-2 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-bold text-white flex items-center gap-1 uppercase tracking-wider ${
+            className={`absolute top-2 right-2 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-bold text-white flex items-center gap-1 uppercase tracking-wider ${
               getMediaLiveBadgeClass(
                 post.liveStatus,
                 post.isLive,

@@ -162,7 +162,12 @@ export class CarouselsController {
       updateCarouselDto.image = `/uploads/carousels/${file.filename}`;
     }
 
-    const carousel = await this.carouselsService.update(id, updateCarouselDto, authorName);
+    const carousel = await this.carouselsService.update(
+      id,
+      updateCarouselDto,
+      authorName,
+      req.user.sub,
+    );
     return {
       success: true,
       message: 'Carousel updated successfully',
@@ -224,7 +229,11 @@ export class CarouselsController {
     @Param('id') id: string,
   ) {
     const authorName = req.user.displayName || req.user.username || 'Admin';
-    const carousel = await this.carouselsService.toggleActive(id, authorName);
+    const carousel = await this.carouselsService.toggleActive(
+      id,
+      authorName,
+      req.user.sub,
+    );
 
     return {
       success: true,
@@ -238,7 +247,7 @@ export class CarouselsController {
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   async deleteCarousel(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     const authorName = req.user.displayName || req.user.username || 'Admin';
-    await this.carouselsService.delete(id, authorName);
+    await this.carouselsService.delete(id, authorName, req.user.sub);
 
     return {
       success: true,

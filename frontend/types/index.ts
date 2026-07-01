@@ -30,6 +30,8 @@ export interface Post extends BaseEntity {
   eventDate?: string;
   location?: string;
   isLive: boolean;
+  reminderEnabled?: boolean;
+  reminderSentAt?: string | null;
   postedDate: string;
   author: { _id: string; displayName: string };
   link?: string;

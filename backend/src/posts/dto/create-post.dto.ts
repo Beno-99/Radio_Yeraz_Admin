@@ -67,6 +67,15 @@ export class CreatePostDto {
   @Transform(({ value }) => {
     if (value === 'false' || value === false) return false;
     if (value === 'true' || value === true) return true;
+    return false;
+  })
+  @IsBoolean()
+  reminderEnabled?: boolean;
+
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (value === 'false' || value === false) return false;
+    if (value === 'true' || value === true) return true;
     return undefined;
   })
   @IsBoolean()

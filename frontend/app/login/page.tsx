@@ -28,7 +28,7 @@ export default function LoginPage() {
     setError("");
 
     const formData = new FormData(e.currentTarget);
-    const username = formData.get("username") as string;
+    const username = String(formData.get("username") || "").trim();
     const password = formData.get("password") as string;
 
     try {

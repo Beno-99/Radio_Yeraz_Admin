@@ -169,6 +169,7 @@ export class AdminController {
       id,
       updateAdminDto,
       updaterName,
+      req.user.sub,
     );
     return {
       success: true,
@@ -182,7 +183,7 @@ export class AdminController {
   @Roles(Role.SUPER_ADMIN)
   async deleteAdmin(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     const deleterName = req.user.displayName || req.user.username || 'Admin';
-    await this.adminService.deleteAdmin(id, deleterName);
+    await this.adminService.deleteAdmin(id, deleterName, req.user.sub);
     return { success: true, message: 'Admin deleted successfully' };
   }
 
@@ -194,7 +195,11 @@ export class AdminController {
     @Param('id') id: string,
   ) {
     const togglerName = req.user.displayName || req.user.username || 'Admin';
-    const admin = await this.adminService.toggleActiveStatus(id, togglerName);
+    const admin = await this.adminService.toggleActiveStatus(
+      id,
+      togglerName,
+      req.user.sub,
+    );
     return {
       success: true,
       message: `Admin ${admin.isActive ? 'activated' : 'deactivated'} successfully`,

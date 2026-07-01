@@ -55,6 +55,8 @@ export interface Post {
   location: string;
   isLive: boolean;
   isPublished: boolean;
+  reminderEnabled?: boolean;
+  reminderSentAt?: string | null;
   liveStatus?: "UNKNOWN" | "UPCOMING" | "LIVE" | "WAS_LIVE" | "NOT_LIVE";
   liveStatusCheckedAt?: string | null;
   postedDate: string;

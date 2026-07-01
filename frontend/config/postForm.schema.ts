@@ -29,6 +29,7 @@ export const postFormSchema = z.object({
   location: z.string().optional(),
   isLive: z.boolean().default(false),
   reminderSentAt: z.string().optional(),
+  reminderEnabled: z.boolean().default(false),
   isPublished: z.boolean().default(false),
   autoExpire: z.boolean().default(true),
   expireAfterDays: z.coerce
