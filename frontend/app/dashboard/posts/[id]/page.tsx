@@ -21,6 +21,15 @@ import {
 import { toast } from "sonner";
 import Swal from "sweetalert2";
 import { postsAPI } from "@/lib/api/api";
+import { parseFacebookUrl } from "@/lib/facebook";
+import {
+  getEffectiveLiveStatus,
+  getMediaLiveBadgeClass,
+  getMediaLiveLabel,
+} from "@/lib/postLiveStatus";
+import { getYouTubeEmbedUrl, parseYouTubeUrl } from "@/lib/youtube";
+
+const POST_REFRESH_INTERVAL_MS = 60 * 1000;
 
 interface Post {
   _id: string;
@@ -30,11 +39,17 @@ interface Post {
   location?: string;
   eventDate?: string;
   postedDate?: string;
+  expiresAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
   mainImage?: string;
-  video?: string;
+  videoSource?: "YOUTUBE" | "FACEBOOK" | null;
+  youtubeUrl?: string | null;
+  youtubeVideoId?: string | null;
+  facebookUrl?: string | null;
   isLive: boolean;
+  liveStatus?: "UNKNOWN" | "UPCOMING" | "LIVE" | "WAS_LIVE" | "NOT_LIVE";
+  liveStatusCheckedAt?: string | null;
   isPublished: boolean;
 }
 
@@ -52,9 +67,11 @@ export default function PostDetailPage() {
     process.env.NEXT_PUBLIC_MEDIA_GET_URL || "https://api.radioyeraz.com";
 
   // Fetch post data
-  const fetchPost = useCallback(async () => {
+  const fetchPost = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false;
+
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const response = await postsAPI.getPost(postId);
       const postData = response.data.data;
 
@@ -78,10 +95,12 @@ export default function PostDetailPage() {
       ).response?.data?.message || "Failed to load post"
     : "Failed to load post";
 
-toast.error(message);
-      router.push("/dashboard/posts");
+      if (!silent) {
+        toast.error(message);
+        router.push("/dashboard/posts");
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [postId, router]);
 
@@ -91,6 +110,15 @@ toast.error(message);
   };
 
   void loadPost();
+}, [fetchPost]);
+
+ useEffect(() => {
+  const intervalId = window.setInterval(() => {
+    if (document.visibilityState !== "visible") return;
+    void fetchPost({ silent: true });
+  }, POST_REFRESH_INTERVAL_MS);
+
+  return () => window.clearInterval(intervalId);
 }, [fetchPost]);
 
   
@@ -129,6 +157,7 @@ toast.error(message);
       const updatedPost: Post = {
         ...prev,
         isLive: !prev.isLive,
+        liveStatus: !prev.isLive ? "LIVE" : "WAS_LIVE",
       };
 
       return updatedPost;
@@ -175,16 +204,29 @@ toast.error(message);
     return `${baseUrl}?t=${imageTimestamp}`;
   };
 
-  // Get video URL
-  const getVideoUrl = () => {
-    if (!post?.video) return null;
-    return post.video.startsWith("http")
-      ? post.video
-      : `${mediaUrl}${post.video}`;
+  const getYoutubeEmbedUrl = () => {
+    if (!post) return null;
+
+    if (post.youtubeVideoId) {
+      return getYouTubeEmbedUrl(post.youtubeVideoId);
+    }
+
+    return parseYouTubeUrl(post.youtubeUrl)?.embedUrl ?? null;
+  };
+
+  const getFacebookEmbedUrl = () => {
+    if (!post) return null;
+    return parseFacebookUrl(post.facebookUrl)?.embedUrl ?? null;
   };
 
   const imageUrl = getImageUrl();
-  const videoUrl = getVideoUrl();
+  const youtubeEmbedUrl = getYoutubeEmbedUrl();
+  const facebookEmbedUrl = getFacebookEmbedUrl();
+  const effectiveLiveStatus = getEffectiveLiveStatus(
+    post?.liveStatus,
+    post?.isLive,
+  );
+  const showLiveDot = effectiveLiveStatus === "LIVE";
 
   if (loading) {
     return (
@@ -239,13 +281,19 @@ toast.error(message);
           <button
             onClick={handleToggleLive}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-              post.isLive
+              effectiveLiveStatus === "LIVE"
                 ? "bg-red-100 text-red-700 hover:bg-red-200"
                 : "bg-gray-100 text-gray-700 hover:bg-gray-200"
             }`}
           >
             <Eye size={16} />
-            {post.isLive ? "Live" : "Offline"}
+            {effectiveLiveStatus === "LIVE"
+              ? "Live"
+              : effectiveLiveStatus === "WAS_LIVE"
+                ? "Was Live"
+                : effectiveLiveStatus === "UPCOMING"
+                  ? "Upcoming"
+                  : "Offline"}
           </button>
 
           {/* Edit Button */}
@@ -272,17 +320,48 @@ toast.error(message);
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         {/* Media Section - Video or Image */}
         <div className="w-full bg-gray-100 border-b border-gray-200">
-          {videoUrl ? (
-            <div className="relative w-full max-h-[500px] bg-black">
-              <video
-                src={videoUrl}
-                controls
-                className="w-full h-auto max-h-[500px] object-contain mx-auto"
-                poster={imageUrl || undefined}
+          {youtubeEmbedUrl ? (
+            <div className="relative aspect-video w-full bg-black">
+              <iframe
+                src={youtubeEmbedUrl}
+                title={post.title}
+                className="h-full w-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
               />
-              <div className="absolute top-4 right-4 px-3 py-1.5 bg-red-500 text-white text-sm font-medium rounded-full flex items-center gap-1.5">
-                <Video size={16} />
-                Video Post
+              <div
+                className={`absolute top-4 right-4 px-3 py-1.5 text-white text-sm font-medium rounded-full flex items-center gap-1.5 ${
+                  getMediaLiveBadgeClass(post.liveStatus, post.isLive, "bg-red-600")
+                }`}
+              >
+                {showLiveDot ? (
+                  <span className="h-2 w-2 bg-white rounded-full animate-pulse"></span>
+                ) : (
+                  <Video size={16} />
+                )}
+                {getMediaLiveLabel("YouTube", post.liveStatus, post.isLive)}
+              </div>
+            </div>
+          ) : facebookEmbedUrl ? (
+            <div className="relative aspect-video w-full bg-black">
+              <iframe
+                src={facebookEmbedUrl}
+                title={post.title}
+                className="h-full w-full"
+                allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+                allowFullScreen
+              />
+              <div
+                className={`absolute top-4 right-4 px-3 py-1.5 text-white text-sm font-medium rounded-full flex items-center gap-1.5 ${
+                  getMediaLiveBadgeClass(post.liveStatus, post.isLive, "bg-blue-600")
+                }`}
+              >
+                {showLiveDot ? (
+                  <span className="h-2 w-2 bg-white rounded-full animate-pulse"></span>
+                ) : (
+                  <Video size={16} />
+                )}
+                {getMediaLiveLabel("Facebook", post.liveStatus, post.isLive)}
               </div>
             </div>
           ) : imageUrl ? (
@@ -326,9 +405,15 @@ toast.error(message);
               <span className="text-sm text-gray-500">ID: {post._id}</span>
               <span className="text-gray-300">•</span>
               <span
-                className={`text-sm font-medium ${post.isLive ? "text-red-600" : "text-gray-500"}`}
+                className={`text-sm font-medium ${effectiveLiveStatus === "LIVE" ? "text-red-600" : "text-gray-500"}`}
               >
-                {post.isLive ? "🔴 Live" : "⚫ Offline"}
+                {effectiveLiveStatus === "LIVE"
+                  ? "🔴 Live"
+                  : effectiveLiveStatus === "WAS_LIVE"
+                    ? "Was Live"
+                    : effectiveLiveStatus === "UPCOMING"
+                      ? "Upcoming"
+                      : "⚫ Offline"}
               </span>
               <span className="text-gray-300">•</span>
               <span
@@ -418,6 +503,22 @@ toast.error(message);
                 </div>
               </div>
             )}
+
+            <div className="bg-gray-50 rounded-xl p-4">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-green-100 rounded-lg">
+                  <CalendarDays className="w-5 h-5 text-green-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Expires</p>
+                  <p className="font-medium text-gray-900">
+                    {post.expiresAt
+                      ? formatDate(post.expiresAt)
+                      : "No auto expiration"}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Metadata */}

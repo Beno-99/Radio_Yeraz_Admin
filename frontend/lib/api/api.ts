@@ -331,31 +331,31 @@ export const postsAPI = {
   },
 };
 
-interface AdParams {
+interface CarouselParams {
   page?: number;
   limit?: number;
   [key: string]: string | number | boolean | undefined;
 }
 
-export const adsAPI = {
-  getAllAds: (params?: AdParams) => api.get("/ads", { params }),
-  getAdById: (id: string) => api.get(`/ads/${id}`),
-  createAd: (data: FormData) => {
-    return api.post("/ads", data, {
+export const carouselsAPI = {
+  getAllCarousels: (params?: CarouselParams) => api.get("/carousels", { params }),
+  getCarouselById: (id: string) => api.get(`/carousels/${id}`),
+  createCarousel: (data: FormData) => {
+    return api.post("/carousels", data, {
       headers: {
         "Content-Type": "multipart/form-data",
       },
     });
   },
-  updateAd: (id: string, data: FormData) => {
-    return api.put(`/ads/${id}`, data, {
+  updateCarousel: (id: string, data: FormData) => {
+    return api.put(`/carousels/${id}`, data, {
       headers: {
         "Content-Type": "multipart/form-data",
       },
     });
   },
-  deleteAd: (id: string) => api.delete(`/ads/${id}`),
-  toggleActive: (id: string) => api.put(`/ads/${id}/toggle-active`),
+  deleteCarousel: (id: string) => api.delete(`/carousels/${id}`),
+  toggleActive: (id: string) => api.put(`/carousels/${id}/toggle-active`),
 };
 
 export const streamLinksAPI = {

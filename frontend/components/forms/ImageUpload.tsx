@@ -15,7 +15,7 @@ interface ImageUploadProps {
 export function ImageUpload({
   onChange,
   currentImage,
-  label = "Ad Image",
+  label = "Image",
   required = false,
 }: ImageUploadProps) {
   const [preview, setPreview] = useState<string | null>(null);

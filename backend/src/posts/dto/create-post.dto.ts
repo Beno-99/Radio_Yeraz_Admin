@@ -1,5 +1,13 @@
-import { IsString, IsOptional, IsBoolean, IsDate } from 'class-validator';
-import { Transform, Type } from 'class-transformer';
+import {
+  IsString,
+  IsOptional,
+  IsBoolean,
+  IsDate,
+  IsInt,
+  Min,
+  Max,
+} from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class CreatePostDto {
   @IsString()
@@ -10,7 +18,11 @@ export class CreatePostDto {
 
   @IsOptional()
   @IsString()
-  video?: string;
+  youtubeUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  facebookUrl?: string;
 
   @IsOptional()
   @IsString()
@@ -50,6 +62,36 @@ export class CreatePostDto {
   })
   @IsBoolean()
   isPublished?: boolean;
+
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (value === 'false' || value === false) return false;
+    if (value === 'true' || value === true) return true;
+    return false;
+  })
+  @IsBoolean()
+  reminderEnabled?: boolean;
+
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (value === 'false' || value === false) return false;
+    if (value === 'true' || value === true) return true;
+    return undefined;
+  })
+  @IsBoolean()
+  autoExpire?: boolean;
+
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (value === '' || value === undefined || value === null) {
+      return undefined;
+    }
+    return Number(value);
+  })
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  expireAfterDays?: number;
 
   @IsOptional()
   @IsString()

@@ -17,8 +17,17 @@ export class Post {
   @Prop({ default: '' })
   mainImage: string;
 
-  @Prop({ default: '' })
-  video: string;
+  @Prop({ type: String, enum: ['YOUTUBE', 'FACEBOOK'], default: null })
+  videoSource?: 'YOUTUBE' | 'FACEBOOK';
+
+  @Prop({ default: null })
+  youtubeUrl?: string;
+
+  @Prop({ default: null })
+  youtubeVideoId?: string;
+
+  @Prop({ default: null })
+  facebookUrl?: string;
 
   @Prop({ default: 'Radio Yeraz' })
   profileName: string;
@@ -34,6 +43,16 @@ export class Post {
 
   @Prop({ type: Boolean, default: false })
   isLive: boolean;
+
+  @Prop({
+    type: String,
+    enum: ['UNKNOWN', 'UPCOMING', 'LIVE', 'WAS_LIVE', 'NOT_LIVE'],
+    default: 'UNKNOWN',
+  })
+  liveStatus: 'UNKNOWN' | 'UPCOMING' | 'LIVE' | 'WAS_LIVE' | 'NOT_LIVE';
+
+  @Prop({ type: Date, default: null })
+  liveStatusCheckedAt?: Date;
 
   @Prop({ type: Boolean, default: false })
   isPublished: boolean;
@@ -62,6 +81,9 @@ export class Post {
 
   @Prop({ type: Date, default: null })
   expiresAt: Date;
+
+  @Prop({ type: Boolean, default: false })
+  reminderEnabled: boolean;
 
   @Prop({ type: Date, default: null })
   reminderSentAt?: Date;

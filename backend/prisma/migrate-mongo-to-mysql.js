@@ -2,15 +2,18 @@ require('dotenv').config({ quiet: true });
 
 const { PrismaMariaDb } = require('@prisma/adapter-mariadb');
 const {
-  AdStatus,
   AdminRole,
+  CarouselStatus,
   NotificationType,
+  PostLiveStatus,
   PostStatus,
+  PostVideoSource,
   PrismaClient,
 } = require('@prisma/client');
 const mongoose = require('mongoose');
 
 const CONFIRM_VALUE = 'I_UNDERSTAND_THIS_WRITES_TO_MYSQL';
+const LEGACY_MONGO_CAROUSEL_COLLECTION = 'ads';
 
 function readRequiredEnv(name) {
   const value = process.env[name];
@@ -63,14 +66,37 @@ function toPostStatus(value) {
   return PostStatus.draft;
 }
 
-function toAdStatus(value) {
-  if (value === AdStatus.active) return AdStatus.active;
-  if (value === AdStatus.inactive) return AdStatus.inactive;
-  if (value === AdStatus.expired) return AdStatus.expired;
-  return AdStatus.pending;
+function toPostVideoSource(doc) {
+  if (doc.facebookUrl) return PostVideoSource.FACEBOOK;
+  if (doc.youtubeUrl || doc.youtubeVideoId) return PostVideoSource.YOUTUBE;
+  return null;
+}
+
+function toPostLiveStatus(doc) {
+  if (doc.liveStatus && PostLiveStatus[doc.liveStatus]) {
+    return PostLiveStatus[doc.liveStatus];
+  }
+  return doc.isLive === true ? PostLiveStatus.LIVE : PostLiveStatus.UNKNOWN;
+}
+
+function toCarouselStatus(value) {
+  if (value === CarouselStatus.active) return CarouselStatus.active;
+  if (value === CarouselStatus.inactive) return CarouselStatus.inactive;
+  if (value === CarouselStatus.expired) return CarouselStatus.expired;
+  return CarouselStatus.pending;
 }
 
 function toNotificationType(value) {
+  const legacyCarouselTypes = {
+    AD_CREATED: NotificationType.CAROUSEL_CREATED,
+    AD_UPDATED: NotificationType.CAROUSEL_UPDATED,
+    AD_DELETED: NotificationType.CAROUSEL_DELETED,
+    AD_TOGGLED: NotificationType.CAROUSEL_TOGGLED,
+    AD_EXPIRING: NotificationType.CAROUSEL_EXPIRING,
+  };
+
+  if (legacyCarouselTypes[value]) return legacyCarouselTypes[value];
+
   return Object.values(NotificationType).includes(value)
     ? value
     : NotificationType.NEW_POST;
@@ -158,19 +184,23 @@ async function migratePosts(prisma, database) {
 
     const authorId = toId(doc.author);
     const author = (await adminExists(prisma, authorId)) ? authorId : null;
-
     await prisma.post.upsert({
       where: { id },
       update: {
         title: doc.title,
         description: doc.description,
         mainImage: toStringOrDefault(doc.mainImage, ''),
-        video: toStringOrDefault(doc.video, ''),
+        videoSource: toPostVideoSource(doc),
+        youtubeUrl: doc.youtubeUrl || null,
+        youtubeVideoId: doc.youtubeVideoId || null,
+        facebookUrl: doc.facebookUrl || null,
         profileName: toStringOrDefault(doc.profileName, 'Radio Yeraz'),
         eventDate: toNullableDate(doc.eventDate),
         eventTime: doc.eventTime || null,
         location: doc.location || null,
         isLive: doc.isLive === true,
+        liveStatus: toPostLiveStatus(doc),
+        liveStatusCheckedAt: toNullableDate(doc.liveStatusCheckedAt),
         isPublished: doc.isPublished === true,
         status: toPostStatus(doc.status),
         postedDate: toDate(doc.postedDate),
@@ -186,12 +216,17 @@ async function migratePosts(prisma, database) {
         title: doc.title,
         description: doc.description,
         mainImage: toStringOrDefault(doc.mainImage, ''),
-        video: toStringOrDefault(doc.video, ''),
+        videoSource: toPostVideoSource(doc),
+        youtubeUrl: doc.youtubeUrl || null,
+        youtubeVideoId: doc.youtubeVideoId || null,
+        facebookUrl: doc.facebookUrl || null,
         profileName: toStringOrDefault(doc.profileName, 'Radio Yeraz'),
         eventDate: toNullableDate(doc.eventDate),
         eventTime: doc.eventTime || null,
         location: doc.location || null,
         isLive: doc.isLive === true,
+        liveStatus: toPostLiveStatus(doc),
+        liveStatusCheckedAt: toNullableDate(doc.liveStatusCheckedAt),
         isPublished: doc.isPublished === true,
         status: toPostStatus(doc.status),
         postedDate: toDate(doc.postedDate),
@@ -209,8 +244,8 @@ async function migratePosts(prisma, database) {
   return { migrated, skipped };
 }
 
-async function migrateAds(prisma, database) {
-  const docs = await readCollection(database, 'ads');
+async function migrateCarousels(prisma, database) {
+  const docs = await readCollection(database, LEGACY_MONGO_CAROUSEL_COLLECTION);
   let migrated = 0;
   let skipped = 0;
 
@@ -224,18 +259,19 @@ async function migrateAds(prisma, database) {
     const authorId = toId(doc.author);
     const author = (await adminExists(prisma, authorId)) ? authorId : null;
 
-    await prisma.ad.upsert({
+    await prisma.carousel.upsert({
       where: { id },
       update: {
         image: toStringOrDefault(doc.image, ''),
         isActive: doc.isActive !== false,
-        status: toAdStatus(doc.status),
+        status: toCarouselStatus(doc.status),
         clicks: Number.isInteger(doc.clicks) ? doc.clicks : 0,
         startDate: toDate(doc.startDate),
         endDate: toNullableDate(doc.endDate),
         authorId: author,
         targetUrl: doc.targetUrl || null,
         name: doc.name,
+        displayOrder: Number.isInteger(doc.displayOrder) ? doc.displayOrder : 0,
         createdAt: toDate(doc.createdAt),
         updatedAt: toDate(doc.updatedAt),
       },
@@ -243,13 +279,14 @@ async function migrateAds(prisma, database) {
         id,
         image: toStringOrDefault(doc.image, ''),
         isActive: doc.isActive !== false,
-        status: toAdStatus(doc.status),
+        status: toCarouselStatus(doc.status),
         clicks: Number.isInteger(doc.clicks) ? doc.clicks : 0,
         startDate: toDate(doc.startDate),
         endDate: toNullableDate(doc.endDate),
         authorId: author,
         targetUrl: doc.targetUrl || null,
         name: doc.name,
+        displayOrder: Number.isInteger(doc.displayOrder) ? doc.displayOrder : 0,
         createdAt: toDate(doc.createdAt),
         updatedAt: toDate(doc.updatedAt),
       },
@@ -417,7 +454,7 @@ async function main() {
       admins: await migrateAdmins(prisma, database),
       streamLinks: await migrateStreamLinks(prisma, database),
       posts: await migratePosts(prisma, database),
-      ads: await migrateAds(prisma, database),
+      carousels: await migrateCarousels(prisma, database),
       notifications: await migrateNotifications(prisma, database),
       refreshTokens: await migrateRefreshTokens(prisma, database),
     };

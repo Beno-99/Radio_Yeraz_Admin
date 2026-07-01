@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { adminAPI, postsAPI, adsAPI } from "@/lib/api/api";
+import { adminAPI, postsAPI, carouselsAPI } from "@/lib/api/api";
 import StatsCards from "@/components/dashboard/StatsCards";
 import {
   Users,
@@ -17,7 +17,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState({
     totalAdmins: 0,
     totalPosts: 0,
-    totalAds: 0,
+    totalCarousels: 0,
     activePosts: 0,
     clicksToday: 0,
     upcomingEvents: 0,
@@ -60,7 +60,7 @@ export default function DashboardPage() {
 
     let adminsTotal = 0;
     let postsTotal = 0;
-    let adsTotal = 0;
+    let carouselsTotal = 0;
     let activePosts = 0;
     let clicksToday = 0;
 
@@ -85,25 +85,25 @@ export default function DashboardPage() {
     }
 
     try {
-      const adsRes = await adsAPI.getAllAds({ limit: 1 });
-      adsTotal = adsRes.data?.total || 0;
+      const carouselsRes = await carouselsAPI.getAllCarousels({ limit: 1 });
+      carouselsTotal = carouselsRes.data?.total || 0;
 
-      const ads = (adsRes.data?.data || []) as Array<{
+      const carousels = (carouselsRes.data?.data || []) as Array<{
         clicks?: number;
       }>;
 
-      clicksToday = ads.reduce(
-        (sum, ad) => sum + (ad.clicks || 0),
+      clicksToday = carousels.reduce(
+        (sum, carousel) => sum + (carousel.clicks || 0),
         0
       );
     } catch (e) {
-      console.error("❌ Ads error:", e);
+      console.error("❌ Carousels error:", e);
     }
 
     setStats({
       totalAdmins: adminsTotal,
       totalPosts: postsTotal,
-      totalAds: adsTotal,
+      totalCarousels: carouselsTotal,
       activePosts,
       clicksToday,
       upcomingEvents: 3,
@@ -125,11 +125,11 @@ export default function DashboardPage() {
       path: "/dashboard/posts/create",
     },
     {
-      title: "Upload Ad",
+      title: "Upload Carousel",
       description: "Start new campaign",
       icon: Upload,
       color: "bg-green-50 text-green-700 hover:bg-green-100",
-      path: "/dashboard/ads/create",
+      path: "/dashboard/carousels/create",
     },
     {
       title: "Manage Users",

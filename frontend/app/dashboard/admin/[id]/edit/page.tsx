@@ -13,6 +13,10 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { adminAPI } from "@/lib/api/api";
+import {
+  getLocalStorageValue,
+  setLocalStorageValue,
+} from "@/lib/browser-storage";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -40,6 +44,43 @@ const editAdminSchema = z.object({
 });
 
 type EditAdminFormData = z.infer<typeof editAdminSchema>;
+
+interface StoredUser {
+  id?: string;
+  _id?: string;
+  username?: string;
+  displayName?: string;
+  role?: string;
+}
+
+type UpdatedAdmin = Admin & { id?: string };
+
+const syncStoredUser = (updatedAdmin: UpdatedAdmin) => {
+  const storedUser = getLocalStorageValue("user");
+  if (!storedUser) return;
+
+  try {
+    const parsedUser = JSON.parse(storedUser) as StoredUser;
+    const storedId = parsedUser.id || parsedUser._id;
+    const updatedId = updatedAdmin.id || updatedAdmin._id;
+
+    if (!storedId || storedId !== updatedId) return;
+
+    setLocalStorageValue(
+      "user",
+      JSON.stringify({
+        ...parsedUser,
+        id: updatedId,
+        _id: updatedAdmin._id,
+        username: updatedAdmin.username,
+        displayName: updatedAdmin.displayName,
+        role: updatedAdmin.role,
+      }),
+    );
+  } catch {
+    // Ignore malformed local storage; the next login will refresh it.
+  }
+};
 
 export default function EditAdminPage() {
   const router = useRouter();
@@ -149,12 +190,13 @@ const isActiveValue = admin?.isActive ?? false;
     }
 
     const response = await adminAPI.updateAdmin(adminId, updateData);
-    const updatedAdmin = response.data?.data || response.data;
+    const updatedAdmin = (response.data?.data || response.data) as UpdatedAdmin;
 
     if (updatedAdmin) {
       setSuccess("Admin updated successfully!");
 
       setAdmin(updatedAdmin);
+      syncStoredUser(updatedAdmin);
 
       reset({
         username: updatedAdmin.username,

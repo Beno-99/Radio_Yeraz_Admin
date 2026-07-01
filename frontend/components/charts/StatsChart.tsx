@@ -26,7 +26,7 @@ import {
 interface ChartData {
   name: string;
   posts: number;
-  ads: number;
+  carousels: number;
   clicks: number;
   users: number;
   revenue?: number;
@@ -65,20 +65,20 @@ export default function StatsChart({
 
   // Default data if none provided
   const defaultData: ChartData[] = [
-    { name: "Mon", posts: 12, ads: 8, clicks: 240, users: 120 },
-    { name: "Tue", posts: 18, ads: 10, clicks: 320, users: 180 },
-    { name: "Wed", posts: 15, ads: 12, clicks: 280, users: 150 },
-    { name: "Thu", posts: 22, ads: 15, clicks: 400, users: 220 },
-    { name: "Fri", posts: 20, ads: 18, clicks: 380, users: 200 },
-    { name: "Sat", posts: 25, ads: 20, clicks: 450, users: 250 },
-    { name: "Sun", posts: 30, ads: 25, clicks: 520, users: 300 },
+    { name: "Mon", posts: 12, carousels: 8, clicks: 240, users: 120 },
+    { name: "Tue", posts: 18, carousels: 10, clicks: 320, users: 180 },
+    { name: "Wed", posts: 15, carousels: 12, clicks: 280, users: 150 },
+    { name: "Thu", posts: 22, carousels: 15, clicks: 400, users: 220 },
+    { name: "Fri", posts: 20, carousels: 18, clicks: 380, users: 200 },
+    { name: "Sat", posts: 25, carousels: 20, clicks: 450, users: 250 },
+    { name: "Sun", posts: 30, carousels: 25, clicks: 520, users: 300 },
   ];
 
   const chartData = externalData || defaultData;
 
   // Calculate statistics
   const totalPosts = chartData.reduce((sum, item) => sum + item.posts, 0);
-  const totalAds = chartData.reduce((sum, item) => sum + item.ads, 0);
+  const totalCarousels = chartData.reduce((sum, item) => sum + item.carousels, 0);
   const totalClicks = chartData.reduce((sum, item) => sum + item.clicks, 0);
   const totalUsers = chartData.reduce((sum, item) => sum + item.users, 0);
 
@@ -156,8 +156,8 @@ export default function StatsChart({
               barSize={20}
             />
             <Bar
-              dataKey="ads"
-              name="Ads"
+              dataKey="carousels"
+              name="Carousels"
               fill="#8b5cf6"
               radius={[4, 4, 0, 0]}
               barSize={20}
@@ -248,8 +248,8 @@ export default function StatsChart({
             />
             <Line
               type="monotone"
-              dataKey="ads"
-              name="Ads"
+              dataKey="carousels"
+              name="Carousels"
               stroke="#8b5cf6"
               strokeWidth={2}
               dot={{ r: 4 }}
@@ -390,10 +390,10 @@ export default function StatsChart({
 
         <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg">
           <p className="text-sm text-purple-700 dark:text-purple-300">
-            Active Ads
+            Active Carousels
           </p>
           <p className="text-2xl font-bold text-purple-900 dark:text-purple-100">
-            {totalAds.toLocaleString()}
+            {totalCarousels.toLocaleString()}
           </p>
           <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
             Running campaigns

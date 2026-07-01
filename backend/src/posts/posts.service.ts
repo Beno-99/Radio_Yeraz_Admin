@@ -7,7 +7,9 @@ import {
   Admin as PrismaAdmin,
   AdminRole,
   Post as PrismaPost,
+  PostLiveStatus,
   PostStatus,
+  PostVideoSource,
   Prisma,
 } from '@prisma/client';
 import * as fs from 'fs';
@@ -21,6 +23,8 @@ import { NotificationGateway } from '../notifications/notification.gateway';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
+import { normalizeFacebookUrl } from './facebook-url.util';
+import { normalizeYoutubeUrl } from './youtube-url.util';
 
 const postAuthorSelect = {
   id: true,
@@ -33,7 +37,15 @@ const postInclude = {
   author: { select: postAuthorSelect },
 } satisfies Prisma.PostInclude;
 
+const DEFAULT_POST_EXPIRY_DAYS = 5;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 type PostWithAuthor = Prisma.PostGetPayload<{ include: typeof postInclude }>;
+
+interface NotificationActor {
+  id?: string;
+  name: string;
+}
 
 export type PostSortField =
   | 'postedDate'
@@ -98,12 +110,17 @@ export class PostsService {
       title: post.title,
       description: post.description,
       mainImage: post.mainImage,
-      video: post.video,
+      videoSource: post.videoSource,
+      youtubeUrl: post.youtubeUrl,
+      youtubeVideoId: post.youtubeVideoId,
+      facebookUrl: post.facebookUrl,
       profileName: post.profileName,
       eventDate: post.eventDate,
       eventTime: post.eventTime,
       location: post.location,
       isLive: post.isLive,
+      liveStatus: post.liveStatus,
+      liveStatusCheckedAt: post.liveStatusCheckedAt,
       isPublished: post.isPublished,
       status: post.status,
       postedDate: post.postedDate,
@@ -111,6 +128,7 @@ export class PostsService {
       createdAt: post.createdAt,
       updatedAt: post.updatedAt,
       expiresAt: post.expiresAt,
+      reminderEnabled: post.reminderEnabled,
       reminderSentAt: post.reminderSentAt,
       author: post.author
         ? {
@@ -125,11 +143,63 @@ export class PostsService {
     };
   }
 
-  private calculateExpiryFromEventDate(eventDate?: string | Date | null): Date | null {
-    if (!eventDate) return null;
-    const event = new Date(eventDate);
-    if (Number.isNaN(event.getTime())) return null;
-    return new Date(event.getTime() + 5 * 24 * 60 * 60 * 1000);
+  private calculateExpiryFromDays(
+    postedDate: Date,
+    expireAfterDays?: number | null,
+  ): Date {
+    const days =
+      Number.isInteger(expireAfterDays) && Number(expireAfterDays) > 0
+        ? Number(expireAfterDays)
+        : DEFAULT_POST_EXPIRY_DAYS;
+
+    return new Date(postedDate.getTime() + days * DAY_MS);
+  }
+
+  private resolveCreateExpiresAt(
+    createPostDto: CreatePostDto,
+    postedDate: Date,
+  ): Date | null {
+    const autoExpire = this.parseOptionalBoolean(createPostDto.autoExpire);
+
+    if (autoExpire === false) return null;
+    if (autoExpire === true || createPostDto.expireAfterDays !== undefined) {
+      return this.calculateExpiryFromDays(
+        postedDate,
+        createPostDto.expireAfterDays,
+      );
+    }
+
+    const explicitExpiresAt = this.parseOptionalDate(createPostDto.expiresAt);
+    if (explicitExpiresAt !== undefined) return explicitExpiresAt;
+
+    return this.calculateExpiryFromDays(postedDate, DEFAULT_POST_EXPIRY_DAYS);
+  }
+
+  private resolveUpdateExpiresAt(
+    updatePostDto: UpdatePostDto,
+    postedDate: Date,
+  ): Date | null | undefined {
+    const autoExpire = this.parseOptionalBoolean(updatePostDto.autoExpire);
+
+    if (autoExpire === false) return null;
+    if (autoExpire === true || updatePostDto.expireAfterDays !== undefined) {
+      return this.calculateExpiryFromDays(
+        postedDate,
+        updatePostDto.expireAfterDays,
+      );
+    }
+
+    if (updatePostDto.expiresAt !== undefined) {
+      return this.parseOptionalDate(updatePostDto.expiresAt);
+    }
+
+    return undefined;
+  }
+
+  private buildVisibleExpiryWhere(now: Date = new Date()): Prisma.PostWhereInput {
+    return {
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    };
   }
 
   private parseOptionalDate(
@@ -147,6 +217,166 @@ export class PostsService {
     if (value === false || value === 'false') return false;
     if (value === undefined || value === null) return undefined;
     return Boolean(value);
+  }
+
+  private getTrimmedValue(value?: string | null): string {
+    return typeof value === 'string' ? value.trim() : '';
+  }
+
+  private hasVideoMedia(
+    post: Pick<
+      PrismaPost,
+      'videoSource' | 'youtubeUrl' | 'youtubeVideoId' | 'facebookUrl'
+    >,
+  ): boolean {
+    return Boolean(
+      post.videoSource ||
+        post.youtubeUrl ||
+        post.youtubeVideoId ||
+        post.facebookUrl,
+    );
+  }
+
+  private getManualLiveStatus(
+    isLive: boolean,
+    post: Pick<
+      PrismaPost,
+      'videoSource' | 'youtubeUrl' | 'youtubeVideoId' | 'facebookUrl'
+    >,
+  ): PostLiveStatus {
+    if (isLive) return PostLiveStatus.LIVE;
+    return this.hasVideoMedia(post)
+      ? PostLiveStatus.WAS_LIVE
+      : PostLiveStatus.NOT_LIVE;
+  }
+
+  private parseFacebookVideoId(value?: string | null): string | null {
+    const input = this.getTrimmedValue(value);
+    if (!input) return null;
+
+    try {
+      const parsed = new URL(input);
+      const watchId = parsed.searchParams.get('v');
+      if (watchId) return watchId;
+
+      const segments = parsed.pathname.split('/').filter(Boolean);
+      const videoSegmentIndex = segments.findIndex((segment) =>
+        ['videos', 'live_videos', 'watch'].includes(segment),
+      );
+      if (videoSegmentIndex >= 0 && segments[videoSegmentIndex + 1]) {
+        return segments[videoSegmentIndex + 1];
+      }
+
+      const numericSegment = [...segments]
+        .reverse()
+        .find((segment) => /^\d+$/.test(segment));
+      return numericSegment ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async fetchYoutubeLiveStatus(
+    videoId?: string | null,
+  ): Promise<PostLiveStatus | null> {
+    const apiKey = process.env.YOUTUBE_API_KEY;
+    if (!apiKey || !videoId) return null;
+
+    try {
+      const url = new URL('https://www.googleapis.com/youtube/v3/videos');
+      url.searchParams.set('part', 'snippet,liveStreamingDetails');
+      url.searchParams.set('id', videoId);
+      url.searchParams.set('key', apiKey);
+
+      const response = await fetch(url);
+      if (!response.ok) return null;
+
+      const payload = (await response.json()) as {
+        items?: Array<{
+          snippet?: { liveBroadcastContent?: string };
+          liveStreamingDetails?: {
+            actualStartTime?: string;
+            actualEndTime?: string;
+            scheduledStartTime?: string;
+          };
+        }>;
+      };
+      const item = payload.items?.[0];
+      if (!item) return PostLiveStatus.NOT_LIVE;
+
+      const liveContent = item.snippet?.liveBroadcastContent;
+      const liveDetails = item.liveStreamingDetails;
+
+      if (liveDetails?.actualEndTime) return PostLiveStatus.WAS_LIVE;
+      if (liveContent === 'live' || liveDetails?.actualStartTime) {
+        return PostLiveStatus.LIVE;
+      }
+      if (liveContent === 'upcoming' || liveDetails?.scheduledStartTime) {
+        return PostLiveStatus.UPCOMING;
+      }
+
+      return PostLiveStatus.NOT_LIVE;
+    } catch (error) {
+      console.error('Failed to fetch YouTube live status:', error);
+      return null;
+    }
+  }
+
+  private async fetchFacebookLiveStatus(
+    facebookUrl?: string | null,
+  ): Promise<PostLiveStatus | null> {
+    const accessToken = process.env.FACEBOOK_ACCESS_TOKEN;
+    const videoId = this.parseFacebookVideoId(facebookUrl);
+    if (!accessToken || !videoId) return null;
+
+    try {
+      const url = new URL(`https://graph.facebook.com/v21.0/${videoId}`);
+      url.searchParams.set('fields', 'live_status,status');
+      url.searchParams.set('access_token', accessToken);
+
+      const response = await fetch(url);
+      if (!response.ok) return null;
+
+      const payload = (await response.json()) as {
+        live_status?: string;
+        status?: string;
+      };
+      const status = (payload.live_status || payload.status || '').toUpperCase();
+
+      if (['LIVE', 'LIVE_NOW'].includes(status)) return PostLiveStatus.LIVE;
+      if (['SCHEDULED', 'SCHEDULED_UNPUBLISHED'].includes(status)) {
+        return PostLiveStatus.UPCOMING;
+      }
+      if (['VOD', 'LIVE_STOPPED', 'UNPUBLISHED', 'FINISHED'].includes(status)) {
+        return PostLiveStatus.WAS_LIVE;
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Failed to fetch Facebook live status:', error);
+      return null;
+    }
+  }
+
+  private async fetchProviderLiveStatus(
+    post: Pick<
+      PrismaPost,
+      'videoSource' | 'youtubeVideoId' | 'youtubeUrl' | 'facebookUrl'
+    >,
+  ): Promise<PostLiveStatus | null> {
+    if (post.videoSource === PostVideoSource.YOUTUBE) {
+      return this.fetchYoutubeLiveStatus(post.youtubeVideoId);
+    }
+
+    if (post.videoSource === PostVideoSource.FACEBOOK) {
+      return this.fetchFacebookLiveStatus(post.facebookUrl);
+    }
+
+    return null;
+  }
+
+  private liveStatusToIsLive(liveStatus: PostLiveStatus): boolean {
+    return liveStatus === PostLiveStatus.LIVE;
   }
 
   private deleteMediaFileIfExists(filePath?: string): void {
@@ -212,24 +442,76 @@ export class PostsService {
     return where;
   }
 
-  async expirePostsPastEventWindow(): Promise<number> {
+  async expirePostsPastExpiryDate(): Promise<number> {
     const now = new Date();
-    const cutoff = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
 
     const result = await this.prisma.post.updateMany({
       where: {
-        eventDate: { lte: cutoff },
+        expiresAt: { lte: now },
         isPublished: true,
+        status: { not: PostStatus.expired },
       },
       data: {
         isPublished: false,
         isLive: false,
+        liveStatus: PostLiveStatus.NOT_LIVE,
+        liveStatusCheckedAt: now,
         status: PostStatus.expired,
         updatedAt: now,
       },
     });
 
     return result.count;
+  }
+
+  async syncMediaLiveStatuses(): Promise<number> {
+    const posts = await this.prisma.post.findMany({
+      where: {
+        videoSource: { not: null },
+        status: { not: PostStatus.expired },
+        OR: [
+          { isLive: true },
+          {
+            liveStatus: {
+              in: [
+                PostLiveStatus.UNKNOWN,
+                PostLiveStatus.UPCOMING,
+                PostLiveStatus.LIVE,
+              ],
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        videoSource: true,
+        youtubeUrl: true,
+        youtubeVideoId: true,
+        facebookUrl: true,
+        isLive: true,
+        liveStatus: true,
+      },
+    });
+
+    let updatedCount = 0;
+
+    for (const post of posts) {
+      const liveStatus = await this.fetchProviderLiveStatus(post);
+      if (!liveStatus || liveStatus === post.liveStatus) continue;
+
+      await this.prisma.post.update({
+        where: { id: post.id },
+        data: {
+          liveStatus,
+          liveStatusCheckedAt: new Date(),
+          isLive: this.liveStatusToIsLive(liveStatus),
+          updatedAt: new Date(),
+        },
+      });
+      updatedCount += 1;
+    }
+
+    return updatedCount;
   }
 
   async create(
@@ -245,28 +527,68 @@ export class PostsService {
       this.parseOptionalBoolean(createPostDto.isPublished) ?? false;
     const isLiveValue = this.parseOptionalBoolean(createPostDto.isLive) ?? false;
     const eventDate = this.parseOptionalDate(createPostDto.eventDate);
-    const calculatedExpiresAt = this.calculateExpiryFromEventDate(eventDate);
+    const reminderEnabledValue =
+      this.parseOptionalBoolean(createPostDto.reminderEnabled) ?? false;
+    const postedDate = new Date();
+    const expiresAt = this.resolveCreateExpiresAt(createPostDto, postedDate);
+    const youtubeInput = this.getTrimmedValue(createPostDto.youtubeUrl);
+    const facebookInput = this.getTrimmedValue(createPostDto.facebookUrl);
+
+    if (reminderEnabledValue && !eventDate) {
+      throw new BadRequestException('Reminder requires an event date');
+    }
+
+    if (youtubeInput && facebookInput) {
+      throw new BadRequestException(
+        'Choose either a YouTube URL or a Facebook URL, not both',
+      );
+    }
+
+    if (createPostDto.mainImage && (youtubeInput || facebookInput)) {
+      throw new BadRequestException(
+        'Choose either an image or a video URL, not both',
+      );
+    }
+
+    const youtubeMedia = youtubeInput
+      ? normalizeYoutubeUrl(youtubeInput)
+      : null;
+    const facebookMedia = facebookInput
+      ? normalizeFacebookUrl(facebookInput)
+      : null;
+    const hasVideoMedia = Boolean(youtubeMedia || facebookMedia);
 
     const savedPost = await this.prisma.post.create({
       data: {
         id: createObjectIdString(),
         title: createPostDto.title,
         description: createPostDto.description,
-        mainImage: createPostDto.mainImage || '',
-        video: createPostDto.video || '',
+        mainImage: youtubeMedia || facebookMedia ? '' : createPostDto.mainImage || '',
+        videoSource: youtubeMedia
+          ? PostVideoSource.YOUTUBE
+          : facebookMedia
+            ? PostVideoSource.FACEBOOK
+            : null,
+        youtubeUrl: youtubeMedia?.youtubeUrl ?? null,
+        youtubeVideoId: youtubeMedia?.youtubeVideoId ?? null,
+        facebookUrl: facebookMedia?.facebookUrl ?? null,
         profileName: createPostDto.profileName || 'Radio Yeraz',
         eventDate,
         eventTime: createPostDto.eventTime,
         location: createPostDto.location,
         isLive: isLiveValue,
+        liveStatus: isLiveValue
+          ? PostLiveStatus.LIVE
+          : hasVideoMedia
+            ? PostLiveStatus.UNKNOWN
+            : PostLiveStatus.NOT_LIVE,
         isPublished: isPublishedValue,
         status: isPublishedValue ? PostStatus.published : PostStatus.draft,
-        postedDate: new Date(),
+        postedDate,
         authorId,
         link: createPostDto.link,
-        expiresAt:
-          calculatedExpiresAt ||
-          new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+        expiresAt,
+        reminderEnabled: reminderEnabledValue,
       },
       include: postInclude,
     });
@@ -277,9 +599,17 @@ export class PostsService {
       const authorName = author.displayName || author.username || 'Admin';
 
       if (savedPost.isPublished) {
-        await this.notificationGateway.emitNewPost(postResponse, authorName);
+        await this.notificationGateway.emitNewPost(
+          postResponse,
+          authorName,
+          authorId,
+        );
       } else {
-        await this.notificationGateway.emitNewDraft(postResponse, authorName);
+        await this.notificationGateway.emitNewDraft(
+          postResponse,
+          authorName,
+          authorId,
+        );
       }
     } catch (notifError: unknown) {
       console.error(
@@ -303,7 +633,7 @@ export class PostsService {
     page: number;
     pages: number;
   }> {
-    await this.expirePostsPastEventWindow();
+    await this.expirePostsPastExpiryDate();
 
     const skip = (page - 1) * limit;
     const where = this.buildFindAllWhere(filters, search);
@@ -329,7 +659,7 @@ export class PostsService {
   }
 
   async findById(id: string): Promise<PostResponse> {
-    await this.expirePostsPastEventWindow();
+    await this.expirePostsPastExpiryDate();
 
     if (!isObjectIdString(id)) {
       throw new BadRequestException('Invalid post id');
@@ -345,7 +675,7 @@ export class PostsService {
   }
 
   async findByAuthor(authorId: string): Promise<PostResponse[]> {
-    await this.expirePostsPastEventWindow();
+    await this.expirePostsPastExpiryDate();
 
     const posts = await this.prisma.post.findMany({
       where: { authorId },
@@ -357,16 +687,14 @@ export class PostsService {
   }
 
   async findLivePosts(): Promise<PostResponse[]> {
-    await this.expirePostsPastEventWindow();
-
-    const cutoff = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+    await this.expirePostsPastExpiryDate();
 
     const posts = await this.prisma.post.findMany({
       where: {
         isLive: true,
         isPublished: true,
         status: PostStatus.published,
-        OR: [{ eventDate: null }, { eventDate: { gt: cutoff } }],
+        ...this.buildVisibleExpiryWhere(),
       },
       include: postInclude,
       orderBy: { postedDate: 'desc' },
@@ -376,15 +704,13 @@ export class PostsService {
   }
 
   async findRecentPosts(limit: number = 5): Promise<PostResponse[]> {
-    await this.expirePostsPastEventWindow();
-
-    const cutoff = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+    await this.expirePostsPastExpiryDate();
 
     const posts = await this.prisma.post.findMany({
       where: {
         isPublished: true,
         status: PostStatus.published,
-        OR: [{ eventDate: null }, { eventDate: { gt: cutoff } }],
+        ...this.buildVisibleExpiryWhere(),
       },
       include: postInclude,
       orderBy: { postedDate: 'desc' },
@@ -395,18 +721,14 @@ export class PostsService {
   }
 
   async searchPosts(query: string, limit: number = 20): Promise<PostResponse[]> {
-    await this.expirePostsPastEventWindow();
-
-    const cutoff = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+    await this.expirePostsPastExpiryDate();
 
     const posts = await this.prisma.post.findMany({
       where: {
         isPublished: true,
         status: PostStatus.published,
         AND: [
-          {
-            OR: [{ eventDate: null }, { eventDate: { gt: cutoff } }],
-          },
+          this.buildVisibleExpiryWhere(),
           {
             OR: [
               { title: { contains: query } },
@@ -424,7 +746,11 @@ export class PostsService {
     return posts.map((post) => this.toPostResponse(post));
   }
 
-  async update(id: string, updatePostDto: UpdatePostDto): Promise<PostResponse> {
+  async update(
+    id: string,
+    updatePostDto: UpdatePostDto,
+    actor?: NotificationActor,
+  ): Promise<PostResponse> {
     const oldPost = await this.prisma.post.findUnique({
       where: { id },
       include: postInclude,
@@ -432,7 +758,6 @@ export class PostsService {
     if (!oldPost) throw new NotFoundException('Post not found');
 
     const oldMainImage = oldPost.mainImage || '';
-    const oldVideo = oldPost.video || '';
     const data: Prisma.PostUncheckedUpdateInput = {
       updatedAt: new Date(),
     };
@@ -453,7 +778,11 @@ export class PostsService {
     }
 
     const parsedIsLive = this.parseOptionalBoolean(updatePostDto.isLive);
-    if (parsedIsLive !== undefined) data.isLive = parsedIsLive;
+    if (parsedIsLive !== undefined) {
+      data.isLive = parsedIsLive;
+      data.liveStatus = this.getManualLiveStatus(parsedIsLive, oldPost);
+      data.liveStatusCheckedAt = new Date();
+    }
 
     const parsedIsPublished = this.parseOptionalBoolean(
       updatePostDto.isPublished,
@@ -464,10 +793,33 @@ export class PostsService {
     }
 
     const parsedEventDate = this.parseOptionalDate(updatePostDto.eventDate);
+    const parsedReminderEnabled = this.parseOptionalBoolean(
+      updatePostDto.reminderEnabled,
+    );
+    const nextEventDate =
+      parsedEventDate !== undefined ? parsedEventDate : oldPost.eventDate;
+    let nextReminderEnabled =
+      parsedReminderEnabled !== undefined
+        ? parsedReminderEnabled
+        : oldPost.reminderEnabled;
+
+    if (nextReminderEnabled && !nextEventDate) {
+      if (parsedReminderEnabled === true) {
+        throw new BadRequestException('Reminder requires an event date');
+      }
+
+      nextReminderEnabled = false;
+      data.reminderEnabled = false;
+    } else if (parsedReminderEnabled !== undefined) {
+      data.reminderEnabled = parsedReminderEnabled;
+    }
+
     if (parsedEventDate !== undefined) {
       data.eventDate = parsedEventDate;
       const oldEventTime = oldPost.eventDate?.getTime();
       const newEventTime = parsedEventDate?.getTime();
+      const eventDateChanged =
+        (oldEventTime ?? null) !== (newEventTime ?? null);
 
       if (
         oldEventTime !== undefined &&
@@ -478,26 +830,97 @@ export class PostsService {
         data.status = PostStatus.published;
       }
 
-      const recalculatedExpiresAt =
-        this.calculateExpiryFromEventDate(parsedEventDate);
-      if (recalculatedExpiresAt) {
-        data.expiresAt = recalculatedExpiresAt;
+      if (eventDateChanged) {
+        data.reminderSentAt = null;
       }
     }
 
-    if (updatePostDto.expiresAt !== undefined) {
-      data.expiresAt = this.parseOptionalDate(updatePostDto.expiresAt);
+    if (parsedReminderEnabled === true && !oldPost.reminderEnabled) {
+      data.reminderSentAt = null;
+    }
+
+    const updatedExpiresAt = this.resolveUpdateExpiresAt(
+      updatePostDto,
+      oldPost.postedDate,
+    );
+    if (updatedExpiresAt !== undefined) {
+      data.expiresAt = updatedExpiresAt;
     }
 
     const shouldRemoveImage = updatePostDto.removeImage === 'true';
-    const shouldRemoveVideo = updatePostDto.removeVideo === 'true';
     const hasNewImage = !!updatePostDto.mainImage;
-    const hasNewVideo = !!updatePostDto.video;
+    const hasYoutubeUpdate = updatePostDto.youtubeUrl !== undefined;
+    const hasFacebookUpdate = updatePostDto.facebookUrl !== undefined;
+    const youtubeInput = this.getTrimmedValue(updatePostDto.youtubeUrl);
+    const facebookInput = this.getTrimmedValue(updatePostDto.facebookUrl);
+    const requestedIsLive = parsedIsLive ?? oldPost.isLive;
 
-    if (hasNewImage) data.mainImage = updatePostDto.mainImage;
-    if (hasNewVideo) data.video = updatePostDto.video;
+    if (youtubeInput && facebookInput) {
+      throw new BadRequestException(
+        'Choose either a YouTube URL or a Facebook URL, not both',
+      );
+    }
+
+    if (hasNewImage && (youtubeInput || facebookInput)) {
+      throw new BadRequestException(
+        'Choose either an image or a video URL, not both',
+      );
+    }
+
+    const youtubeMedia = youtubeInput ? normalizeYoutubeUrl(youtubeInput) : null;
+    const facebookMedia = facebookInput
+      ? normalizeFacebookUrl(facebookInput)
+      : null;
+
+    if (hasNewImage) {
+      data.mainImage = updatePostDto.mainImage;
+      data.videoSource = null;
+      data.youtubeUrl = null;
+      data.youtubeVideoId = null;
+      data.facebookUrl = null;
+      data.liveStatus = requestedIsLive
+        ? PostLiveStatus.LIVE
+        : PostLiveStatus.NOT_LIVE;
+      data.liveStatusCheckedAt = new Date();
+    }
     if (shouldRemoveImage) data.mainImage = '';
-    if (shouldRemoveVideo) data.video = '';
+
+    if (youtubeMedia) {
+      data.mainImage = '';
+      data.videoSource = PostVideoSource.YOUTUBE;
+      data.youtubeUrl = youtubeMedia?.youtubeUrl ?? null;
+      data.youtubeVideoId = youtubeMedia?.youtubeVideoId ?? null;
+      data.facebookUrl = null;
+      data.liveStatus = requestedIsLive
+        ? PostLiveStatus.LIVE
+        : PostLiveStatus.UNKNOWN;
+      data.liveStatusCheckedAt = requestedIsLive ? new Date() : null;
+    } else if (facebookMedia) {
+      data.mainImage = '';
+      data.videoSource = PostVideoSource.FACEBOOK;
+      data.youtubeUrl = null;
+      data.youtubeVideoId = null;
+      data.facebookUrl = facebookMedia.facebookUrl;
+      data.liveStatus = requestedIsLive
+        ? PostLiveStatus.LIVE
+        : PostLiveStatus.UNKNOWN;
+      data.liveStatusCheckedAt = requestedIsLive ? new Date() : null;
+    } else if (
+      (hasYoutubeUpdate &&
+        !youtubeInput &&
+        oldPost.videoSource === PostVideoSource.YOUTUBE) ||
+      (hasFacebookUpdate &&
+        !facebookInput &&
+        oldPost.videoSource === PostVideoSource.FACEBOOK) ||
+      (hasYoutubeUpdate && hasFacebookUpdate && !youtubeInput && !facebookInput)
+    ) {
+      data.videoSource = null;
+      data.youtubeUrl = null;
+      data.youtubeVideoId = null;
+      data.facebookUrl = null;
+      data.liveStatus = PostLiveStatus.NOT_LIVE;
+      data.liveStatusCheckedAt = new Date();
+    }
 
     const post = await this.prisma.post.update({
       where: { id },
@@ -514,19 +937,13 @@ export class PostsService {
           this.deleteMediaFileIfExists(oldMainImage);
         }
       }
-
-      if ((shouldRemoveVideo || hasNewVideo) && oldVideo.trim() !== '') {
-        const replacedWithDifferentVideo = hasNewVideo && oldVideo !== post.video;
-        if (shouldRemoveVideo || replacedWithDifferentVideo) {
-          this.deleteMediaFileIfExists(oldVideo);
-        }
-      }
     } catch (fileError) {
       console.error('Failed to delete replaced/removed media file:', fileError);
     }
 
     try {
-      const authorName =
+      const actorName =
+        actor?.name ||
         post.author?.displayName || post.author?.username || 'Admin';
       const becamePublished =
         (!oldPost.isPublished && post.isPublished) ||
@@ -534,9 +951,17 @@ export class PostsService {
           post.status === PostStatus.published);
 
       if (becamePublished) {
-        await this.notificationGateway.emitNewPost(postResponse, authorName);
+        await this.notificationGateway.emitNewPost(
+          postResponse,
+          actorName,
+          actor?.id,
+        );
       } else {
-        await this.notificationGateway.emitPostUpdated(postResponse, authorName);
+        await this.notificationGateway.emitPostUpdated(
+          postResponse,
+          actorName,
+          actor?.id,
+        );
       }
     } catch (notifError: unknown) {
       console.error(
@@ -548,17 +973,23 @@ export class PostsService {
     return postResponse;
   }
 
-  async toggleLiveStatus(id: string): Promise<PostResponse> {
+  async toggleLiveStatus(
+    id: string,
+    actor?: NotificationActor,
+  ): Promise<PostResponse> {
     const existingPost = await this.prisma.post.findUnique({
       where: { id },
       include: postInclude,
     });
     if (!existingPost) throw new NotFoundException('Post not found');
 
+    const nextIsLive = !existingPost.isLive;
     const post = await this.prisma.post.update({
       where: { id },
       data: {
-        isLive: !existingPost.isLive,
+        isLive: nextIsLive,
+        liveStatus: this.getManualLiveStatus(nextIsLive, existingPost),
+        liveStatusCheckedAt: new Date(),
         updatedAt: new Date(),
       },
       include: postInclude,
@@ -567,11 +998,13 @@ export class PostsService {
 
     try {
       if (post.isLive) {
-        const authorName =
+        const actorName =
+          actor?.name ||
           post.author?.displayName || post.author?.username || 'Admin';
         await this.notificationGateway.emitPostPublished(
           postResponse,
-          authorName,
+          actorName,
+          actor?.id,
         );
       }
     } catch (notifError: unknown) {
@@ -588,14 +1021,20 @@ export class PostsService {
     const existingPost = await this.prisma.post.findUnique({ where: { id } });
     if (!existingPost) throw new NotFoundException('Post not found');
 
+    const postedDate = new Date();
     const post = await this.prisma.post.update({
       where: { id },
       data: {
         status: PostStatus.published,
         isPublished: true,
         isLive: true,
-        postedDate: new Date(),
-        expiresAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+        liveStatus: PostLiveStatus.LIVE,
+        liveStatusCheckedAt: new Date(),
+        postedDate,
+        expiresAt: this.calculateExpiryFromDays(
+          postedDate,
+          DEFAULT_POST_EXPIRY_DAYS,
+        ),
         updatedAt: new Date(),
       },
       include: postInclude,
@@ -604,7 +1043,7 @@ export class PostsService {
     return this.toPostResponse(post);
   }
 
-  async delete(id: string): Promise<PostResponse> {
+  async delete(id: string, actor?: NotificationActor): Promise<PostResponse> {
     const post = await this.prisma.post.findUnique({
       where: { id },
       include: postInclude,
@@ -613,15 +1052,19 @@ export class PostsService {
 
     try {
       this.deleteMediaFileIfExists(post.mainImage);
-      this.deleteMediaFileIfExists(post.video);
     } catch (error) {
       console.error('Error deleting media files:', error);
     }
 
     try {
-      const authorName =
+      const actorName =
+        actor?.name ||
         post.author?.displayName || post.author?.username || 'Admin';
-      await this.notificationGateway.emitPostDeleted(post.title, authorName);
+      await this.notificationGateway.emitPostDeleted(
+        post.title,
+        actorName,
+        actor?.id,
+      );
     } catch (notifError: unknown) {
       console.error(
         'Notification emit failed:',
@@ -719,7 +1162,12 @@ export class PostsService {
   async bulkUpdateIsLive(ids: string[], isLive: boolean): Promise<number> {
     const result = await this.prisma.post.updateMany({
       where: { id: { in: ids } },
-      data: { isLive, updatedAt: new Date() },
+      data: {
+        isLive,
+        liveStatus: isLive ? PostLiveStatus.LIVE : PostLiveStatus.WAS_LIVE,
+        liveStatusCheckedAt: new Date(),
+        updatedAt: new Date(),
+      },
     });
     return result.count;
   }
@@ -727,13 +1175,12 @@ export class PostsService {
   async deleteByAuthor(authorId: string): Promise<number> {
     const posts = await this.prisma.post.findMany({
       where: { authorId },
-      select: { id: true, mainImage: true, video: true },
+      select: { id: true, mainImage: true },
     });
 
     posts.forEach((post) => {
       try {
         this.deleteMediaFileIfExists(post.mainImage);
-        this.deleteMediaFileIfExists(post.video);
       } catch (error) {
         console.error(`Error deleting media for post ${post.id}:`, error);
       }

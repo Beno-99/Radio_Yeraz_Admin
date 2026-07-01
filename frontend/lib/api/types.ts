@@ -46,13 +46,21 @@ export interface Post {
   title: string;
   description: string;
   mainImage: string;
-  video: string;
+  videoSource?: "YOUTUBE" | "FACEBOOK" | null;
+  youtubeUrl?: string | null;
+  youtubeVideoId?: string | null;
+  facebookUrl?: string | null;
   profileName: string;
   eventDate: string;
   location: string;
   isLive: boolean;
   isPublished: boolean;
+  reminderEnabled?: boolean;
+  reminderSentAt?: string | null;
+  liveStatus?: "UNKNOWN" | "UPCOMING" | "LIVE" | "WAS_LIVE" | "NOT_LIVE";
+  liveStatusCheckedAt?: string | null;
   postedDate: string;
+  expiresAt?: string | null;
   author:
     | string
     | {

@@ -158,6 +158,7 @@ export class AdminService {
       await this.notificationGateway.emitAdminCreated(
         adminResponse,
         creatorName,
+        creatorId,
       );
     } catch (e: unknown) {
       console.error(
@@ -235,6 +236,7 @@ export class AdminService {
     id: string,
     updateAdminDto: UpdateAdminDto,
     updaterName: string = 'Admin',
+    updaterId?: string,
   ): Promise<AdminResponse> {
     const existingTarget = await this.prisma.admin.findUnique({
       where: { id },
@@ -294,6 +296,7 @@ export class AdminService {
       await this.notificationGateway.emitAdminUpdated(
         adminResponse,
         updaterName,
+        updaterId,
       );
     } catch (e: unknown) {
       console.error(
@@ -317,12 +320,14 @@ export class AdminService {
         displayName: updateProfileDto.displayName,
       },
       updaterName,
+      id,
     );
   }
 
   async deleteAdmin(
     id: string,
     deleterName: string = 'Admin',
+    deleterId?: string,
   ): Promise<AdminResponse> {
     const existingAdmin = await this.prisma.admin.findUnique({
       where: { id },
@@ -345,6 +350,7 @@ export class AdminService {
       await this.notificationGateway.emitAdminDeleted(
         admin.displayName || admin.username,
         deleterName,
+        deleterId,
       );
     } catch (e: unknown) {
       console.error(
@@ -386,6 +392,7 @@ export class AdminService {
   async toggleActiveStatus(
     id: string,
     togglerName: string = 'Admin',
+    togglerId?: string,
   ): Promise<AdminResponse> {
     const existingAdmin = await this.prisma.admin.findUnique({
       where: { id },
@@ -412,6 +419,7 @@ export class AdminService {
       await this.notificationGateway.emitAdminToggled(
         adminResponse,
         togglerName,
+        togglerId,
       );
     } catch (e: unknown) {
       console.error(

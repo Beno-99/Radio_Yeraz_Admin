@@ -6,12 +6,14 @@ import { ImageIcon, X } from "lucide-react";
 
 interface SimpleImageUploadProps {
   onImageSelect: (file: File) => void;
+  onImageRemove?: () => void;
   currentImageUrl?: string;
   label?: string; // Make sure this exists
 }
 
 export function SimpleImageUpload({
   onImageSelect,
+  onImageRemove,
   currentImageUrl,
   label = "Post Image", // Default value
 }: SimpleImageUploadProps) {
@@ -40,6 +42,7 @@ export function SimpleImageUpload({
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
+    onImageRemove?.();
   };
 
   return (

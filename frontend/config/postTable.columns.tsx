@@ -25,7 +25,7 @@ export const getPostColumns = (
               alt={post.title || "Post image"}
               className="h-full w-full object-cover"
             />
-          ) : post.video ? (
+          ) : post.youtubeVideoId || post.youtubeUrl || post.facebookUrl ? (
             <Video className="h-6 w-6 text-blue-500" />
           ) : (
             <ImageIcon className="h-6 w-6 text-gray-400" />

@@ -7,6 +7,7 @@ import {
   SubmitHandler,
   FieldValues,
   Path,
+  PathValue,
   DefaultValues,
   useWatch,           // ← Changed to useWatch to reduce compiler warning
 } from "react-hook-form";
@@ -32,10 +33,13 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Image from "next/image"; // Import Next.js Image component
+import { parseFacebookUrl } from "@/lib/facebook";
+import { parseYouTubeUrl } from "@/lib/youtube";
 
 export type FieldType =
   | "text"
   | "email"
+  | "url"
   | "password"
   | "number"
   | "textarea"
@@ -93,6 +97,7 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
     handleSubmit,
     formState: { errors, isDirty },
     reset,
+    setValue,
   } = useForm<T>({
     resolver: schema ? zodResolver(schema) : undefined,
     defaultValues: defaultValues as DefaultValues<T>,
@@ -109,11 +114,63 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
     control,
     name: "video" as Path<T>,
   });
+  const youtubeUrlValue = useWatch({
+    control,
+    name: "youtubeUrl" as Path<T>,
+  });
+  const facebookUrlValue = useWatch({
+    control,
+    name: "facebookUrl" as Path<T>,
+  });
+  const eventDateValue = useWatch({
+    control,
+    name: "eventDate" as Path<T>,
+  });
+  const reminderEnabledValue = useWatch({
+    control,
+    name: "reminderEnabled" as Path<T>,
+  });
+  const autoExpireValue = useWatch({
+    control,
+    name: "autoExpire" as Path<T>,
+  });
 
   const isFile = (value: unknown): value is File => value instanceof File;
 
   const imageSelected = useMemo(() => isFile(mainImageValue), [mainImageValue]);
   const videoSelected = useMemo(() => isFile(videoValue), [videoValue]);
+  const youtubeUrlEntered = useMemo(
+    () =>
+      typeof youtubeUrlValue === "string" &&
+      youtubeUrlValue.trim().length > 0,
+    [youtubeUrlValue],
+  );
+  const facebookUrlEntered = useMemo(
+    () =>
+      typeof facebookUrlValue === "string" &&
+      facebookUrlValue.trim().length > 0,
+    [facebookUrlValue],
+  );
+  const eventDateEntered = useMemo(
+    () =>
+      typeof eventDateValue === "string" &&
+      eventDateValue.trim().length > 0,
+    [eventDateValue],
+  );
+  const youtubePreview = useMemo(
+    () =>
+      typeof youtubeUrlValue === "string"
+        ? parseYouTubeUrl(youtubeUrlValue)
+        : null,
+    [youtubeUrlValue],
+  );
+  const facebookPreview = useMemo(
+    () =>
+      typeof facebookUrlValue === "string"
+        ? parseFacebookUrl(facebookUrlValue)
+        : null,
+    [facebookUrlValue],
+  );
 
   // Fix: Use useMemo instead of useEffect to avoid synchronous setState
   const initialPreviews = useMemo(() => {
@@ -146,6 +203,16 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
     return () => clearTimeout(timer);
   }, [initialPreviews]);
 
+  useEffect(() => {
+    if (!eventDateEntered && reminderEnabledValue) {
+      const reminderPath = "reminderEnabled" as Path<T>;
+
+      setValue(reminderPath, false as PathValue<T, typeof reminderPath>, {
+        shouldDirty: true,
+      });
+    }
+  }, [eventDateEntered, reminderEnabledValue, setValue]);
+
   const submitHandler: SubmitHandler<T> = async (data) => {
     await onSubmit(data);
     reset();
@@ -161,10 +228,14 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
       case "mainImage":
         return <ImageIcon className="h-4 w-4 text-gray-400" />;
       case "video":
+      case "youtubeUrl":
+      case "facebookUrl":
         return <VideoIcon className="h-4 w-4 text-gray-400" />;
       case "profileName":
         return <User className="h-4 w-4 text-gray-400" />;
       case "eventDate":
+      case "expireAfterDays":
+      case "autoExpire":
         return <Calendar className="h-4 w-4 text-gray-400" />;
       case "location":
         return <MapPin className="h-4 w-4 text-gray-400" />;
@@ -188,6 +259,9 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
 
     switch (field.type) {
       case "checkbox":
+        const reminderBlocked =
+          field.name === "reminderEnabled" && !eventDateEntered;
+
         return (
           <div className={fieldContainerClass}>
             <Controller
@@ -200,10 +274,11 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
                       type="checkbox"
                       checked={!!controllerField.value}
                       onChange={(e) => controllerField.onChange(e.target.checked)}
-                      disabled={loading}
+                      disabled={loading || reminderBlocked}
                       className={cn(
                         "h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 transition-colors",
                         error && "border-red-300 focus:ring-red-500",
+                        reminderBlocked && "cursor-not-allowed opacity-50",
                       )}
                     />
                   </div>
@@ -213,7 +288,11 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
                       {field.required && <span className="text-red-500 ml-1">*</span>}
                     </label>
                     {field.description && (
-                      <p className="text-gray-600 text-sm mt-1">{field.description}</p>
+                      <p className="text-gray-600 text-sm mt-1">
+                        {reminderBlocked
+                          ? "Choose an event date before enabling the mobile reminder"
+                          : field.description}
+                      </p>
                     )}
                   </div>
                   {controllerField.value && <Check className="h-5 w-5 text-green-500" />}
@@ -231,10 +310,18 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
 
       case "file": {
         const isVideo = field.name.toLowerCase().includes("video");
+        const imageBlockedByYoutube =
+          field.name === "mainImage" && youtubeUrlEntered;
+        const imageBlockedByFacebook =
+          field.name === "mainImage" && facebookUrlEntered;
+        const imageBlockedByVideo = field.name === "mainImage" && videoSelected;
+        const videoBlockedByImage = field.name === "video" && imageSelected;
         const isDisabled =
           loading ||
-          (field.name === "mainImage" && videoSelected) ||
-          (field.name === "video" && imageSelected);
+          imageBlockedByYoutube ||
+          imageBlockedByFacebook ||
+          imageBlockedByVideo ||
+          videoBlockedByImage;
 
         return (
           <div className={fieldContainerClass}>
@@ -248,7 +335,7 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
               control={control}
               render={({ field: controllerField }) => {
                 const hasFile = isFile(controllerField.value);
-                const otherFieldSelected = isDisabled && !hasFile;
+                const otherFieldSelected = !loading && isDisabled && !hasFile;
 
                 return (
                   <>
@@ -268,12 +355,20 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
                           <div className="text-center p-4">
                             <Ban className="h-10 w-10 text-gray-400 mx-auto mb-2" />
                             <p className="text-sm font-medium text-gray-700">
-                              {isVideo
-                                ? "Cannot upload video when an image is selected"
-                                : "Cannot upload image when a video is selected"}
+                              {imageBlockedByYoutube
+                                ? "Cannot upload image when a YouTube URL is entered"
+                                : imageBlockedByFacebook
+                                  ? "Cannot upload image when a Facebook URL is entered"
+                                : isVideo
+                                  ? "Cannot upload video when an image is selected"
+                                  : "Cannot upload image when a video is selected"}
                             </p>
                             <p className="text-xs text-gray-500 mt-1">
-                              Remove the {isVideo ? "image" : "video"} first
+                              {imageBlockedByYoutube
+                                ? "Remove the YouTube URL first"
+                                : imageBlockedByFacebook
+                                  ? "Remove the Facebook URL first"
+                                : `Remove the ${isVideo ? "image" : "video"} first`}
                             </p>
                           </div>
                         </div>
@@ -456,6 +551,14 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
       default:
         const isTextarea = field.type === "textarea";
         const isDate = field.type === "date";
+        const isYoutubeUrl = field.name === "youtubeUrl";
+        const isFacebookUrl = field.name === "facebookUrl";
+        const isYoutubeDisabled =
+          isYoutubeUrl && (imageSelected || facebookUrlEntered);
+        const isFacebookDisabled =
+          isFacebookUrl && (imageSelected || youtubeUrlEntered);
+        const isExpireDays = field.name === "expireAfterDays";
+        const isExpireDaysDisabled = isExpireDays && autoExpireValue === false;
 
         return (
           <div className={fieldContainerClass}>
@@ -515,13 +618,22 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
                       {...controllerField}
                       value={controllerField.value ?? ""}
                       type={field.type}
+                      min={isExpireDays ? 1 : undefined}
+                      max={isExpireDays ? 365 : undefined}
                       placeholder={field.placeholder}
-                      disabled={loading}
+                      disabled={
+                        loading ||
+                        isYoutubeDisabled ||
+                        isFacebookDisabled ||
+                        isExpireDaysDisabled
+                      }
                       className={cn(
                         "block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm transition-colors",
                         Icon ? "pl-10" : "pl-4",
                         "pr-4 py-3",
-                        error
+                        isYoutubeDisabled || isFacebookDisabled || isExpireDaysDisabled
+                          ? "cursor-not-allowed bg-gray-100 text-gray-400"
+                          : error
                           ? "border-red-300 focus:border-red-500 focus:ring-red-500 bg-red-50"
                           : "bg-white",
                       )}
@@ -531,7 +643,45 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
               />
             </div>
             {field.description && (
-              <p className="mt-2 text-sm text-gray-600">{field.description}</p>
+              <p className="mt-2 text-sm text-gray-600">
+                {isYoutubeDisabled
+                  ? imageSelected
+                    ? "Remove the selected image first to add a YouTube URL"
+                    : "Remove the Facebook URL first to add a YouTube URL"
+                  : isFacebookDisabled
+                  ? imageSelected
+                    ? "Remove the selected image first to add a Facebook URL"
+                    : "Remove the YouTube URL first to add a Facebook URL"
+                  : isExpireDaysDisabled
+                  ? "Turn on Auto Expire to choose how many days to keep this post"
+                  : field.description}
+              </p>
+            )}
+            {field.name === "youtubeUrl" && youtubePreview && (
+              <div className="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-black">
+                <div className="aspect-video w-full">
+                  <iframe
+                    src={youtubePreview.embedUrl}
+                    title="YouTube preview"
+                    className="h-full w-full"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                  />
+                </div>
+              </div>
+            )}
+            {field.name === "facebookUrl" && facebookPreview && (
+              <div className="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-black">
+                <div className="aspect-video w-full">
+                  <iframe
+                    src={facebookPreview.embedUrl}
+                    title="Facebook preview"
+                    className="h-full w-full"
+                    allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+                    allowFullScreen
+                  />
+                </div>
+              </div>
             )}
             {error && (
               <div className="mt-2 flex items-center text-red-600 text-sm">

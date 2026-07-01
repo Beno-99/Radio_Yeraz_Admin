@@ -5,6 +5,7 @@ import { useState, useRef, useEffect } from "react";
 import { Bell, Menu, ChevronDown, User, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAdminNotifications } from "@/hooks/useAdminNotifications";
+import { ConfirmationDialog } from "@/components/ConfirmationDialog";
 import {
   getLocalStorageValue,
   removeLocalStorageValue,
@@ -64,11 +65,17 @@ export default function Header({ onMenuClick, user }: HeaderProps) {
   const router = useRouter();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isSignOutDialogOpen, setIsSignOutDialogOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
 
   const { notifications, unreadCount, markAllRead, markRead } =
     useAdminNotifications();
+
+  const handleSignOutClick = () => {
+    setIsProfileOpen(false);
+    setIsSignOutDialogOpen(true);
+  };
 
   const handleLogout = () => {
     removeLocalStorageValue("access_token");
@@ -268,7 +275,7 @@ export default function Header({ onMenuClick, user }: HeaderProps) {
                     </button>
                     <div className="border-t border-gray-200 dark:border-gray-700 my-2" />
                     <button
-                      onClick={handleLogout}
+                      onClick={handleSignOutClick}
                       className="flex min-h-11 items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-gray-100 dark:text-red-400 dark:hover:bg-gray-700"
                     >
                       <LogOut className="mr-3 h-4 w-4" />
@@ -281,6 +288,17 @@ export default function Header({ onMenuClick, user }: HeaderProps) {
           </div>
         </div>
       </div>
+
+      <ConfirmationDialog
+        isOpen={isSignOutDialogOpen}
+        onClose={() => setIsSignOutDialogOpen(false)}
+        onConfirm={handleLogout}
+        title="Sign Out?"
+        message="Are you sure you want to sign out of your admin account?"
+        type="delete"
+        confirmText="Sign Out"
+        cancelText="Stay Signed In"
+      />
     </header>
   );
 }

@@ -6,7 +6,6 @@ import {
   Pencil,
   Trash2,
   MapPin,
-  Video,
   Image as ImageIcon,
   User,
   Radio,
@@ -14,6 +13,13 @@ import {
 import { Post } from "@/types";
 import { toast } from "sonner";
 import { postsAPI } from "@/lib/api/api";
+import { parseFacebookUrl } from "@/lib/facebook";
+import {
+  getEffectiveLiveStatus,
+  getMediaLiveBadgeClass,
+  getMediaLiveLabel,
+} from "@/lib/postLiveStatus";
+import { getYouTubeEmbedUrl, parseYouTubeUrl } from "@/lib/youtube";
 import Swal from "sweetalert2";
 
 interface PostCardProps {
@@ -69,55 +75,116 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
 
   const postStatus = useMemo(() => {
     const now = new Date();
-    const eventDate = post.eventDate ? new Date(post.eventDate) : null;
-    const eventExpiry =
-      eventDate && !Number.isNaN(eventDate.getTime())
-        ? new Date(eventDate.getTime() + 5 * 24 * 60 * 60 * 1000)
-        : null;
     const expiresAt = post.expiresAt ? new Date(post.expiresAt) : null;
     const postedDate = post.postedDate ? new Date(post.postedDate) : null;
+    const effectiveLiveStatus = getEffectiveLiveStatus(
+      post.liveStatus,
+      post.isLive,
+    );
 
-    if (eventExpiry && eventExpiry < now) return "Expired";
-    if (!eventExpiry && expiresAt && expiresAt < now) return "Expired";
+    if (expiresAt && expiresAt < now) return "Expired";
     if (postedDate && postedDate > now) return "Scheduled";
-    if (post.isLive) return "Live";
+    if (effectiveLiveStatus === "LIVE") return "Live";
+    if (effectiveLiveStatus === "UPCOMING") return "Upcoming";
+    if (effectiveLiveStatus === "WAS_LIVE") return "Was Live";
     if (post.isPublished) return "Published";
     return "Draft";
-  }, [post.eventDate, post.expiresAt, post.postedDate, post.isLive, post.isPublished]);
+  }, [
+    post.expiresAt,
+    post.liveStatus,
+    post.postedDate,
+    post.isLive,
+    post.isPublished,
+  ]);
 
-  const statusBadgeClass =
-    postStatus === "Live"
-      ? "bg-red-50 text-red-600 border-red-100"
-      : postStatus === "Published"
-        ? "bg-green-50 text-green-600 border-green-100"
-        : postStatus === "Scheduled"
-          ? "bg-blue-50 text-blue-600 border-blue-100"
-          : postStatus === "Expired"
-            ? "bg-gray-50 text-gray-600 border-gray-200"
-            : "bg-yellow-50 text-yellow-700 border-yellow-100";
+  const getStatusBadgeClass = () => {
+    if (postStatus === "Live") return "bg-red-50 text-red-600 border-red-100";
+    if (postStatus === "Published") {
+      return "bg-green-50 text-green-600 border-green-100";
+    }
+    if (postStatus === "Scheduled" || postStatus === "Upcoming") {
+      return "bg-blue-50 text-blue-600 border-blue-100";
+    }
+    if (postStatus === "Expired" || postStatus === "Was Live") {
+      return "bg-gray-50 text-gray-600 border-gray-200";
+    }
+
+    return "bg-yellow-50 text-yellow-700 border-yellow-100";
+  };
+
+  const statusBadgeClass = getStatusBadgeClass();
+
+  const getStatusDotClass = () => {
+    if (postStatus === "Live") return "bg-red-500 animate-pulse";
+    if (postStatus === "Published") return "bg-green-500";
+    if (postStatus === "Scheduled" || postStatus === "Upcoming") {
+      return "bg-blue-500";
+    }
+    if (postStatus === "Expired" || postStatus === "Was Live") {
+      return "bg-gray-400";
+    }
+
+    return "bg-yellow-500";
+  };
 
   const getMediaPreview = () => {
-    if (post.video) {
-      const videoUrl = post.video.startsWith("http")
-        ? post.video
-        : `${mediaUrl}${post.video}`;
+    const youtubeEmbedUrl =
+      (post.youtubeVideoId ? getYouTubeEmbedUrl(post.youtubeVideoId) : null) ||
+      parseYouTubeUrl(post.youtubeUrl)?.embedUrl;
+    const facebookEmbedUrl = parseFacebookUrl(post.facebookUrl)?.embedUrl;
+    const effectiveLiveStatus = getEffectiveLiveStatus(
+      post.liveStatus,
+      post.isLive,
+    );
+    const showLiveDot = effectiveLiveStatus === "LIVE";
 
+    if (youtubeEmbedUrl) {
       return (
-        <div className="relative w-full h-72 bg-black rounded-t-lg overflow-hidden group/video">
-          <video
-            src={`${videoUrl}#t=0.1`}
-            className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover/video:opacity-100 transition-opacity"
-            muted
-            playsInline
-            preload="metadata"
-          />
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="bg-white/20 backdrop-blur-md p-3 rounded-full">
-              <Video className="w-8 h-8 text-white" />
-            </div>
+        <div className="relative h-56 w-full overflow-hidden rounded-t-lg bg-black sm:h-72">
+          <div className="h-full w-full">
+            <iframe
+              src={youtubeEmbedUrl}
+              title={post.title}
+              className="h-full w-full"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+            />
           </div>
-          <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-bold text-white flex items-center gap-1 uppercase tracking-wider">
-            Video Preview
+          <div
+            className={`absolute top-2 right-2 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-bold text-white flex items-center gap-1 uppercase tracking-wider ${
+              getMediaLiveBadgeClass(post.liveStatus, post.isLive)
+            }`}
+          >
+            {showLiveDot && <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />}
+            {getMediaLiveLabel("YouTube", post.liveStatus, post.isLive)}
+          </div>
+        </div>
+      );
+    }
+
+    if (facebookEmbedUrl) {
+      return (
+        <div className="relative h-56 w-full overflow-hidden rounded-t-lg bg-black sm:h-72">
+          <div className="h-full w-full">
+            <iframe
+              src={facebookEmbedUrl}
+              title={post.title}
+              className="h-full w-full"
+              allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+              allowFullScreen
+            />
+          </div>
+          <div
+            className={`absolute top-2 right-2 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-bold text-white flex items-center gap-1 uppercase tracking-wider ${
+              getMediaLiveBadgeClass(
+                post.liveStatus,
+                post.isLive,
+                "bg-blue-700/80",
+              )
+            }`}
+          >
+            {showLiveDot && <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />}
+            {getMediaLiveLabel("Facebook", post.liveStatus, post.isLive)}
           </div>
         </div>
       );
@@ -184,17 +251,7 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
               className={`flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded-full uppercase border whitespace-nowrap ${statusBadgeClass}`}
             >
               <span
-                className={`h-1.5 w-1.5 rounded-full ${
-                  postStatus === "Live"
-                    ? "bg-red-500 animate-pulse"
-                    : postStatus === "Published"
-                      ? "bg-green-500"
-                      : postStatus === "Scheduled"
-                        ? "bg-blue-500"
-                        : postStatus === "Expired"
-                          ? "bg-gray-400"
-                          : "bg-yellow-500"
-                }`}
+                className={`h-1.5 w-1.5 rounded-full ${getStatusDotClass()}`}
               />
               {postStatus}
             </span>

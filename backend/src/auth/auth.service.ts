@@ -122,7 +122,7 @@ export class AuthService {
     password: string,
   ): Promise<PrismaAdmin | null> {
     const admin = await this.prisma.admin.findUnique({
-      where: { username },
+      where: { username: username.trim() },
     });
 
     if (!admin || !admin.isActive) {
@@ -155,8 +155,9 @@ export class AuthService {
 
   // ============ AUTHENTICATION METHODS ============
   async login(loginDto: LoginAdminDto) {
+    const username = loginDto.username.trim();
     const admin = await this.prisma.admin.findUnique({
-      where: { username: loginDto.username },
+      where: { username },
     });
 
     if (!admin) {

@@ -114,6 +114,11 @@ export default function CreatePostPage() {
           defaultValues={{
             isLive: false,
             isPublished: false,
+            reminderEnabled: false,
+            autoExpire: true,
+            expireAfterDays: 5,
+            youtubeUrl: "",
+            facebookUrl: "",
             location: "",
           }}
           submitText="Create Post"
@@ -143,6 +148,7 @@ export default function CreatePostPage() {
                 <ul className="list-disc pl-5 space-y-1">
                   <li>Use a descriptive title that captures attention</li>
                   <li>Add high-quality images for better engagement</li>
+                  <li>Use either one image or one YouTube/Facebook video</li>
                   <li>Include relevant links to external sources</li>
                   <li>
   Set to &quot;Publish&quot; only when you&apos;re ready to publish
@@ -150,6 +156,10 @@ export default function CreatePostPage() {
 
 <li>
   Set to &quot;Live&quot; only when it is a streaming event
+</li>
+
+<li>
+  Enable &quot;Send Mobile Reminder&quot; only for posts with an event date that should notify mobile app users
 </li>
 
 <li>

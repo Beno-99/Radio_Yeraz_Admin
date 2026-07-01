@@ -6,9 +6,42 @@ import { ArrowLeft, Upload, Image as ImageIcon, Video } from "lucide-react";
 import { toast } from "sonner";
 import { postsAPI } from "@/lib/api/api";
 import { SimpleImageUpload } from "@/components/posts/PostImageUpload";
+import { parseFacebookUrl } from "@/lib/facebook";
+import {
+  getEffectiveLiveStatus,
+  type PostLiveStatus,
+} from "@/lib/postLiveStatus";
+import { getYouTubeEmbedUrl, parseYouTubeUrl } from "@/lib/youtube";
 import Swal from "sweetalert2";
 
-type MediaType = "image" | "video" | "none";
+type MediaType = "image" | "youtube" | "facebook" | "none";
+
+const DEFAULT_EXPIRE_AFTER_DAYS = 5;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const getExpireAfterDays = (postedDate?: string, expiresAt?: string) => {
+  if (!postedDate || !expiresAt) return DEFAULT_EXPIRE_AFTER_DAYS;
+
+  const posted = new Date(postedDate);
+  const expiry = new Date(expiresAt);
+
+  if (Number.isNaN(posted.getTime()) || Number.isNaN(expiry.getTime())) {
+    return DEFAULT_EXPIRE_AFTER_DAYS;
+  }
+
+  return Math.max(
+    1,
+    Math.ceil((expiry.getTime() - posted.getTime()) / DAY_MS),
+  );
+};
+
+const getExpiryDateFromDays = (postedDate: string, daysValue: string) => {
+  const posted = postedDate ? new Date(postedDate) : new Date();
+  const days = Number(daysValue) || DEFAULT_EXPIRE_AFTER_DAYS;
+  const baseDate = Number.isNaN(posted.getTime()) ? new Date() : posted;
+
+  return new Date(baseDate.getTime() + days * DAY_MS);
+};
 
 export default function EditPostPage() {
   const router = useRouter();
@@ -18,13 +51,11 @@ export default function EditPostPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [selectedVideoFile, setSelectedVideoFile] = useState<File | null>(null);
   const [currentImagePath, setCurrentImagePath] = useState("");
-  const [currentVideoPath, setCurrentVideoPath] = useState("");
+  const [currentYoutubeVideoId, setCurrentYoutubeVideoId] = useState("");
   const [mediaType, setMediaType] = useState<MediaType>("image");
   const [postMeta, setPostMeta] = useState({
     postedDate: "",
-    expiresAt: "",
   });
   const [formData, setFormData] = useState({
     title: "",
@@ -33,8 +64,14 @@ export default function EditPostPage() {
     eventDate: "",
     location: "",
     link: "",
+    youtubeUrl: "",
+    facebookUrl: "",
     isLive: false,
+    liveStatus: "UNKNOWN" as PostLiveStatus,
     isPublished: false,
+    reminderEnabled: false,
+    autoExpire: true,
+    expireAfterDays: String(DEFAULT_EXPIRE_AFTER_DAYS),
   });
 
   const mediaUrl =
@@ -53,25 +90,38 @@ export default function EditPostPage() {
           eventDate: post.eventDate?.split("T")[0] || "",
           location: post.location || "",
           link: post.link || "",
+          youtubeUrl: post.youtubeUrl || "",
+          facebookUrl: post.facebookUrl || "",
           isLive: post.isLive ?? false,
+          liveStatus: post.liveStatus || "UNKNOWN",
           isPublished: post.isPublished ?? false,
+          reminderEnabled: post.reminderEnabled ?? false,
+          autoExpire: Boolean(post.expiresAt),
+          expireAfterDays: String(
+            getExpireAfterDays(post.postedDate, post.expiresAt),
+          ),
         });
 
         setPostMeta({
           postedDate: post.postedDate || "",
-          expiresAt: post.expiresAt || "",
         });
 
-        if (post.video && post.video !== "") {
-          setMediaType("video");
-          setCurrentVideoPath(post.video);
+        if (post.facebookUrl || post.videoSource === "FACEBOOK") {
+          setMediaType("facebook");
+          setCurrentYoutubeVideoId("");
+          setCurrentImagePath("");
+        } else if (post.youtubeVideoId || post.youtubeUrl || post.videoSource === "YOUTUBE") {
+          const parsedYoutube = parseYouTubeUrl(post.youtubeUrl || "");
+          setMediaType("youtube");
+          setCurrentYoutubeVideoId(post.youtubeVideoId || parsedYoutube?.videoId || "");
           setCurrentImagePath("");
         } else if (post.mainImage && post.mainImage !== "[object Object]") {
           setMediaType("image");
           setCurrentImagePath(post.mainImage);
-          setCurrentVideoPath("");
+          setCurrentYoutubeVideoId("");
         } else {
           setMediaType("none");
+          setCurrentYoutubeVideoId("");
         }
       } catch {
         toast.error("Failed to load post");
@@ -85,21 +135,30 @@ export default function EditPostPage() {
 
   const postStatus = useMemo(() => {
     const now = new Date();
-    const eventDate = formData.eventDate ? new Date(formData.eventDate) : null;
-    const eventExpiry =
-      eventDate && !Number.isNaN(eventDate.getTime())
-        ? new Date(eventDate.getTime() + 5 * 24 * 60 * 60 * 1000)
-        : null;
-    const expiresAt = postMeta.expiresAt ? new Date(postMeta.expiresAt) : null;
+    const expiresAt = formData.autoExpire
+      ? getExpiryDateFromDays(postMeta.postedDate, formData.expireAfterDays)
+      : null;
     const postedDate = postMeta.postedDate ? new Date(postMeta.postedDate) : null;
+    const effectiveLiveStatus = getEffectiveLiveStatus(
+      formData.liveStatus,
+      formData.isLive,
+    );
 
-    if (eventExpiry && eventExpiry < now) return "Expired";
-    if (!eventExpiry && expiresAt && expiresAt < now) return "Expired";
+    if (expiresAt && expiresAt < now) return "Expired";
     if (postedDate && postedDate > now) return "Scheduled";
-    if (formData.isLive) return "Live";
+    if (effectiveLiveStatus === "LIVE") return "Live";
+    if (effectiveLiveStatus === "UPCOMING") return "Upcoming";
+    if (effectiveLiveStatus === "WAS_LIVE") return "Was Live";
     if (formData.isPublished) return "Published";
     return "Draft";
-  }, [formData.eventDate, formData.isLive, formData.isPublished, postMeta]);
+  }, [
+    formData.autoExpire,
+    formData.expireAfterDays,
+    formData.isLive,
+    formData.liveStatus,
+    formData.isPublished,
+    postMeta.postedDate,
+  ]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,6 +168,42 @@ export default function EditPostPage() {
         icon: "warning",
         title: "Validation Error",
         text: "Title is required",
+        confirmButtonColor: "#7c3aed",
+      });
+      return;
+    }
+
+    if (mediaType === "youtube" && !parseYouTubeUrl(formData.youtubeUrl)) {
+      await Swal.fire({
+        icon: "warning",
+        title: "Validation Error",
+        text: "Enter a valid YouTube URL",
+        confirmButtonColor: "#7c3aed",
+      });
+      return;
+    }
+
+    if (mediaType === "facebook" && !parseFacebookUrl(formData.facebookUrl)) {
+      await Swal.fire({
+        icon: "warning",
+        title: "Validation Error",
+        text: "Enter a valid public Facebook video or live URL",
+        confirmButtonColor: "#7c3aed",
+      });
+      return;
+    }
+
+    const expireAfterDays = Number(formData.expireAfterDays);
+    if (
+      formData.autoExpire &&
+      (!Number.isInteger(expireAfterDays) ||
+        expireAfterDays < 1 ||
+        expireAfterDays > 365)
+    ) {
+      await Swal.fire({
+        icon: "warning",
+        title: "Validation Error",
+        text: "Keep days must be between 1 and 365",
         confirmButtonColor: "#7c3aed",
       });
       return;
@@ -139,24 +234,39 @@ export default function EditPostPage() {
       formDataToSend.append("link", formData.link || "");
       formDataToSend.append("isLive", String(formData.isLive));
       formDataToSend.append("isPublished", String(formData.isPublished));
+      formDataToSend.append(
+        "reminderEnabled",
+        String(Boolean(formData.eventDate && formData.reminderEnabled)),
+      );
+      formDataToSend.append("autoExpire", String(formData.autoExpire));
+      if (formData.autoExpire) {
+        formDataToSend.append("expireAfterDays", String(expireAfterDays));
+      }
 
       if (mediaType === "image") {
         if (selectedFile) {
           formDataToSend.append("mainImage", selectedFile);
         }
-        formDataToSend.append("removeVideo", "true");
+        formDataToSend.append("youtubeUrl", "");
+        formDataToSend.append("facebookUrl", "");
       }
 
-      if (mediaType === "video") {
-        if (selectedVideoFile) {
-          formDataToSend.append("video", selectedVideoFile);
-        }
+      if (mediaType === "youtube") {
+        formDataToSend.append("youtubeUrl", formData.youtubeUrl.trim());
+        formDataToSend.append("facebookUrl", "");
+        formDataToSend.append("removeImage", "true");
+      }
+
+      if (mediaType === "facebook") {
+        formDataToSend.append("facebookUrl", formData.facebookUrl.trim());
+        formDataToSend.append("youtubeUrl", "");
         formDataToSend.append("removeImage", "true");
       }
 
       if (mediaType === "none") {
         formDataToSend.append("removeImage", "true");
-        formDataToSend.append("removeVideo", "true");
+        formDataToSend.append("youtubeUrl", "");
+        formDataToSend.append("facebookUrl", "");
       }
 
       Swal.fire({
@@ -227,22 +337,49 @@ export default function EditPostPage() {
       : `${mediaUrl}${currentImagePath}`
     : undefined;
 
-  const currentVideoUrl = currentVideoPath
-    ? currentVideoPath.startsWith("http")
-      ? currentVideoPath
-      : `${mediaUrl}${currentVideoPath}`
-    : undefined;
+  const youtubePreview = parseYouTubeUrl(formData.youtubeUrl);
+  const currentYoutubeEmbedUrl =
+    youtubePreview?.embedUrl ||
+    (currentYoutubeVideoId ? getYouTubeEmbedUrl(currentYoutubeVideoId) : null);
+  const facebookPreview = parseFacebookUrl(formData.facebookUrl);
+  const currentFacebookEmbedUrl = facebookPreview?.embedUrl ?? null;
 
-  const badgeClass =
-    postStatus === "Live"
-      ? "bg-red-100 text-red-700"
-      : postStatus === "Published"
-        ? "bg-green-100 text-green-700"
-        : postStatus === "Scheduled"
-          ? "bg-blue-100 text-blue-700"
-          : postStatus === "Expired"
-            ? "bg-gray-100 text-gray-700"
-            : "bg-yellow-100 text-yellow-700";
+  const getBadgeClass = () => {
+    if (postStatus === "Live") return "bg-red-100 text-red-700";
+    if (postStatus === "Published") return "bg-green-100 text-green-700";
+    if (postStatus === "Scheduled" || postStatus === "Upcoming") {
+      return "bg-blue-100 text-blue-700";
+    }
+    if (postStatus === "Expired" || postStatus === "Was Live") {
+      return "bg-gray-100 text-gray-700";
+    }
+
+    return "bg-yellow-100 text-yellow-700";
+  };
+
+  const badgeClass = getBadgeClass();
+
+  const projectedExpiryDate = formData.autoExpire
+    ? getExpiryDateFromDays(postMeta.postedDate, formData.expireAfterDays)
+    : null;
+  const projectedExpiryText = projectedExpiryDate
+    ? projectedExpiryDate.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })
+    : null;
+
+  const hasImageMedia =
+    mediaType === "image" && (Boolean(currentImagePath) || Boolean(selectedFile));
+  const hasYoutubeMedia =
+    mediaType === "youtube" &&
+    (Boolean(currentYoutubeVideoId) || formData.youtubeUrl.trim().length > 0);
+  const hasFacebookMedia =
+    mediaType === "facebook" && formData.facebookUrl.trim().length > 0;
+  const imageChoiceDisabled = hasYoutubeMedia || hasFacebookMedia;
+  const youtubeChoiceDisabled = hasImageMedia || hasFacebookMedia;
+  const facebookChoiceDisabled = hasImageMedia || hasYoutubeMedia;
 
   return (
     <div className="max-w-3xl mx-auto p-6">
@@ -267,15 +404,19 @@ export default function EditPostPage() {
               Media Type
             </label>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
               <button
                 type="button"
+                disabled={imageChoiceDisabled}
                 onClick={() => {
                   setMediaType("image");
-                  setSelectedVideoFile(null);
+                  setCurrentYoutubeVideoId("");
+                  setFormData({ ...formData, youtubeUrl: "", facebookUrl: "" });
                 }}
-                className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium ${
-                  mediaType === "image"
+                className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 ${
+                  imageChoiceDisabled
+                    ? "bg-gray-100 text-gray-400 border-gray-200"
+                    : mediaType === "image"
                     ? "bg-purple-600 text-white border-purple-600"
                     : "bg-white text-gray-700 border-gray-300"
                 }`}
@@ -286,18 +427,45 @@ export default function EditPostPage() {
 
               <button
                 type="button"
+                disabled={youtubeChoiceDisabled}
                 onClick={() => {
-                  setMediaType("video");
+                  setMediaType("youtube");
                   setSelectedFile(null);
+                  setCurrentImagePath("");
+                  setFormData({ ...formData, facebookUrl: "" });
                 }}
-                className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium ${
-                  mediaType === "video"
+                className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 ${
+                  youtubeChoiceDisabled
+                    ? "bg-gray-100 text-gray-400 border-gray-200"
+                    : mediaType === "youtube"
                     ? "bg-purple-600 text-white border-purple-600"
                     : "bg-white text-gray-700 border-gray-300"
                 }`}
               >
                 <Video size={16} />
-                Video
+                YouTube
+              </button>
+
+              <button
+                type="button"
+                disabled={facebookChoiceDisabled}
+                onClick={() => {
+                  setMediaType("facebook");
+                  setSelectedFile(null);
+                  setCurrentImagePath("");
+                  setCurrentYoutubeVideoId("");
+                  setFormData({ ...formData, youtubeUrl: "" });
+                }}
+                className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 ${
+                  facebookChoiceDisabled
+                    ? "bg-gray-100 text-gray-400 border-gray-200"
+                    : mediaType === "facebook"
+                    ? "bg-purple-600 text-white border-purple-600"
+                    : "bg-white text-gray-700 border-gray-300"
+                }`}
+              >
+                <Video size={16} />
+                Facebook
               </button>
 
               <button
@@ -305,9 +473,9 @@ export default function EditPostPage() {
                 onClick={() => {
                   setMediaType("none");
                   setSelectedFile(null);
-                  setSelectedVideoFile(null);
                   setCurrentImagePath("");
-                  setCurrentVideoPath("");
+                  setCurrentYoutubeVideoId("");
+                  setFormData({ ...formData, youtubeUrl: "", facebookUrl: "" });
                 }}
                 className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium ${
                   mediaType === "none"
@@ -321,43 +489,70 @@ export default function EditPostPage() {
             </div>
           </div>
 
-          {mediaType === "video" && currentVideoUrl && !selectedVideoFile && (
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-2">
-                Current Video
-              </label>
-              <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
-                <video
-                  src={currentVideoUrl}
-                  controls
-                  className="w-full h-full object-contain"
-                />
-              </div>
-            </div>
-          )}
-
           {mediaType === "image" && (
             <SimpleImageUpload
               onImageSelect={setSelectedFile}
+              onImageRemove={() => {
+                setSelectedFile(null);
+                setCurrentImagePath("");
+              }}
               currentImageUrl={currentImageUrl}
               label="Post Image"
             />
           )}
 
-          {mediaType === "video" && (
-            <div>
+          {mediaType === "youtube" && (
+            <div className="space-y-3">
               <label className="block text-sm font-medium mb-2">
-                Upload New Video
+                YouTube URL
               </label>
               <input
-                type="file"
-                accept="video/*"
-                onChange={(e) => setSelectedVideoFile(e.target.files?.[0] || null)}
+                type="url"
+                value={formData.youtubeUrl}
+                onChange={(e) => {
+                  setCurrentYoutubeVideoId("");
+                  setFormData({ ...formData, youtubeUrl: e.target.value });
+                }}
+                placeholder="https://www.youtube.com/watch?v=VIDEO_ID"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
               />
-              {selectedVideoFile && (
-                <div className="bg-green-50 p-3 rounded-lg text-sm text-green-700 mt-3">
-                  ✅ New video selected: {selectedVideoFile.name}
+              {currentYoutubeEmbedUrl && (
+                <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
+                  <iframe
+                    src={currentYoutubeEmbedUrl}
+                    title="YouTube preview"
+                    className="h-full w-full"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {mediaType === "facebook" && (
+            <div className="space-y-3">
+              <label className="block text-sm font-medium mb-2">
+                Facebook Live URL
+              </label>
+              <input
+                type="url"
+                value={formData.facebookUrl}
+                onChange={(e) =>
+                  setFormData({ ...formData, facebookUrl: e.target.value })
+                }
+                placeholder="https://www.facebook.com/page/videos/VIDEO_ID"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+              />
+              {currentFacebookEmbedUrl && (
+                <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
+                  <iframe
+                    src={currentFacebookEmbedUrl}
+                    title="Facebook preview"
+                    className="h-full w-full"
+                    allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+                    allowFullScreen
+                  />
                 </div>
               )}
             </div>
@@ -423,11 +618,51 @@ export default function EditPostPage() {
             <input
               type="date"
               value={formData.eventDate}
-              onChange={(e) =>
-                setFormData({ ...formData, eventDate: e.target.value })
-              }
+              onChange={(e) => {
+                const eventDate = e.target.value;
+                setFormData({
+                  ...formData,
+                  eventDate,
+                  reminderEnabled: eventDate
+                    ? formData.reminderEnabled
+                    : false,
+                });
+              }}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
             />
+          </div>
+
+          <div className="flex items-start gap-4 p-4 bg-gray-50 rounded-lg">
+            <input
+              type="checkbox"
+              id="reminderEnabled"
+              checked={formData.reminderEnabled}
+              disabled={!formData.eventDate}
+              onChange={(e) => {
+                setFormData({
+                  ...formData,
+                  reminderEnabled: e.target.checked,
+                });
+              }}
+              className="mt-1 w-5 h-5 text-purple-600 rounded disabled:cursor-not-allowed disabled:opacity-50"
+            />
+            <div>
+              <label
+                htmlFor="reminderEnabled"
+                className={`text-sm font-medium ${
+                  formData.eventDate
+                    ? "cursor-pointer text-gray-900"
+                    : "cursor-not-allowed text-gray-400"
+                }`}
+              >
+                Send Mobile Reminder
+              </label>
+              <p className="text-sm text-gray-500">
+                {formData.eventDate
+                  ? "Send a Firebase push notification to mobile users on the event day."
+                  : "Choose an event date before enabling the mobile reminder."}
+              </p>
+            </div>
           </div>
 
           <div>
@@ -461,7 +696,11 @@ export default function EditPostPage() {
               checked={formData.isLive}
               onChange={(e) => {
                 const newValue = e.target.checked;
-                setFormData({ ...formData, isLive: newValue });
+                setFormData({
+                  ...formData,
+                  isLive: newValue,
+                  liveStatus: newValue ? "LIVE" : "WAS_LIVE",
+                });
               }}
               className="w-5 h-5 text-purple-600 rounded"
             />
@@ -491,6 +730,53 @@ export default function EditPostPage() {
               Published (Currently:{" "}
               {formData.isPublished ? "✅ Published" : "📝 Draft"})
             </label>
+          </div>
+
+          <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
+            <div className="flex items-start gap-4">
+              <input
+                type="checkbox"
+                id="autoExpire"
+                checked={formData.autoExpire}
+                onChange={(e) => {
+                  setFormData({ ...formData, autoExpire: e.target.checked });
+                }}
+                className="mt-1 w-5 h-5 text-purple-600 rounded"
+              />
+              <div>
+                <label
+                  htmlFor="autoExpire"
+                  className="text-sm font-medium cursor-pointer"
+                >
+                  Auto Expire
+                </label>
+                <p className="text-sm text-gray-500">
+                  Hide this post automatically after the selected number of days.
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Keep Post For (Days)
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={365}
+                value={formData.expireAfterDays}
+                disabled={!formData.autoExpire}
+                onChange={(e) =>
+                  setFormData({ ...formData, expireAfterDays: e.target.value })
+                }
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+              />
+              <p className="mt-2 text-sm text-gray-500">
+                {formData.autoExpire && projectedExpiryText
+                  ? `This post will expire on ${projectedExpiryText}.`
+                  : "This post will stay visible until you unpublish it."}
+              </p>
+            </div>
           </div>
 
           <button
