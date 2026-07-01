@@ -44,3 +44,4 @@ backend/uploads/
 /frontend/manual-app.pid
 /frontend/node
 /frontend/tmp/
+frontend/.next.previous/
