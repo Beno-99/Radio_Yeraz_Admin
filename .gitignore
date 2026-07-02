@@ -15,6 +15,7 @@ build/
 # logs
 logs
 *.log
+*.tsbuildinfo
 
 # OS files
 .DS_Store

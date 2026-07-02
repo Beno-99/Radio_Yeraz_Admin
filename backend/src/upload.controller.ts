@@ -8,6 +8,12 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
+import {
+  ensureGenericImagesDirectory,
+  ensureGenericVideosDirectory,
+  getGenericImageWebPath,
+  getGenericVideoWebPath,
+} from './common/uploads/uploads-paths';
 
 @Controller('upload')
 export class UploadController {
@@ -15,7 +21,9 @@ export class UploadController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
-        destination: './uploads/images',
+        destination: (req, file, callback) => {
+          callback(null, ensureGenericImagesDirectory());
+        },
         filename: (req, file, callback) => {
           const uniqueSuffix =
             Date.now() + '-' + Math.round(Math.random() * 1e9);
@@ -36,7 +44,7 @@ export class UploadController {
   )
   uploadImage(@UploadedFile() file: Express.Multer.File) {
     return {
-      url: `/uploads/images/${file.filename}`,
+      url: getGenericImageWebPath(file.filename),
       filename: file.filename,
       originalname: file.originalname,
       mimetype: file.mimetype,
@@ -48,7 +56,9 @@ export class UploadController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
-        destination: './uploads/videos',
+        destination: (req, file, callback) => {
+          callback(null, ensureGenericVideosDirectory());
+        },
         filename: (req, file, callback) => {
           const uniqueSuffix =
             Date.now() + '-' + Math.round(Math.random() * 1e9);
@@ -69,7 +79,7 @@ export class UploadController {
   )
   uploadVideo(@UploadedFile() file: Express.Multer.File) {
     return {
-      url: `/uploads/videos/${file.filename}`,
+      url: getGenericVideoWebPath(file.filename),
       filename: file.filename,
       originalname: file.originalname,
       mimetype: file.mimetype,

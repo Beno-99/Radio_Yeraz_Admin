@@ -18,11 +18,14 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { CarouselStatus } from '@prisma/client';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
-import * as fs from 'fs';
 import { AuthenticatedRequest } from '../auth/interfaces/authenticated-request.interface';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import {
+  ensureCarouselImagesDirectory,
+  getCarouselImageWebPath,
+} from '../common/uploads/uploads-paths';
 import { Role } from '../admin/schemas/admin.schema';
 import { CarouselFindAllFilters, CarouselsService } from './carousels.service';
 import { CreateCarouselDto } from './dto/create-carousel.dto';
@@ -103,11 +106,7 @@ export class CarouselsController {
     FileInterceptor('image', {
       storage: diskStorage({
         destination: (req, file, cb) => {
-          const uploadPath = './uploads/carousels';
-          if (!fs.existsSync(uploadPath)) {
-            fs.mkdirSync(uploadPath, { recursive: true });
-          }
-          cb(null, uploadPath);
+          cb(null, ensureCarouselImagesDirectory());
         },
         filename: (req, file, cb) => {
           const uniqueSuffix =
@@ -125,7 +124,7 @@ export class CarouselsController {
   ) {
     if (!file) throw new BadRequestException('Image file is required');
 
-    createCarouselDto.image = `/uploads/carousels/${file.filename}`;
+    createCarouselDto.image = getCarouselImageWebPath(file.filename);
     const carousel = await this.carouselsService.create(createCarouselDto, req.user.sub);
 
     return {
@@ -141,7 +140,9 @@ export class CarouselsController {
   @UseInterceptors(
     FileInterceptor('image', {
       storage: diskStorage({
-        destination: './uploads/carousels',
+        destination: (req, file, cb) => {
+          cb(null, ensureCarouselImagesDirectory());
+        },
         filename: (req, file, cb) => {
           const uniqueSuffix =
             Date.now() + '-' + Math.round(Math.random() * 1e9);
@@ -159,7 +160,7 @@ export class CarouselsController {
     const authorName = req.user.displayName || req.user.username || 'Admin';
 
     if (file) {
-      updateCarouselDto.image = `/uploads/carousels/${file.filename}`;
+      updateCarouselDto.image = getCarouselImageWebPath(file.filename);
     }
 
     const carousel = await this.carouselsService.update(
@@ -182,11 +183,7 @@ export class CarouselsController {
     FileInterceptor('image', {
       storage: diskStorage({
         destination: (req, file, cb) => {
-          const uploadPath = './uploads/carousels';
-          if (!fs.existsSync(uploadPath)) {
-            fs.mkdirSync(uploadPath, { recursive: true });
-          }
-          cb(null, uploadPath);
+          cb(null, ensureCarouselImagesDirectory());
         },
         filename: (req, file, cb) => {
           const uniqueSuffix =
@@ -211,7 +208,7 @@ export class CarouselsController {
   ) {
     if (!file) throw new BadRequestException('Image file is required');
 
-    const imagePath = `/uploads/carousels/${file.filename}`;
+    const imagePath = getCarouselImageWebPath(file.filename);
     const updatedCarousel = await this.carouselsService.updateImage(id, imagePath);
 
     return {

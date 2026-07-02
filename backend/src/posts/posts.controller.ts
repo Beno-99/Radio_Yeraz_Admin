@@ -18,12 +18,15 @@ import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { PostStatus } from '@prisma/client';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
-import * as fs from 'fs';
 import { Role } from '../admin/schemas/admin.schema';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { AuthenticatedRequest } from '../auth/interfaces/authenticated-request.interface';
 import { Roles } from '../common/decorators/roles.decorator';
+import {
+  ensurePostsImagesDirectory,
+  getPostImageWebPath,
+} from '../common/uploads/uploads-paths';
 import { FirebaseService } from '../firebase/firebase.service';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
@@ -191,13 +194,7 @@ export class PostsController {
       {
         storage: diskStorage({
           destination: (req, file, cb) => {
-            const uploadPath = './uploads/posts/images';
-
-            if (!fs.existsSync(uploadPath)) {
-              fs.mkdirSync(uploadPath, { recursive: true });
-            }
-
-            cb(null, uploadPath);
+            cb(null, ensurePostsImagesDirectory());
           },
           filename: (req, file, callback) => {
             const uniqueSuffix =
@@ -225,7 +222,7 @@ export class PostsController {
     };
 
     if (files?.mainImage?.[0]) {
-      postData.mainImage = `/uploads/posts/images/${files.mainImage[0].filename}`;
+      postData.mainImage = getPostImageWebPath(files.mainImage[0].filename);
     }
 
     const post = await this.postsService.create(postData, authorId);
@@ -264,11 +261,7 @@ export class PostsController {
       {
         storage: diskStorage({
           destination: (req, file, cb) => {
-            const uploadPath = './uploads/posts/images';
-            if (!fs.existsSync(uploadPath)) {
-              fs.mkdirSync(uploadPath, { recursive: true });
-            }
-            cb(null, uploadPath);
+            cb(null, ensurePostsImagesDirectory());
           },
           filename: (req, file, callback) => {
             const uniqueSuffix =
@@ -294,7 +287,7 @@ export class PostsController {
     }
 
     if (files?.mainImage?.[0]) {
-      updatePostDto.mainImage = `/uploads/posts/images/${files.mainImage[0].filename}`;
+      updatePostDto.mainImage = getPostImageWebPath(files.mainImage[0].filename);
     }
     const updatedPost = await this.postsService.update(
       id,

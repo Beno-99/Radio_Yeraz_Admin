@@ -3,28 +3,25 @@ import { UploadResponse } from './interfaces/upload-response.interface';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import {
+  deleteUploadFileIfExists,
+  ensureCommonUploadDirectories,
+  ensureUploadsDirectory,
+  getGenericDocumentWebPath,
+  getGenericImageWebPath,
+  getGenericVideoWebPath,
+  getUploadsDirectory,
+} from '../common/uploads/uploads-paths';
 
 @Injectable()
 export class UploadService {
-  private readonly uploadBasePath = path.join(process.cwd(), 'uploads');
-
   constructor() {
     // Ensure upload directories exist
     this.ensureUploadDirectories();
   }
 
   private ensureUploadDirectories() {
-    const directories = [
-      path.join(this.uploadBasePath, 'images'),
-      path.join(this.uploadBasePath, 'videos'),
-      path.join(this.uploadBasePath, 'documents'),
-    ];
-
-    directories.forEach((dir) => {
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-    });
+    ensureCommonUploadDirectories();
   }
 
   private generateUniqueFilename(originalname: string): string {
@@ -71,14 +68,20 @@ export class UploadService {
 
     const folder = this.getDestinationFolder(file.mimetype);
     const filename = this.generateUniqueFilename(file.originalname);
-    const destinationPath = path.join(this.uploadBasePath, folder);
+    const destinationPath = ensureUploadsDirectory(folder);
 
     // Move file to destination
     const filePath = path.join(destinationPath, filename);
     fs.writeFileSync(filePath, file.buffer);
+    const url =
+      folder === 'images'
+        ? getGenericImageWebPath(filename)
+        : folder === 'videos'
+          ? getGenericVideoWebPath(filename)
+          : getGenericDocumentWebPath(filename);
 
     return {
-      url: `/uploads/${folder}/${filename}`,
+      url,
       filename: filename,
       originalname: file.originalname,
       mimetype: file.mimetype,
@@ -88,20 +91,14 @@ export class UploadService {
 
   async deleteFile(fileUrl: string): Promise<void> {
     try {
-      // Extract filename from URL
-      const urlParts = fileUrl.split('/uploads/');
-      if (urlParts.length !== 2) {
-        throw new Error('Invalid file URL');
-      }
-
-      const filePath = path.join(this.uploadBasePath, urlParts[1]);
-
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
+      deleteUploadFileIfExists(fileUrl);
     } catch (error) {
       console.error('Error deleting file:', error);
       throw new BadRequestException('Failed to delete file');
     }
+  }
+
+  getFolderPath(folder: string): string {
+    return getUploadsDirectory(folder);
   }
 }

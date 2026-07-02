@@ -1,5 +1,5 @@
 // src/carousels/carousels.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   Carousel as PrismaCarousel,
   CarouselStatus,
@@ -7,9 +7,12 @@ import {
   AdminRole,
   Prisma,
 } from '@prisma/client';
-import * as fs from 'fs';
-import * as path from 'path';
 import { Role } from '../admin/schemas/admin.schema';
+import {
+  deleteUploadFileIfExists,
+  normalizeStoredMediaPath,
+  normalizeStoredMediaPathForResponse,
+} from '../common/uploads/uploads-paths';
 import { createObjectIdString } from '../common/utils/object-id.utils';
 import { NotificationGateway } from '../notifications/notification.gateway';
 import { PrismaService } from '../prisma/prisma.service';
@@ -65,7 +68,7 @@ export class CarouselsService {
     return {
       id: carousel.id,
       _id: carousel.id,
-      image: carousel.image,
+      image: normalizeStoredMediaPathForResponse(carousel.image),
       isActive: carousel.isActive,
       status: carousel.status,
       clicks: carousel.clicks,
@@ -90,20 +93,14 @@ export class CarouselsService {
   }
 
   private deleteMediaFileIfExists(filePath?: string): void {
-    if (!filePath || filePath.trim() === '') return;
+    deleteUploadFileIfExists(filePath);
+  }
 
-    const possiblePaths = [
-      filePath,
-      filePath.startsWith('/uploads') ? filePath : `/uploads${filePath}`,
-      filePath.startsWith('/') ? filePath : `/${filePath}`,
-    ];
-
-    for (const candidate of possiblePaths) {
-      const fullPath = path.join(process.cwd(), candidate);
-      if (fs.existsSync(fullPath)) {
-        fs.unlinkSync(fullPath);
-        break;
-      }
+  private normalizeCarouselImagePath(filePath?: string | null): string {
+    try {
+      return normalizeStoredMediaPath(filePath);
+    } catch {
+      throw new BadRequestException('Invalid carousel image path');
     }
   }
 
@@ -239,7 +236,7 @@ export class CarouselsService {
     const carousel = await this.prisma.carousel.create({
       data: {
         id: createObjectIdString(),
-        image: createCarouselDto.image || '',
+        image: this.normalizeCarouselImagePath(createCarouselDto.image),
         authorId,
         name: createCarouselDto.name,
         targetUrl: createCarouselDto.targetUrl,
@@ -377,7 +374,9 @@ export class CarouselsService {
     if (updateCarouselDto.startDate !== undefined) updateData.startDate = startDate;
     if (updateCarouselDto.endDate !== undefined) updateData.endDate = endDate;
     if (parsedIsActive !== undefined) updateData.isActive = parsedIsActive;
-    if (hasNewImage) updateData.image = updateCarouselDto.image;
+    if (hasNewImage) {
+      updateData.image = this.normalizeCarouselImagePath(updateCarouselDto.image);
+    }
     if (shouldRemoveImage) updateData.image = '';
 
     if (
@@ -433,7 +432,10 @@ export class CarouselsService {
   async updateImage(id: string, imagePath: string): Promise<CarouselResponse> {
     const carousel = await this.prisma.carousel.update({
       where: { id },
-      data: { image: imagePath, updatedAt: new Date() },
+      data: {
+        image: this.normalizeCarouselImagePath(imagePath),
+        updatedAt: new Date(),
+      },
       include: carouselInclude,
     }).catch(() => null);
 

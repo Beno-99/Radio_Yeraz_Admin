@@ -2,9 +2,12 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
-import { join } from 'path';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { buildAllowedOrigins } from './common/utils/cors-origins.util';
+import {
+  ensureCommonUploadDirectories,
+  ensureUploadsRoot,
+} from './common/uploads/uploads-paths';
 
 const allowedOrigins = buildAllowedOrigins();
 
@@ -39,12 +42,15 @@ async function bootstrap() {
     }),
   );
 
-  // Global prefix
-  app.setGlobalPrefix('api');
-
-  app.useStaticAssets(join(process.cwd(), 'uploads'), {
+  const uploadsRoot = ensureUploadsRoot();
+  ensureCommonUploadDirectories();
+  app.useStaticAssets(uploadsRoot, {
     prefix: '/uploads/',
   });
+  console.log(`Static uploads root: ${uploadsRoot}`);
+
+  // Global prefix
+  app.setGlobalPrefix('api');
 
   const port = Number(process.env.PORT ?? 8000);
   const host = process.env.HOST ?? '127.0.0.1';

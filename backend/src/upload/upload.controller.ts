@@ -18,8 +18,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Role } from '../admin/schemas/admin.schema';
-import path from 'path';
 import fs from 'fs';
+import path from 'path';
 
 @Controller('upload')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -112,7 +112,7 @@ export class UploadController {
   }
 
   private getFolderStats(folder: string) {
-    const folderPath = path.join(this.uploadService['uploadBasePath'], folder);
+    const folderPath = this.uploadService.getFolderPath(folder);
 
     if (!fs.existsSync(folderPath)) {
       return { count: 0, totalSize: 0 };

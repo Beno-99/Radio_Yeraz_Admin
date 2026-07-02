@@ -12,9 +12,12 @@ import {
   PostVideoSource,
   Prisma,
 } from '@prisma/client';
-import * as fs from 'fs';
-import * as path from 'path';
 import { Role } from '../admin/schemas/admin.schema';
+import {
+  deleteUploadFileIfExists,
+  normalizeStoredMediaPath,
+  normalizeStoredMediaPathForResponse,
+} from '../common/uploads/uploads-paths';
 import {
   createObjectIdString,
   isObjectIdString,
@@ -109,7 +112,7 @@ export class PostsService {
       _id: post.id,
       title: post.title,
       description: post.description,
-      mainImage: post.mainImage,
+      mainImage: normalizeStoredMediaPathForResponse(post.mainImage),
       videoSource: post.videoSource,
       youtubeUrl: post.youtubeUrl,
       youtubeVideoId: post.youtubeVideoId,
@@ -380,20 +383,14 @@ export class PostsService {
   }
 
   private deleteMediaFileIfExists(filePath?: string): void {
-    if (!filePath || filePath.trim() === '') return;
+    deleteUploadFileIfExists(filePath);
+  }
 
-    const possiblePaths = [
-      filePath,
-      filePath.startsWith('/uploads') ? filePath : `/uploads${filePath}`,
-      filePath.startsWith('/') ? filePath : `/${filePath}`,
-    ];
-
-    for (const candidate of possiblePaths) {
-      const fullPath = path.join(process.cwd(), candidate);
-      if (fs.existsSync(fullPath)) {
-        fs.unlinkSync(fullPath);
-        break;
-      }
+  private normalizeMainImagePath(filePath?: string | null): string {
+    try {
+      return normalizeStoredMediaPath(filePath);
+    } catch {
+      throw new BadRequestException('Invalid image path');
     }
   }
 
@@ -563,7 +560,10 @@ export class PostsService {
         id: createObjectIdString(),
         title: createPostDto.title,
         description: createPostDto.description,
-        mainImage: youtubeMedia || facebookMedia ? '' : createPostDto.mainImage || '',
+        mainImage:
+          youtubeMedia || facebookMedia
+            ? ''
+            : this.normalizeMainImagePath(createPostDto.mainImage),
         videoSource: youtubeMedia
           ? PostVideoSource.YOUTUBE
           : facebookMedia
@@ -873,7 +873,7 @@ export class PostsService {
       : null;
 
     if (hasNewImage) {
-      data.mainImage = updatePostDto.mainImage;
+      data.mainImage = this.normalizeMainImagePath(updatePostDto.mainImage);
       data.videoSource = null;
       data.youtubeUrl = null;
       data.youtubeVideoId = null;
