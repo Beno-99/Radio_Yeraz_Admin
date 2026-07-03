@@ -366,12 +366,16 @@ export const streamLinksAPI = {
     title: string;
     url: string;
     description?: string;
+    bitrate?: number | null;
+    displayOrder?: number;
     isActive?: boolean;
   }) => api.post('/stream-links', data),
   update: (id: string, data: {
     title?: string;
     url?: string;
     description?: string;
+    bitrate?: number | null;
+    displayOrder?: number;
     isActive?: boolean;
   }) => api.patch(`/stream-links/${id}`, data),
   delete: (id: string) => api.delete(`/stream-links/${id}`),

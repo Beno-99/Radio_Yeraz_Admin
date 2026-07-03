@@ -14,6 +14,12 @@ export class StreamLink {
   @Prop({ type: String, trim: true })
   description?: string;
 
+  @Prop({ type: Number, default: null })
+  bitrate?: number | null;
+
+  @Prop({ type: Number, default: 0 })
+  displayOrder: number;
+
   @Prop({ type: Boolean, default: true })
   isActive: boolean;
 }

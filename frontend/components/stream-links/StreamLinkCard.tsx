@@ -1,5 +1,5 @@
 // src/components/stream-links/StreamLinkCard.tsx
-import { Edit2, Trash2, ExternalLink, CheckCircle, XCircle } from 'lucide-react';
+import { Edit2, Trash2, ExternalLink, CheckCircle, XCircle, Gauge, ListOrdered } from 'lucide-react';
 import { StreamLink } from '@/types';
 
 interface StreamLinkCardProps {
@@ -52,6 +52,19 @@ export function StreamLinkCard({
             {streamLink.description}
           </p>
         )}
+
+        <div className="mb-4 flex flex-wrap gap-2 text-xs font-medium text-gray-600">
+          {streamLink.bitrate ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-blue-700">
+              <Gauge className="h-3.5 w-3.5" />
+              {streamLink.bitrate} kbps
+            </span>
+          ) : null}
+          <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-gray-700">
+            <ListOrdered className="h-3.5 w-3.5" />
+            Order {streamLink.displayOrder ?? 0}
+          </span>
+        </div>
 
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">

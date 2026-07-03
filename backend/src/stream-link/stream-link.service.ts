@@ -31,6 +31,8 @@ export class StreamLinkService {
         title: dto.title,
         url: dto.url,
         description: dto.description,
+        bitrate: dto.bitrate ?? null,
+        displayOrder: dto.displayOrder ?? 0,
         isActive: dto.isActive ?? true,
       },
     });
@@ -40,7 +42,7 @@ export class StreamLinkService {
 
   async findAll(): Promise<StreamLinkResponse[]> {
     const streamLinks = await this.prisma.streamLink.findMany({
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ displayOrder: 'asc' }, { createdAt: 'desc' }],
     });
 
     return streamLinks.map((streamLink) =>
@@ -51,7 +53,7 @@ export class StreamLinkService {
   async findActive(): Promise<StreamLinkResponse[]> {
     const streamLinks = await this.prisma.streamLink.findMany({
       where: { isActive: true },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ displayOrder: 'asc' }, { createdAt: 'desc' }],
     });
 
     return streamLinks.map((streamLink) =>
@@ -89,6 +91,8 @@ export class StreamLinkService {
         title: dto.title,
         url: dto.url,
         description: dto.description,
+        bitrate: dto.bitrate,
+        displayOrder: dto.displayOrder,
         isActive: dto.isActive,
         updatedAt: new Date(),
       },

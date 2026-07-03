@@ -159,15 +159,19 @@ model Carousel {
 }
 
 model StreamLink {
-  id          String   @id @map("_id") @db.Char(24)
-  title       String   @db.VarChar(100)
-  url         String   @db.VarChar(2048)
-  description String?  @db.VarChar(500)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @map("_id") @db.Char(24)
+  title        String   @db.VarChar(100)
+  url          String   @db.VarChar(2048)
+  description  String?  @db.VarChar(500)
+  bitrate      Int?
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@index([isActive], map: "streamlinks_is_active_idx")
+  @@index([displayOrder], map: "streamlinks_display_order_idx")
+  @@index([isActive, displayOrder], map: "streamlinks_active_order_idx")
   @@index([createdAt], map: "streamlinks_created_at_idx")
   @@map("streamlinks")
 }

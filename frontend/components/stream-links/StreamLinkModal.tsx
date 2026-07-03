@@ -17,11 +17,15 @@ export function StreamLinkModal({ isOpen, onClose, initialData }: StreamLinkModa
     title: '',
     url: '',
     description: '',
+    bitrate: null,
+    displayOrder: 0,
     isActive: true,
   });
 
   const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<Partial<CreateStreamLinkDto>>({});
+  const [errors, setErrors] = useState<
+    Partial<Record<keyof CreateStreamLinkDto, string>>
+  >({});
   
   // Success Dialog State
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
@@ -34,10 +38,19 @@ export function StreamLinkModal({ isOpen, onClose, initialData }: StreamLinkModa
         title: initialData.title,
         url: initialData.url,
         description: initialData.description || '',
+        bitrate: initialData.bitrate ?? null,
+        displayOrder: initialData.displayOrder ?? 0,
         isActive: initialData.isActive,
       };
     }
-    return { title: '', url: '', description: '', isActive: true };
+    return {
+      title: '',
+      url: '',
+      description: '',
+      bitrate: null,
+      displayOrder: 0,
+      isActive: true,
+    };
   }, [initialData]);
 
   // Fix: Use setTimeout to avoid synchronous setState in useEffect
@@ -51,11 +64,21 @@ export function StreamLinkModal({ isOpen, onClose, initialData }: StreamLinkModa
   }, [initialFormData, isOpen]);
 
   const validateForm = (): boolean => {
-    const newErrors: Partial<CreateStreamLinkDto> = {};
+    const newErrors: Partial<Record<keyof CreateStreamLinkDto, string>> = {};
     if (!formData.title?.trim()) newErrors.title = 'Title is required';
     if (!formData.url?.trim()) newErrors.url = 'URL is required';
     else if (!/^https?:\/\//.test(formData.url)) {
       newErrors.url = 'URL must start with http:// or https://';
+    }
+    if (formData.bitrate !== null && formData.bitrate !== undefined) {
+      if (!Number.isInteger(formData.bitrate) || formData.bitrate < 1 || formData.bitrate > 512) {
+        newErrors.bitrate = 'Bitrate must be between 1 and 512';
+      }
+    }
+    if (formData.displayOrder !== undefined) {
+      if (!Number.isInteger(formData.displayOrder) || formData.displayOrder < 0) {
+        newErrors.displayOrder = 'Order must be 0 or higher';
+      }
     }
 
     setErrors(newErrors);
@@ -76,12 +99,21 @@ export function StreamLinkModal({ isOpen, onClose, initialData }: StreamLinkModa
     if (!validateForm()) return;
 
     setLoading(true);
+    const payload: CreateStreamLinkDto = {
+      ...formData,
+      title: formData.title.trim(),
+      url: formData.url.trim(),
+      description: formData.description?.trim() || undefined,
+      bitrate: formData.bitrate ?? null,
+      displayOrder: formData.displayOrder ?? 0,
+    };
+
     try {
       if (initialData) {
-        await streamLinksAPI.update(initialData._id, formData);
+        await streamLinksAPI.update(initialData._id, payload);
         setSuccessMessage('Stream link updated successfully!');
       } else {
-        await streamLinksAPI.create(formData);
+        await streamLinksAPI.create(payload);
         setSuccessMessage('Stream link created successfully!');
       }
 
@@ -158,6 +190,47 @@ export function StreamLinkModal({ isOpen, onClose, initialData }: StreamLinkModa
                   className="w-full rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Additional information..."
                 />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Bitrate (kbps)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={512}
+                    step={1}
+                    value={formData.bitrate ?? ''}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        bitrate: e.target.value === '' ? null : Number(e.target.value),
+                      })
+                    }
+                    className="min-h-11 w-full rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="64"
+                  />
+                  {errors.bitrate && <p className="text-red-500 text-sm mt-1">{errors.bitrate}</p>}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Display Order</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={formData.displayOrder ?? 0}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        displayOrder: e.target.value === '' ? 0 : Number(e.target.value),
+                      })
+                    }
+                    className="min-h-11 w-full rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="0"
+                  />
+                  {errors.displayOrder && <p className="text-red-500 text-sm mt-1">{errors.displayOrder}</p>}
+                </div>
               </div>
 
               <div className="flex items-center gap-3">

@@ -90,6 +90,8 @@ export interface StreamLink {
   title: string;
   url: string;
   description?: string;
+  bitrate?: number | null;
+  displayOrder?: number;
   isActive: boolean;
   createdAt: string | Date;
   updatedAt: string | Date;
@@ -100,6 +102,8 @@ export interface CreateStreamLinkDto {
   title: string;
   url: string;
   description?: string;
+  bitrate?: number | null;
+  displayOrder?: number;
   isActive?: boolean;
 }
 
