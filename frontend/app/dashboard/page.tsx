@@ -2,14 +2,12 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { adminAPI, postsAPI, adsAPI } from "@/lib/api/api";
+import { adminAPI, postsAPI, carouselsAPI } from "@/lib/api/api";
 import StatsCards from "@/components/dashboard/StatsCards";
 import {
   Users,
   PlusCircle,
   Upload,
-  BarChart3,
-  Settings,
   ArrowRight,
   AlertCircle,
 } from "lucide-react";
@@ -19,7 +17,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState({
     totalAdmins: 0,
     totalPosts: 0,
-    totalAds: 0,
+    totalCarousels: 0,
     activePosts: 0,
     clicksToday: 0,
     upcomingEvents: 0,
@@ -33,79 +31,90 @@ export default function DashboardPage() {
     if (fetchAttempted.current) return;
     fetchAttempted.current = true;
 
-    // Force stop loading after 5 seconds no matter what
+    let isActive = true;
+
+    // Force stop loading only if the first dashboard request hangs.
     const forceStopLoading = setTimeout(() => {
+      if (!isActive) return;
+
       setLoading(false);
       setError("Request timed out. Please check if backend is running.");
-    }, 5000);
+    }, 15000);
 
-    fetchDashboardData();
+    fetchDashboardData().finally(() => {
+      clearTimeout(forceStopLoading);
+    });
 
-    return () => clearTimeout(forceStopLoading);
+    return () => {
+      isActive = false;
+      clearTimeout(forceStopLoading);
+    };
   }, []);
 
-  const fetchDashboardData = async () => {
+  async function fetchDashboardData() {
+  try {
+    setLoading(true);
+    setError(null);
+
+    console.log("📡 Fetching dashboard data...");
+
+    let adminsTotal = 0;
+    let postsTotal = 0;
+    let carouselsTotal = 0;
+    let activePosts = 0;
+    let clicksToday = 0;
+
     try {
-      setLoading(true);
-      setError(null);
-
-      console.log("📡 Fetching dashboard data...");
-
-      // Simple fetch with no complex timeout logic
-      let adminsTotal = 0;
-      let postsTotal = 0;
-      let adsTotal = 0;
-      let activePosts = 0;
-      let clicksToday = 0;
-
-      try {
-        const adminsRes = await adminAPI.getAllAdmins({ limit: 1 });
-        adminsTotal = adminsRes.data?.total || 0;
-        console.log("✅ Admins:", adminsTotal);
-      } catch (e) {
-        console.error("❌ Admins error:", e);
-      }
-
-      try {
-        const postsRes = await postsAPI.getAllPosts({ limit: 1 });
-        postsTotal = postsRes.data?.total || 0;
-        const posts = postsRes.data?.data || [];
-        activePosts = posts.filter((p: any) => p.isLive).length;
-        console.log("✅ Posts:", postsTotal);
-      } catch (e) {
-        console.error("❌ Posts error:", e);
-      }
-
-      try {
-        const adsRes = await adsAPI.getAllAds({ limit: 1 });
-        adsTotal = adsRes.data?.total || 0;
-        const ads = adsRes.data?.data || [];
-        clicksToday = ads.reduce(
-          (sum: number, ad: any) => sum + (ad.clicks || 0),
-          0,
-        );
-        console.log("✅ Ads:", adsTotal);
-      } catch (e) {
-        console.error("❌ Ads error:", e);
-      }
-
-      setStats({
-        totalAdmins: adminsTotal,
-        totalPosts: postsTotal,
-        totalAds: adsTotal,
-        activePosts: activePosts,
-        clicksToday: clicksToday,
-        upcomingEvents: 3,
-      });
-
-      console.log("✅ Dashboard data loaded");
-    } catch (error) {
-      console.error("❌ Fatal error:", error);
-      setError("Failed to load dashboard data");
-    } finally {
-      setLoading(false);
+      const adminsRes = await adminAPI.getAllAdmins({ limit: 1 });
+      adminsTotal = adminsRes.data?.total || 0;
+    } catch (e) {
+      console.error("❌ Admins error:", e);
     }
-  };
+
+    try {
+      const postsRes = await postsAPI.getAllPosts({ limit: 1 });
+      postsTotal = postsRes.data?.total || 0;
+
+      const posts = (postsRes.data?.data || []) as Array<{
+        isLive?: boolean;
+      }>;
+
+      activePosts = posts.filter((p) => p.isLive).length;
+    } catch (e) {
+      console.error("❌ Posts error:", e);
+    }
+
+    try {
+      const carouselsRes = await carouselsAPI.getAllCarousels({ limit: 1 });
+      carouselsTotal = carouselsRes.data?.total || 0;
+
+      const carousels = (carouselsRes.data?.data || []) as Array<{
+        clicks?: number;
+      }>;
+
+      clicksToday = carousels.reduce(
+        (sum, carousel) => sum + (carousel.clicks || 0),
+        0
+      );
+    } catch (e) {
+      console.error("❌ Carousels error:", e);
+    }
+
+    setStats({
+      totalAdmins: adminsTotal,
+      totalPosts: postsTotal,
+      totalCarousels: carouselsTotal,
+      activePosts,
+      clicksToday,
+      upcomingEvents: 3,
+    });
+  } catch (error) {
+    console.error("❌ Fatal error:", error);
+    setError("Failed to load dashboard data");
+  } finally {
+    setLoading(false);
+  }
+}
 
   const quickActions = [
     {
@@ -116,11 +125,11 @@ export default function DashboardPage() {
       path: "/dashboard/posts/create",
     },
     {
-      title: "Upload Ad",
+      title: "Upload Carousel",
       description: "Start new campaign",
       icon: Upload,
       color: "bg-green-50 text-green-700 hover:bg-green-100",
-      path: "/dashboard/ads/create",
+      path: "/dashboard/carousels/create",
     },
     {
       title: "Manage Users",
@@ -134,7 +143,7 @@ export default function DashboardPage() {
   // Show loading state
   if (loading) {
     return (
-      <div className="flex justify-center items-center min-h-[60vh]">
+      <div className="flex min-h-[50vh] items-center justify-center px-3">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading dashboard data...</p>
@@ -146,7 +155,7 @@ export default function DashboardPage() {
               setLoading(false);
               setError("Loading cancelled");
             }}
-            className="mt-4 px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
+            className="mt-4 min-h-11 rounded-lg bg-gray-500 px-4 py-2 text-white hover:bg-gray-600"
           >
             Cancel Loading
           </button>
@@ -158,26 +167,26 @@ export default function DashboardPage() {
   // Show error state
   if (error) {
     return (
-      <div className="flex justify-center items-center min-h-[60vh]">
-        <div className="text-center max-w-md p-8 bg-red-50 rounded-xl">
-          <AlertCircle className="h-12 w-12 text-red-600 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-red-800 mb-2">
+      <div className="flex min-h-[50vh] items-center justify-center px-3 py-6">
+        <div className="w-full max-w-sm rounded-xl bg-red-50 p-5 text-center sm:max-w-md sm:p-8">
+          <AlertCircle className="mx-auto mb-4 h-11 w-11 text-red-600 sm:h-12 sm:w-12" />
+          <h3 className="mb-2 text-lg font-semibold text-red-800">
             Error Loading Dashboard
           </h3>
-          <p className="text-red-600 mb-4">{error}</p>
-          <div className="space-x-2">
+          <p className="mb-4 text-sm text-red-600 sm:text-base">{error}</p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
             <button
               onClick={() => {
                 fetchAttempted.current = false;
                 fetchDashboardData();
               }}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+              className="min-h-11 rounded-lg bg-red-600 px-4 py-2 text-white transition hover:bg-red-700"
             >
               Try Again
             </button>
             <button
               onClick={() => (window.location.href = "/dashboard")}
-              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition"
+              className="min-h-11 rounded-lg bg-gray-600 px-4 py-2 text-white transition hover:bg-gray-700"
             >
               Reload Page
             </button>
@@ -189,7 +198,7 @@ export default function DashboardPage() {
 
   // Show dashboard
   return (
-    <div className="space-y-6 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+    <div className="mx-auto max-w-7xl space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-xl border border-gray-200">
         <div>
@@ -197,8 +206,8 @@ export default function DashboardPage() {
             Dashboard
           </h1>
           <p className="mt-1 text-sm sm:text-base text-gray-600">
-            Welcome back! Here's what's happening with your platform.
-          </p>
+  Welcome back! Here&apos;s what&apos;s happening with your platform.
+</p>
         </div>
         <div className="flex-shrink-0">
           <button

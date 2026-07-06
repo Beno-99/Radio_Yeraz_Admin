@@ -14,7 +14,7 @@ export function ErrorState({ onBack }: ErrorStateProps) {
             Post not found
           </h2>
           <p className="text-gray-500">
-            The post you're looking for doesn't exist or has been removed.
+            The post you&apos;re looking for doesn&apos;t exist or has been removed.
           </p>
           <button
             onClick={onBack}

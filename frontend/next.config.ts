@@ -1,6 +1,15 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  async redirects() {
+    return [
+      {
+        source: "/",
+        destination: "/dashboard",
+        permanent: false,
+      },
+    ];
+  },
   images: {
     remotePatterns: [
       {
@@ -9,10 +18,15 @@ const nextConfig: NextConfig = {
         port: "8000",
         pathname: "/uploads/**",
       },
-      // Add more if you have other domains
+      {
+        protocol: "http",
+        hostname: "127.0.0.1",
+        port: "8000",
+        pathname: "/uploads/**",
+      },
       {
         protocol: "https",
-        hostname: "yourdomain.com",
+        hostname: "api.radioyeraz.com",
         pathname: "/uploads/**",
       },
     ],

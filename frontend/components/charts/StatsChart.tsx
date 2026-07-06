@@ -1,7 +1,7 @@
 // src/components/charts/StatsChart.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   LineChart,
   Line,
@@ -26,10 +26,21 @@ import {
 interface ChartData {
   name: string;
   posts: number;
-  ads: number;
+  carousels: number;
   clicks: number;
   users: number;
   revenue?: number;
+}
+interface TooltipEntry {
+  color: string;
+  dataKey: string;
+  value: number;
+}
+
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: TooltipEntry[];
+  label?: string;
 }
 
 export type ChartType = "line" | "bar" | "area";
@@ -54,20 +65,20 @@ export default function StatsChart({
 
   // Default data if none provided
   const defaultData: ChartData[] = [
-    { name: "Mon", posts: 12, ads: 8, clicks: 240, users: 120 },
-    { name: "Tue", posts: 18, ads: 10, clicks: 320, users: 180 },
-    { name: "Wed", posts: 15, ads: 12, clicks: 280, users: 150 },
-    { name: "Thu", posts: 22, ads: 15, clicks: 400, users: 220 },
-    { name: "Fri", posts: 20, ads: 18, clicks: 380, users: 200 },
-    { name: "Sat", posts: 25, ads: 20, clicks: 450, users: 250 },
-    { name: "Sun", posts: 30, ads: 25, clicks: 520, users: 300 },
+    { name: "Mon", posts: 12, carousels: 8, clicks: 240, users: 120 },
+    { name: "Tue", posts: 18, carousels: 10, clicks: 320, users: 180 },
+    { name: "Wed", posts: 15, carousels: 12, clicks: 280, users: 150 },
+    { name: "Thu", posts: 22, carousels: 15, clicks: 400, users: 220 },
+    { name: "Fri", posts: 20, carousels: 18, clicks: 380, users: 200 },
+    { name: "Sat", posts: 25, carousels: 20, clicks: 450, users: 250 },
+    { name: "Sun", posts: 30, carousels: 25, clicks: 520, users: 300 },
   ];
 
   const chartData = externalData || defaultData;
 
   // Calculate statistics
   const totalPosts = chartData.reduce((sum, item) => sum + item.posts, 0);
-  const totalAds = chartData.reduce((sum, item) => sum + item.ads, 0);
+  const totalCarousels = chartData.reduce((sum, item) => sum + item.carousels, 0);
   const totalClicks = chartData.reduce((sum, item) => sum + item.clicks, 0);
   const totalUsers = chartData.reduce((sum, item) => sum + item.users, 0);
 
@@ -79,14 +90,18 @@ export default function StatsChart({
     chartData[chartData.length - 1].clicks > chartData[0].clicks;
 
   // Custom tooltip
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomTooltip = ({
+  active,
+  payload,
+  label,
+}: CustomTooltipProps) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700">
           <p className="font-medium text-gray-900 dark:text-white mb-2">
             {label}
           </p>
-          {payload.map((entry: any, index: number) => (
+          {payload.map((entry: TooltipEntry, index: number) => (
             <div key={index} className="flex items-center justify-between mb-1">
               <div className="flex items-center">
                 <div
@@ -141,8 +156,8 @@ export default function StatsChart({
               barSize={20}
             />
             <Bar
-              dataKey="ads"
-              name="Ads"
+              dataKey="carousels"
+              name="Carousels"
               fill="#8b5cf6"
               radius={[4, 4, 0, 0]}
               barSize={20}
@@ -233,8 +248,8 @@ export default function StatsChart({
             />
             <Line
               type="monotone"
-              dataKey="ads"
-              name="Ads"
+              dataKey="carousels"
+              name="Carousels"
               stroke="#8b5cf6"
               strokeWidth={2}
               dot={{ r: 4 }}
@@ -264,14 +279,14 @@ export default function StatsChart({
   };
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border border-gray-100 dark:border-gray-700">
+    <div className="min-w-0 rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:p-6">
       {/* Chart Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6">
-        <div>
+      <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <div className="min-w-0">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
             {title}
           </h3>
-          <div className="flex items-center space-x-4 mt-2">
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
             <div className="flex items-center">
               {postsTrend ? (
                 <TrendingUp className="h-4 w-4 text-green-500 mr-1" />
@@ -296,14 +311,14 @@ export default function StatsChart({
         </div>
 
         {/* Chart Controls */}
-        <div className="flex items-center space-x-4 mt-4 sm:mt-0">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
           {/* Time Range Selector */}
           <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
             {(["week", "month", "year"] as const).map((range) => (
               <button
                 key={range}
                 onClick={() => setTimeRange(range)}
-                className={`px-3 py-1 text-sm font-medium rounded-md transition ${
+                className={`min-h-9 rounded-md px-3 py-1 text-sm font-medium transition ${
                   timeRange === range
                     ? "bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow"
                     : "text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
@@ -318,7 +333,7 @@ export default function StatsChart({
           <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
             <button
               onClick={() => setChartType("line")}
-              className={`p-2 rounded-md transition ${
+              className={`min-h-9 min-w-9 rounded-md p-2 transition ${
                 chartType === "line"
                   ? "bg-white dark:bg-gray-600 text-gray-900 dark:text-white"
                   : "text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
@@ -329,7 +344,7 @@ export default function StatsChart({
             </button>
             <button
               onClick={() => setChartType("bar")}
-              className={`p-2 rounded-md transition ${
+              className={`min-h-9 min-w-9 rounded-md p-2 transition ${
                 chartType === "bar"
                   ? "bg-white dark:bg-gray-600 text-gray-900 dark:text-white"
                   : "text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
@@ -343,7 +358,7 @@ export default function StatsChart({
       </div>
 
       {/* Chart Stats Summary */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
         <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
           <p className="text-sm text-blue-700 dark:text-blue-300">
             Total Posts
@@ -375,10 +390,10 @@ export default function StatsChart({
 
         <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg">
           <p className="text-sm text-purple-700 dark:text-purple-300">
-            Active Ads
+            Active Carousels
           </p>
           <p className="text-2xl font-bold text-purple-900 dark:text-purple-100">
-            {totalAds.toLocaleString()}
+            {totalCarousels.toLocaleString()}
           </p>
           <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
             Running campaigns
@@ -428,18 +443,18 @@ export default function StatsChart({
       </div>
 
       {/* Chart Container */}
-      <div style={{ height: `${height}px` }}>
+      <div className="min-w-0" style={{ height: `${height}px` }}>
         <ResponsiveContainer width="100%" height="100%">
           {renderChart()}
         </ResponsiveContainer>
       </div>
 
       {/* Chart Footer */}
-      <div className="flex flex-wrap items-center justify-between mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 pt-6 dark:border-gray-700">
         <div className="text-sm text-gray-500 dark:text-gray-400">
           Data updates in real-time • Last updated: Just now
         </div>
-        <div className="flex space-x-2 mt-2 sm:mt-0">
+        <div className="flex flex-wrap gap-3">
           <button className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 font-medium">
             Export Data
           </button>

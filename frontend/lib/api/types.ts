@@ -17,7 +17,7 @@ export interface ApiParams {
   search?: string;
   sortBy?: string;
   sortOrder?: "asc" | "desc";
-  [key: string]: any;
+  [key: string]: string | number | boolean | undefined;
 }
 
 // API client wrapper
@@ -32,8 +32,10 @@ export class ApiClient {
       total: response.data.total || 0,
       page: response.data.page || 1,
       limit: response.data.limit || 10,
-      totalPages: response.data.totalPages || 1,
-      hasNextPage: (response.data.page || 1) < (response.data.totalPages || 1),
+      totalPages: response.data.totalPages || response.data.pages || 1,
+      hasNextPage:
+        (response.data.page || 1) <
+        (response.data.totalPages || response.data.pages || 1),
       hasPrevPage: (response.data.page || 1) > 1,
     };
   }
@@ -44,13 +46,21 @@ export interface Post {
   title: string;
   description: string;
   mainImage: string;
-  video: string;
+  videoSource?: "YOUTUBE" | "FACEBOOK" | null;
+  youtubeUrl?: string | null;
+  youtubeVideoId?: string | null;
+  facebookUrl?: string | null;
   profileName: string;
   eventDate: string;
   location: string;
   isLive: boolean;
   isPublished: boolean;
+  reminderEnabled?: boolean;
+  reminderSentAt?: string | null;
+  liveStatus?: "UNKNOWN" | "UPCOMING" | "LIVE" | "WAS_LIVE" | "NOT_LIVE";
+  liveStatusCheckedAt?: string | null;
   postedDate: string;
+  expiresAt?: string | null;
   author:
     | string
     | {
@@ -60,7 +70,6 @@ export interface Post {
         profileName?: string;
         username?: string;
         name?: string;
-        email?: string;
       };
   link: string;
   createdAt: string;

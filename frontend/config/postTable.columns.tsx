@@ -19,11 +19,13 @@ export const getPostColumns = (
       return (
         <div className="h-16 w-16 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
           {hasImage ? (
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={`${API_URL}${value}`}
+              alt={post.title || "Post image"}
               className="h-full w-full object-cover"
             />
-          ) : post.video ? (
+          ) : post.youtubeVideoId || post.youtubeUrl || post.facebookUrl ? (
             <Video className="h-6 w-6 text-blue-500" />
           ) : (
             <ImageIcon className="h-6 w-6 text-gray-400" />

@@ -11,35 +11,81 @@ import {
   UseGuards,
   Req,
   UseInterceptors,
-  UploadedFile,
-  ParseFilePipe,
-  MaxFileSizeValidator,
-  FileTypeValidator,
   BadRequestException,
   UploadedFiles,
 } from '@nestjs/common';
-import {
-  FileFieldsInterceptor,
-  FileInterceptor,
-} from '@nestjs/platform-express';
-import { PostsService } from './posts.service';
-import { CreatePostDto } from './dto/create-post.dto';
-import { UpdatePostDto } from './dto/update-post.dto';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import { PostStatus } from '@prisma/client';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
+import * as fs from 'fs';
+import { Role } from '../admin/schemas/admin.schema';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { AuthenticatedRequest } from '../auth/interfaces/authenticated-request.interface';
 import { Roles } from '../common/decorators/roles.decorator';
-import { Role } from '../admin/schemas/admin.schema';
-import { Request } from 'express';
-import { diskStorage } from 'multer';
-import path, { extname } from 'path';
-import * as fs from 'fs';
-import {FirebaseService} from '../firebase/firebase.service';
+import { FirebaseService } from '../firebase/firebase.service';
+import { CreatePostDto } from './dto/create-post.dto';
+import { UpdatePostDto } from './dto/update-post.dto';
+import {
+  PostFindAllFilters,
+  PostSortField,
+  PostSortOptions,
+  PostsService,
+} from './posts.service';
+
+interface PostUploadFiles {
+  mainImage?: Express.Multer.File[];
+}
+
+type CreatePostPayload = CreatePostDto & {
+  author: string;
+  isLive: boolean;
+  isPublished: boolean;
+  mainImage: string;
+};
 
 @Controller('posts')
 export class PostsController {
-  constructor(private readonly postsService: PostsService , private readonly firebaseService: FirebaseService) {}
+  constructor(
+    private readonly postsService: PostsService,
+    private readonly firebaseService: FirebaseService,
+  ) {}
 
-  // ============ PUBLIC ENDPOINTS ============
+  private parseBooleanQuery(value: string | undefined): boolean | undefined {
+    if (value === undefined) return undefined;
+    return value === 'true';
+  }
+
+  private parseSortField(field: string): PostSortField {
+    switch (field) {
+      case 'createdAt':
+        return 'createdAt';
+      case 'updatedAt':
+        return 'updatedAt';
+      case 'eventDate':
+        return 'eventDate';
+      case 'title':
+        return 'title';
+      case 'status':
+        return 'status';
+      case 'postedDate':
+      default:
+        return 'postedDate';
+    }
+  }
+
+  private parseBodyBoolean(value: unknown): boolean {
+    return value === true || value === 'true';
+  }
+
+  private getNotificationActor(req: AuthenticatedRequest) {
+    return {
+      id: req.user.sub,
+      name: req.user.displayName || req.user.username || 'Admin',
+    };
+  }
+
   @Get()
   async getAllPosts(
     @Query('page') page: string = '1',
@@ -54,21 +100,21 @@ export class PostsController {
     const pageNum = parseInt(page, 10) || 1;
     const limitNum = parseInt(limit, 10) || 10;
 
-    const filters: any = {};
+    const filters: PostFindAllFilters = {};
+    if (authorId) filters.author = authorId;
 
-    if (authorId) {
-      filters.author = authorId;
+    const liveFilter = this.parseBooleanQuery(isLive);
+    if (liveFilter !== undefined) filters.isLive = liveFilter;
+
+    const publishedFilter = this.parseBooleanQuery(isPublished);
+    if (publishedFilter !== undefined) {
+      filters.isPublished = publishedFilter;
     }
 
-    if (isLive !== undefined) {
-      filters.isLive = isLive === 'true';
-    }
-    if (isPublished !== undefined) {
-      filters.isPublished = isPublished === 'true';
-    }
-
-    const sort: any = {};
-    sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
+    const sort: PostSortOptions = {
+      field: this.parseSortField(sortBy),
+      direction: sortOrder === 'asc' ? 'asc' : 'desc',
+    };
 
     const result = await this.postsService.findAll(
       pageNum,
@@ -127,41 +173,25 @@ export class PostsController {
   }
 
   @Get(':id')
-async getPostById(@Param('id') id: string) {
-  const post = await this.postsService.findById(id);
+  async getPostById(@Param('id') id: string) {
+    const post = await this.postsService.findById(id);
 
-  return {
-    success: true,
-    data: post,
-  };
-}
+    return {
+      success: true,
+      data: post,
+    };
+  }
 
-  // ============ PROTECTED ENDPOINTS ============
-  // In posts.controller.ts
-  // src/posts/posts.controller.ts
-  // In posts.controller.ts
-
-  // In posts.controller.ts, update the FileFieldsInterceptor:
-  // posts.controller.ts - Updated createPost method
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   @UseInterceptors(
     FileFieldsInterceptor(
-      [
-        { name: 'mainImage', maxCount: 1 },
-        { name: 'video', maxCount: 1 },
-      ],
+      [{ name: 'mainImage', maxCount: 1 }],
       {
         storage: diskStorage({
           destination: (req, file, cb) => {
-            let uploadPath = './uploads';
-
-            if (file.fieldname === 'mainImage') {
-              uploadPath = './uploads/posts/images';
-            } else if (file.fieldname === 'video') {
-              uploadPath = './uploads/posts/videos';
-            }
+            const uploadPath = './uploads/posts/images';
 
             if (!fs.existsSync(uploadPath)) {
               fs.mkdirSync(uploadPath, { recursive: true });
@@ -173,9 +203,7 @@ async getPostById(@Param('id') id: string) {
             const uniqueSuffix =
               Date.now() + '-' + Math.round(Math.random() * 1e9);
             const ext = extname(file.originalname);
-
-            let prefix = file.fieldname;
-            const filename = `${prefix}-${uniqueSuffix}${ext}`;
+            const filename = `${file.fieldname}-${uniqueSuffix}${ext}`;
             callback(null, filename);
           },
         }),
@@ -183,155 +211,119 @@ async getPostById(@Param('id') id: string) {
     ),
   )
   async createPost(
-    @Req() req: Request,
-    @UploadedFiles()
-    files: {
-      mainImage?: Express.Multer.File[];
-      video?: Express.Multer.File[];
-    },
+    @Req() req: AuthenticatedRequest,
+    @UploadedFiles() files: PostUploadFiles,
     @Body() createPostDto: CreatePostDto,
   ) {
-    const authorId = req.user['sub'];
-
-    console.log('=== BACKEND: Creating post ===');
-    console.log('Files received:', files);
-    console.log('isLive VALUE:', createPostDto.isLive);
-    console.log('isPublished VALUE:', createPostDto.isPublished);
-
-    // Convert isLive manually
-    let isLiveValue = false;
-    if (req.body.isLive !== undefined) {
-      if (req.body.isLive === 'false' || req.body.isLive === false) {
-        isLiveValue = false;
-      } else if (req.body.isLive === 'true' || req.body.isLive === true) {
-        isLiveValue = true;
-      }
-    }
-
-    // Convert isPublished manually
-    let isPublishedValue = false;
-    if (req.body.isPublished !== undefined) {
-      if (req.body.isPublished === 'false' || req.body.isPublished === false) {
-        isPublishedValue = false;
-      } else if (
-        req.body.isPublished === 'true' ||
-        req.body.isPublished === true
-      ) {
-        isPublishedValue = true;
-      }
-    }
-
-    const postData = {
+    const authorId = req.user.sub;
+    const postData: CreatePostPayload = {
       ...createPostDto,
       author: authorId,
-      isLive: isLiveValue,
-      isPublished: isPublishedValue,
+      isLive: this.parseBodyBoolean(createPostDto.isLive),
+      isPublished: this.parseBodyBoolean(createPostDto.isPublished),
+      mainImage: '',
     };
 
-    // Handle main image (can be empty)
-    if (files.mainImage && files.mainImage[0]) {
+    if (files?.mainImage?.[0]) {
       postData.mainImage = `/uploads/posts/images/${files.mainImage[0].filename}`;
-      console.log('✅ Main image saved to:', postData.mainImage);
-    } else {
-      postData.mainImage = '';
-      console.log('ℹ️ No main image provided');
     }
 
-    // Handle video (optional)
-    if (files.video && files.video[0]) {
-      postData.video = `/uploads/posts/videos/${files.video[0].filename}`;
-      console.log('✅ Video saved to:', postData.video);
+    const post = await this.postsService.create(postData, authorId);
+
+    if (post.isPublished) {
+      try {
+        await this.firebaseService.sendToTopic(
+          'client',
+          'A New Post Added',
+          post.title,
+          {
+            postId: post._id,
+          },
+        );
+      } catch (notifError) {
+        console.error(
+          'FCM topic notification failed:',
+          notifError instanceof Error ? notifError.message : String(notifError),
+        );
+      }
     }
 
-    console.log('Final post data:', postData);
-
-    try {
-      const post = await this.postsService.create(postData, authorId);
-
-      console.log('✅ Post created:', post._id);
-      console.log('Post isLive:', post.isLive);
-      console.log('Post isPublished:', post.isPublished);
-
-      var notification = await this.firebaseService.sendToTopic("client","A New Post Added",post.title,{
-        postId: post._id.toString(),
-      });
-
-      console.log(notification);
-
-      return {
-        success: true,
-        message: 'Post created successfully',
-        data: post,
-      };
-    } catch (error) {
-      console.error('❌ Error creating post:', error);
-      throw error;
-    }
+    return {
+      success: true,
+      message: 'Post created successfully',
+      data: post,
+    };
   }
 
-  // ============ UPDATE POST WITH MULTIPLE FILES ============
-  // posts.controller.ts
   @Put(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   @UseInterceptors(
-    FileInterceptor('mainImage', {
-      storage: diskStorage({
-        destination: './uploads/posts/images',
-        filename: (req, file, callback) => {
-          // ✅ Add lots of logging to debug
-          console.log('📸 Generating filename for:', file.originalname);
-
-          const uniqueSuffix =
-            Date.now() + '-' + Math.round(Math.random() * 1e9);
-          const ext = extname(file.originalname);
-          const filename = `mainImage-${uniqueSuffix}${ext}`;
-
-          console.log('✅ Generated filename:', filename);
-          callback(null, filename);
-        },
-      }),
-      fileFilter: (req, file, cb) => {
-        console.log('📸 File received:', file.originalname, file.mimetype);
-        cb(null, true);
+    FileFieldsInterceptor(
+      [{ name: 'mainImage', maxCount: 1 }],
+      {
+        storage: diskStorage({
+          destination: (req, file, cb) => {
+            const uploadPath = './uploads/posts/images';
+            if (!fs.existsSync(uploadPath)) {
+              fs.mkdirSync(uploadPath, { recursive: true });
+            }
+            cb(null, uploadPath);
+          },
+          filename: (req, file, callback) => {
+            const uniqueSuffix =
+              Date.now() + '-' + Math.round(Math.random() * 1e9);
+            const ext = extname(file.originalname);
+            const filename = `${file.fieldname}-${uniqueSuffix}${ext}`;
+            callback(null, filename);
+          },
+        }),
       },
-    }),
+    ),
   )
   async updatePost(
+    @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
     @Body() updatePostDto: UpdatePostDto,
-    @UploadedFile() file?: Express.Multer.File,
+    @UploadedFiles() files?: PostUploadFiles,
   ) {
-    console.log('=== UPDATE POST ===');
-    console.log(
-      'Received file:',
-      file
-        ? {
-            originalname: file.originalname,
-            filename: file.filename, // ✅ Check if this exists
-            size: file.size,
-          }
-        : 'No file',
-    );
+    const previousPost = await this.postsService.findById(id);
 
     if (!updatePostDto) {
       throw new BadRequestException('No data provided');
     }
 
-    // ✅ FIX: Set the image path
-    if (file) {
-      // Make sure file.filename exists
-      if (!file.filename) {
-        console.error('❌ file.filename is undefined!');
-        throw new BadRequestException('File upload failed');
-      }
-
-      updatePostDto.mainImage = `/uploads/posts/images/${file.filename}`;
-      console.log('✅ Image path set:', updatePostDto.mainImage);
+    if (files?.mainImage?.[0]) {
+      updatePostDto.mainImage = `/uploads/posts/images/${files.mainImage[0].filename}`;
     }
+    const updatedPost = await this.postsService.update(
+      id,
+      updatePostDto,
+      this.getNotificationActor(req),
+    );
 
-    // Update the post
-    const updatedPost = await this.postsService.update(id, updatePostDto);
+    const becamePublished =
+      (!previousPost.isPublished && updatedPost.isPublished) ||
+      (previousPost.status !== PostStatus.published &&
+        updatedPost.status === PostStatus.published);
+
+    if (becamePublished) {
+      try {
+        await this.firebaseService.sendToTopic(
+          'client',
+          'A New Post Added',
+          updatedPost.title,
+          {
+            postId: updatedPost._id,
+          },
+        );
+      } catch (notifError) {
+        console.error(
+          'FCM topic notification failed on publish transition:',
+          notifError instanceof Error ? notifError.message : String(notifError),
+        );
+      }
+    }
 
     return {
       success: true,
@@ -339,18 +331,15 @@ async getPostById(@Param('id') id: string) {
       data: updatedPost,
     };
   }
+
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN) // REMOVED EDITOR
-  async deletePost(@Param('id') id: string, @Req() req: Request) {
-    const adminId = req.user['sub'];
-    const adminRole = req.user['role'] as Role;
-
-    // Check if admin can delete this post
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  async deletePost(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     const canDelete = await this.postsService.canAdminDeletePost(
       id,
-      adminId,
-      adminRole,
+      req.user.sub,
+      req.user.role,
     );
     if (!canDelete) {
       return {
@@ -359,7 +348,7 @@ async getPostById(@Param('id') id: string) {
       };
     }
 
-    await this.postsService.delete(id);
+    await this.postsService.delete(id, this.getNotificationActor(req));
 
     return {
       success: true,
@@ -369,16 +358,15 @@ async getPostById(@Param('id') id: string) {
 
   @Put(':id/toggle-live')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN) // REMOVED EDITOR
-  async toggleLiveStatus(@Param('id') id: string, @Req() req: Request) {
-    const adminId = req.user['sub'];
-    const adminRole = req.user['role'] as Role;
-
-    // Check if user can edit this post
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  async toggleLiveStatus(
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
     const canEdit = await this.postsService.canAdminEditPost(
       id,
-      adminId,
-      adminRole,
+      req.user.sub,
+      req.user.role,
     );
     if (!canEdit) {
       return {
@@ -387,7 +375,10 @@ async getPostById(@Param('id') id: string) {
       };
     }
 
-    const post = await this.postsService.toggleLiveStatus(id);
+    const post = await this.postsService.toggleLiveStatus(
+      id,
+      this.getNotificationActor(req),
+    );
 
     return {
       success: true,
@@ -396,13 +387,40 @@ async getPostById(@Param('id') id: string) {
     };
   }
 
-  // ============ AUTHOR SPECIFIC ENDPOINTS ============
+  @Put(':id/republish')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  async republishPost(
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const canEdit = await this.postsService.canAdminEditPost(
+      id,
+      req.user.sub,
+      req.user.role,
+    );
+
+    if (!canEdit) {
+      return {
+        success: false,
+        message: 'You are not authorized to modify this post',
+      };
+    }
+
+    const post = await this.postsService.republish(id);
+
+    return {
+      success: true,
+      message: 'Post republished successfully',
+      data: post,
+    };
+  }
+
   @Get('author/my-posts')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN) // REMOVED EDITOR
-  async getMyPosts(@Req() req: Request) {
-    const authorId = req.user['sub'];
-    const posts = await this.postsService.findByAuthor(authorId);
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  async getMyPosts(@Req() req: AuthenticatedRequest) {
+    const posts = await this.postsService.findByAuthor(req.user.sub);
 
     return {
       success: true,
@@ -420,7 +438,6 @@ async getPostById(@Param('id') id: string) {
     };
   }
 
-  // ============ STATISTICS ENDPOINTS ============
   @Get('statistics/summary')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)
@@ -433,7 +450,6 @@ async getPostById(@Param('id') id: string) {
     };
   }
 
-  // ============ BULK OPERATIONS ============
   @Put('bulk/toggle-live')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)

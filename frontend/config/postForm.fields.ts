@@ -25,10 +25,18 @@ export const postFormFields: FormField[] = [
     description: "Upload a high-quality image that represents your post",
   },
   {
-    name: "video",
-    label: "Video Content",
-    type: "file",
-    description: "Optional video to complement your post",
+    name: "youtubeUrl",
+    label: "YouTube URL",
+    type: "url",
+    placeholder: "https://www.youtube.com/watch?v=VIDEO_ID",
+    description: "Optional YouTube video for this post",
+  },
+  {
+    name: "facebookUrl",
+    label: "Facebook Live URL",
+    type: "url",
+    placeholder: "https://www.facebook.com/page/videos/VIDEO_ID",
+    description: "Optional public Facebook Live or video URL for this post",
   },
   {
     name: "profileName",
@@ -50,6 +58,12 @@ export const postFormFields: FormField[] = [
     description: "What time does the event start?",
   },
   {
+    name: "reminderEnabled",
+    label: "Send Mobile Reminder",
+    type: "checkbox",
+    description: "Send a Firebase push notification to mobile users on the event day",
+  },
+  {
     name: "location",
     label: "Location",
     type: "text",
@@ -68,6 +82,19 @@ export const postFormFields: FormField[] = [
     label: "Publish to Public",
     type: "checkbox",
     description: "Make visible to public users",
+  },
+  {
+    name: "autoExpire",
+    label: "Auto Expire",
+    type: "checkbox",
+    description: "Hide this post automatically after the selected number of days",
+  },
+  {
+    name: "expireAfterDays",
+    label: "Keep Post For (Days)",
+    type: "number",
+    placeholder: "5",
+    description: "Default is 5 days from the posted date",
   },
   {
     name: "link",

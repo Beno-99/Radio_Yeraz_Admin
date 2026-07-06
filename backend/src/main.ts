@@ -4,10 +4,9 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { join } from 'path';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { buildAllowedOrigins } from './common/utils/cors-origins.util';
 
-const allowedOrigins = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(',')
-  : [];
+const allowedOrigins = buildAllowedOrigins();
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -18,8 +17,7 @@ async function bootstrap() {
   //   credentials: true,
   // });
   app.enableCors({
-    // origin: allowedOrigins, // Use the allowed origins from environment
-    origin: '*', // Allow all origins (for development only, change in production!)
+    origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: [
@@ -44,12 +42,15 @@ async function bootstrap() {
   // Global prefix
   app.setGlobalPrefix('api');
 
-  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
+  app.useStaticAssets(join(process.cwd(), 'uploads'), {
     prefix: '/uploads/',
   });
 
-  const port = process.env.PORT || 8000;
-  await app.listen(port, '0.0.0.0');
-  console.log(`Application is running on: http://localhost:${port}`);
+  const port = Number(process.env.PORT ?? 8000);
+  const host = process.env.HOST ?? '127.0.0.1';
+
+  await app.listen(port, host);
+
+  console.log(`Backend running on http://${host}:${port}`);
 }
 bootstrap();

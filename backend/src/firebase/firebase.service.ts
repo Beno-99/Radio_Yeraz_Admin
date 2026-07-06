@@ -1,24 +1,58 @@
 // src/firebase/firebase.service.ts
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import * as admin from 'firebase-admin';
 
 @Injectable()
 export class FirebaseService implements OnModuleInit {
+  private readonly logger = new Logger(FirebaseService.name);
+
   onModuleInit() {
-    // Prevent re-initialization on hot reload
-    if (!admin.apps.length) {
+    if (admin.apps.length) {
+      return;
+    }
+
+    const projectId = process.env.FIREBASE_PROJECT_ID;
+    const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+    const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+
+    if (!projectId || !clientEmail || !privateKey) {
+      this.logger.error(
+        'Firebase config missing. Required: FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY',
+      );
+      return;
+    }
+
+    try {
       admin.initializeApp({
         credential: admin.credential.cert({
-          projectId: process.env.FIREBASE_PROJECT_ID,
-          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-          privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+          projectId,
+          clientEmail,
+          privateKey,
         }),
       });
+      this.logger.log(`Firebase initialized for project: ${projectId}`);
+    } catch (error) {
+      this.logger.error(
+        `Firebase initialization failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
   }
 
-  // Send to a single device token
-  async sendToDevice(token: string, title: string, body: string, data?: Record<string, string>) {
+  private ensureInitialized() {
+    if (!admin.apps.length) {
+      throw new Error('Firebase app is not initialized');
+    }
+  }
+
+  async sendToDevice(
+    token: string,
+    title: string,
+    body: string,
+    data?: Record<string, string>,
+  ) {
+    this.ensureInitialized();
     const message: admin.messaging.Message = {
       token,
       notification: { title, body },
@@ -26,34 +60,62 @@ export class FirebaseService implements OnModuleInit {
       android: { priority: 'high' },
       apns: { payload: { aps: { sound: 'default' } } },
     };
-    return admin.messaging().send(message);
+    const messageId = await admin.messaging().send(message);
+    this.logger.log(`Sent device notification: ${messageId}`);
+    return messageId;
   }
 
-  // Send to multiple device tokens
-  async sendToMultipleDevices(tokens: string[], title: string, body: string) {
+  async sendToMultipleDevices(
+    tokens: string[],
+    title: string,
+    body: string,
+  ): Promise<admin.messaging.BatchResponse> {
+    this.ensureInitialized();
     const message: admin.messaging.MulticastMessage = {
       tokens,
       notification: { title, body },
     };
-    return admin.messaging().sendEachForMulticast(message);
+
+    const response = await admin.messaging().sendEachForMulticast(message);
+    this.logger.log(
+      `Sent multicast notification. Success: ${response.successCount}, Failure: ${response.failureCount}`,
+    );
+    return response;
   }
 
-  // Send to a topic (e.g., "emergency-alerts")
-  async sendToTopic(topic: string, title: string, body: string, data?: Record<string, string>) {
-    console.log('Init The Message');
+  async sendToTopic(
+    topic: string,
+    title: string,
+    body: string,
+    data?: Record<string, string>,
+  ) {
+    this.ensureInitialized();
     const message: admin.messaging.Message = {
       topic,
       notification: { title, body },
       data,
-      android:{
-         priority: 'high',
-         notification : {
-          title,                    
+      android: {
+        priority: 'high',
+        notification: {
+          title,
           body,
-         }
-      }
-      
+        },
+      },
     };
-    return admin.messaging().send(message);
+    const messageId = await admin.messaging().send(message);
+    this.logger.log(`Sent topic notification to "${topic}": ${messageId}`);
+    return messageId;
+  }
+
+  async subscribeTokenToTopic(
+    token: string,
+    topic: string,
+  ): Promise<admin.messaging.MessagingTopicManagementResponse> {
+    this.ensureInitialized();
+    const response = await admin.messaging().subscribeToTopic([token], topic);
+    this.logger.log(
+      `Subscribed token to "${topic}". Success: ${response.successCount}, Failure: ${response.failureCount}`,
+    );
+    return response;
   }
 }

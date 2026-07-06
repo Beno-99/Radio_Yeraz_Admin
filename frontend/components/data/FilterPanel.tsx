@@ -108,7 +108,6 @@ export function AdvancedFilterPanel({
   title = "Advanced Filters",
   onApply,
   onReset,
-  ...props
 }: AdvancedFilterPanelProps) {
   const [expandedGroups, setExpandedGroups] = useState<Record<number, boolean>>(
     {}

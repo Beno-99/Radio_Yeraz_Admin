@@ -1,8 +1,9 @@
 // app/dashboard/posts/[id]/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect , useCallback} from "react";
 import { useRouter, useParams } from "next/navigation";
+import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -20,44 +21,107 @@ import {
 import { toast } from "sonner";
 import Swal from "sweetalert2";
 import { postsAPI } from "@/lib/api/api";
+import { parseFacebookUrl } from "@/lib/facebook";
+import {
+  getEffectiveLiveStatus,
+  getMediaLiveBadgeClass,
+  getMediaLiveLabel,
+} from "@/lib/postLiveStatus";
+import { getYouTubeEmbedUrl, parseYouTubeUrl } from "@/lib/youtube";
+
+const POST_REFRESH_INTERVAL_MS = 60 * 1000;
+
+interface Post {
+  _id: string;
+  title: string;
+  description?: string;
+  profileName?: string;
+  location?: string;
+  eventDate?: string;
+  postedDate?: string;
+  expiresAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  mainImage?: string;
+  videoSource?: "YOUTUBE" | "FACEBOOK" | null;
+  youtubeUrl?: string | null;
+  youtubeVideoId?: string | null;
+  facebookUrl?: string | null;
+  isLive: boolean;
+  liveStatus?: "UNKNOWN" | "UPCOMING" | "LIVE" | "WAS_LIVE" | "NOT_LIVE";
+  liveStatusCheckedAt?: string | null;
+  isPublished: boolean;
+}
 
 export default function PostDetailPage() {
   const router = useRouter();
   const params = useParams();
   const postId = params.id as string;
 
-  const [post, setPost] = useState<any>(null);
+  const [post, setPost] = useState<Post | null>(null);
   const [loading, setLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
-  const [imageTimestamp, setImageTimestamp] = useState(Date.now());
+  const [imageTimestamp, setImageTimestamp] = useState<number>(() => Date.now());
 
   const mediaUrl =
-    process.env.NEXT_PUBLIC_MEDIA_GET_URL || "http://localhost:8000";
+    process.env.NEXT_PUBLIC_MEDIA_GET_URL || "https://api.radioyeraz.com";
 
   // Fetch post data
-  const fetchPost = async () => {
+  const fetchPost = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false;
+
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const response = await postsAPI.getPost(postId);
       const postData = response.data.data;
 
       console.log("📥 Fetched post:", postData);
       setPost(postData);
       setImageTimestamp(Date.now()); // Force image refresh
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error fetching post:", error);
-      toast.error(error.response?.data?.message || "Failed to load post");
-      router.push("/dashboard/posts");
+      const message =
+  typeof error === "object" &&
+  error !== null &&
+  "response" in error
+    ? (
+        error as {
+          response?: {
+            data?: {
+              message?: string;
+            };
+          };
+        }
+      ).response?.data?.message || "Failed to load post"
+    : "Failed to load post";
+
+      if (!silent) {
+        toast.error(message);
+        router.push("/dashboard/posts");
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
+  }, [postId, router]);
+
+ useEffect(() => {
+  const loadPost = async () => {
+    await fetchPost();
   };
 
-  useEffect(() => {
-    if (postId) {
-      fetchPost();
-    }
-  }, [postId]);
+  void loadPost();
+}, [fetchPost]);
+
+ useEffect(() => {
+  const intervalId = window.setInterval(() => {
+    if (document.visibilityState !== "visible") return;
+    void fetchPost({ silent: true });
+  }, POST_REFRESH_INTERVAL_MS);
+
+  return () => window.clearInterval(intervalId);
+}, [fetchPost]);
+
+  
 
   // Handle delete
   const handleDelete = async () => {
@@ -77,23 +141,33 @@ export default function PostDetailPage() {
       await postsAPI.deletePost(postId);
       toast.success("Post deleted successfully");
       router.push("/dashboard/posts");
-    } catch (error) {
+    } catch {
       toast.error("Failed to delete post");
     }
   };
 
   // Toggle live status
   const handleToggleLive = async () => {
-    try {
-      const response = await postsAPI.toggleLive(postId);
-      setPost({ ...post, isLive: !post.isLive });
-      toast.success(
-        `Post ${!post.isLive ? "marked as live" : "removed from live"}`,
-      );
-    } catch (error) {
-      toast.error("Failed to update live status");
-    }
-  };
+  try {
+    await postsAPI.toggleLive(postId);
+
+    setPost((prev): Post | null => {
+      if (!prev) return null;
+
+      const updatedPost: Post = {
+        ...prev,
+        isLive: !prev.isLive,
+        liveStatus: !prev.isLive ? "LIVE" : "WAS_LIVE",
+      };
+
+      return updatedPost;
+    });
+
+    toast.success("Live status updated");
+  } catch {
+    toast.error("Failed to update live status");
+  }
+};
 
   // Format date
   const formatDate = (dateString?: string) => {
@@ -130,16 +204,29 @@ export default function PostDetailPage() {
     return `${baseUrl}?t=${imageTimestamp}`;
   };
 
-  // Get video URL
-  const getVideoUrl = () => {
-    if (!post?.video) return null;
-    return post.video.startsWith("http")
-      ? post.video
-      : `${mediaUrl}${post.video}`;
+  const getYoutubeEmbedUrl = () => {
+    if (!post) return null;
+
+    if (post.youtubeVideoId) {
+      return getYouTubeEmbedUrl(post.youtubeVideoId);
+    }
+
+    return parseYouTubeUrl(post.youtubeUrl)?.embedUrl ?? null;
+  };
+
+  const getFacebookEmbedUrl = () => {
+    if (!post) return null;
+    return parseFacebookUrl(post.facebookUrl)?.embedUrl ?? null;
   };
 
   const imageUrl = getImageUrl();
-  const videoUrl = getVideoUrl();
+  const youtubeEmbedUrl = getYoutubeEmbedUrl();
+  const facebookEmbedUrl = getFacebookEmbedUrl();
+  const effectiveLiveStatus = getEffectiveLiveStatus(
+    post?.liveStatus,
+    post?.isLive,
+  );
+  const showLiveDot = effectiveLiveStatus === "LIVE";
 
   if (loading) {
     return (
@@ -194,13 +281,19 @@ export default function PostDetailPage() {
           <button
             onClick={handleToggleLive}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-              post.isLive
+              effectiveLiveStatus === "LIVE"
                 ? "bg-red-100 text-red-700 hover:bg-red-200"
                 : "bg-gray-100 text-gray-700 hover:bg-gray-200"
             }`}
           >
             <Eye size={16} />
-            {post.isLive ? "Live" : "Offline"}
+            {effectiveLiveStatus === "LIVE"
+              ? "Live"
+              : effectiveLiveStatus === "WAS_LIVE"
+                ? "Was Live"
+                : effectiveLiveStatus === "UPCOMING"
+                  ? "Upcoming"
+                  : "Offline"}
           </button>
 
           {/* Edit Button */}
@@ -227,28 +320,60 @@ export default function PostDetailPage() {
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         {/* Media Section - Video or Image */}
         <div className="w-full bg-gray-100 border-b border-gray-200">
-          {videoUrl ? (
-            <div className="relative w-full max-h-[500px] bg-black">
-              <video
-                src={videoUrl}
-                controls
-                className="w-full h-auto max-h-[500px] object-contain mx-auto"
-                poster={imageUrl || undefined}
+          {youtubeEmbedUrl ? (
+            <div className="relative aspect-video w-full bg-black">
+              <iframe
+                src={youtubeEmbedUrl}
+                title={post.title}
+                className="h-full w-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
               />
-              <div className="absolute top-4 right-4 px-3 py-1.5 bg-red-500 text-white text-sm font-medium rounded-full flex items-center gap-1.5">
-                <Video size={16} />
-                Video Post
+              <div
+                className={`absolute top-4 right-4 px-3 py-1.5 text-white text-sm font-medium rounded-full flex items-center gap-1.5 ${
+                  getMediaLiveBadgeClass(post.liveStatus, post.isLive, "bg-red-600")
+                }`}
+              >
+                {showLiveDot ? (
+                  <span className="h-2 w-2 bg-white rounded-full animate-pulse"></span>
+                ) : (
+                  <Video size={16} />
+                )}
+                {getMediaLiveLabel("YouTube", post.liveStatus, post.isLive)}
+              </div>
+            </div>
+          ) : facebookEmbedUrl ? (
+            <div className="relative aspect-video w-full bg-black">
+              <iframe
+                src={facebookEmbedUrl}
+                title={post.title}
+                className="h-full w-full"
+                allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+                allowFullScreen
+              />
+              <div
+                className={`absolute top-4 right-4 px-3 py-1.5 text-white text-sm font-medium rounded-full flex items-center gap-1.5 ${
+                  getMediaLiveBadgeClass(post.liveStatus, post.isLive, "bg-blue-600")
+                }`}
+              >
+                {showLiveDot ? (
+                  <span className="h-2 w-2 bg-white rounded-full animate-pulse"></span>
+                ) : (
+                  <Video size={16} />
+                )}
+                {getMediaLiveLabel("Facebook", post.liveStatus, post.isLive)}
               </div>
             </div>
           ) : imageUrl ? (
             <div className="relative w-full max-h-[500px] overflow-hidden">
-              <img
-                key={imageUrl}
-                src={imageUrl}
-                alt={post.title}
-                className="w-full h-auto object-contain bg-gray-50"
-                onError={() => setImageError(true)}
-              />
+              <Image
+  src={imageUrl}
+  alt={post.title}
+  width={1200}
+  height={800}
+  className="w-full h-auto object-contain bg-gray-50"
+  onError={() => setImageError(true)}
+/>
               {post.isLive && (
                 <div className="absolute top-4 right-4 px-3 py-1.5 bg-red-500 text-white text-sm font-medium rounded-full flex items-center gap-1.5">
                   <span className="h-2 w-2 bg-white rounded-full animate-pulse"></span>
@@ -280,9 +405,15 @@ export default function PostDetailPage() {
               <span className="text-sm text-gray-500">ID: {post._id}</span>
               <span className="text-gray-300">•</span>
               <span
-                className={`text-sm font-medium ${post.isLive ? "text-red-600" : "text-gray-500"}`}
+                className={`text-sm font-medium ${effectiveLiveStatus === "LIVE" ? "text-red-600" : "text-gray-500"}`}
               >
-                {post.isLive ? "🔴 Live" : "⚫ Offline"}
+                {effectiveLiveStatus === "LIVE"
+                  ? "🔴 Live"
+                  : effectiveLiveStatus === "WAS_LIVE"
+                    ? "Was Live"
+                    : effectiveLiveStatus === "UPCOMING"
+                      ? "Upcoming"
+                      : "⚫ Offline"}
               </span>
               <span className="text-gray-300">•</span>
               <span
@@ -372,6 +503,22 @@ export default function PostDetailPage() {
                 </div>
               </div>
             )}
+
+            <div className="bg-gray-50 rounded-xl p-4">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-green-100 rounded-lg">
+                  <CalendarDays className="w-5 h-5 text-green-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Expires</p>
+                  <p className="font-medium text-gray-900">
+                    {post.expiresAt
+                      ? formatDate(post.expiresAt)
+                      : "No auto expiration"}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Metadata */}

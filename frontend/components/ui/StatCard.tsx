@@ -4,7 +4,7 @@ interface StatCardProps {
   value: number | string;
   subtitle?: string;
   icon: React.ReactNode;
-  color: "blue" | "green" | "red" | "purple" | "gray";
+  color: "blue" | "green" | "red" | "purple" | "gray" | "yellow";
 }
 
 export function StatCard({
@@ -20,9 +20,10 @@ export function StatCard({
     red: "bg-red-50 border-red-200 text-red-700",
     purple: "bg-purple-50 border-purple-200 text-purple-700",
     gray: "bg-gray-50 border-gray-200 text-gray-700",
+    yellow: "bg-amber-50 border-amber-200 text-amber-700",
   } as const;
 
-  const colorClass = colorClasses[color];
+  const colorClass = colorClasses[color] || colorClasses.gray;
   const bgClass = colorClass.split(" ")[0];
 
   return (

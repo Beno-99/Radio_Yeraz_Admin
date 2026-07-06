@@ -1,0 +1,47 @@
+# dependencies
+node_modules/
+
+# environment variables
+.env
+.env.local
+.env.*.local
+/.htaccess
+
+# build outputs
+dist/
+.next/
+build/
+
+# logs
+logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+
+# Ignore all video files
+backend/uploads/
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+.env.*
+*.env
+!.env.example
+/.htaccess.backup-*
+/.htaccess.before-proxy
+/.htaccess.passenger-disabled
+/Ready
+/_next/
+/uploads
+/backend/tmp/
+/frontend/Ready
+/frontend/manual-app.pid
+/frontend/node
+/frontend/tmp/
+frontend/.next.previous/

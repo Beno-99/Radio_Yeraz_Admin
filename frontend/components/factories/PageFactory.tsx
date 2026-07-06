@@ -1,16 +1,15 @@
-// src/components/factories/PageFactory.tsx - UPDATED
+// src/components/factories/PageFactory.tsx
+
+import { useState } from "react";
 import { useDataFetching } from "@/hooks/useDataFetching";
 import { DataTable } from "@/components/data/DataTable";
-import { FilterPanel, FilterChips } from "@/components/data/FilterPanel"; // ✅ Fixed import
 import type { Column } from "@/components/data/DataTable";
-import { useState } from "react";
 import api from "@/lib/api/api";
 
 interface PageFactoryProps<T> {
   title: string;
   endpoint: string;
   columns: Column<T>[];
-  renderFilters?: (filters: any, setFilters: any) => React.ReactNode;
   actions?: {
     onCreate?: () => void;
     onExport?: () => void;
@@ -22,62 +21,32 @@ export function PageFactory<T extends { _id: string }>({
   title,
   endpoint,
   columns,
-  renderFilters,
   actions,
 }: PageFactoryProps<T>) {
-  const {
-    data,
-    loading,
-    error,
-    pagination,
-    filters,
-    setPage,
-    setFilters,
-    refetch,
-  } = useDataFetching<T>({
-    fetchFunction: async (params) => {
-      const response = await api.get(endpoint, { params });
-      return response.data;
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
+
+  const { data, loading, pagination } = useDataFetching<T>({
+    page,
+    pageSize,
+    fetchFunction: async ({ page, pageSize }) => {
+      const response = await api.get(endpoint, {
+        params: {
+          page,
+          pageSize,
+        },
+      });
+
+      return {
+        data: response.data.data ?? response.data,
+        total: response.data.total ?? 0,
+      };
     },
   });
 
-  // Track active filters for chips
-  const [activeFilters, setActiveFilters] = useState<
-    Array<{ key: string; label: string; value: string }>
-  >([]);
-
-  const handleFilterChange = (newFilters: any) => {
-    setFilters(newFilters);
-
-    // Update active filters chips
-    const chips = Object.entries(newFilters)
-      .filter(
-        ([_, value]) => value !== "" && value !== undefined && value !== null
-      )
-      .map(([key, value]) => ({
-        key,
-        label: key.charAt(0).toUpperCase() + key.slice(1),
-        value: String(value),
-      }));
-
-    setActiveFilters(chips);
-  };
-
-  const handleRemoveFilter = (key: string) => {
-    const updatedFilters = { ...filters };
-    delete updatedFilters[key];
-    setFilters(updatedFilters);
-    setActiveFilters(activeFilters.filter((filter) => filter.key !== key));
-  };
-
-  const handleClearAllFilters = () => {
-    setFilters({});
-    setActiveFilters([]);
-  };
-
   return (
     <div className="space-y-6">
-      {/* Page Header */}
+      {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold">{title}</h1>
@@ -85,6 +54,7 @@ export function PageFactory<T extends { _id: string }>({
             Manage your {title.toLowerCase()} here
           </p>
         </div>
+
         <div className="flex space-x-3">
           {actions?.onExport && (
             <button
@@ -94,6 +64,7 @@ export function PageFactory<T extends { _id: string }>({
               Export
             </button>
           )}
+
           {actions?.onCreate && (
             <button
               onClick={actions.onCreate}
@@ -105,32 +76,6 @@ export function PageFactory<T extends { _id: string }>({
         </div>
       </div>
 
-      {/* Filter Chips */}
-      <FilterChips
-        filters={activeFilters}
-        onRemove={handleRemoveFilter}
-        onClearAll={handleClearAllFilters}
-      />
-
-      {/* Filter Panel */}
-      {renderFilters && (
-        <FilterPanel
-          title="Filters"
-          defaultExpanded={false}
-          onClear={handleClearAllFilters}
-        >
-          {renderFilters(filters, handleFilterChange)}
-        </FilterPanel>
-      )}
-
-      {/* Error State */}
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-          Error: {error}
-        </div>
-      )}
-
-      {/* Data Table */}
       <DataTable
         data={data}
         columns={columns}

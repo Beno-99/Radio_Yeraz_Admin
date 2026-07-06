@@ -1,9 +1,14 @@
-import axios from "axios";
+import axios, { AxiosRequestConfig } from "axios";
+import {
+  getLocalStorageValue,
+  removeLocalStorageValue,
+  setLocalStorageValue,
+} from "@/lib/browser-storage";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ||
+const API_BASE_URL = (
   process.env.NEXT_PUBLIC_API_URL ||
-  "http://192.168.1.115:8000/api";
+  "https://api.radioyeraz.com/api"
+).replace(/\/+$/, "");
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -12,27 +17,105 @@ const api = axios.create({
   },
 });
 
-let isRefreshing = false;
-let failedQueue: any[] = [];
+interface RefreshResponse {
+  accessToken?: string;
+  refreshToken?: string;
+  access_token?: string;
+  refresh_token?: string;
+  data?: {
+    accessToken?: string;
+    refreshToken?: string;
+    access_token?: string;
+    refresh_token?: string;
+  };
+}
 
-const processQueue = (error: any, token: string | null = null) => {
-  failedQueue.forEach((prom) => {
-    if (error) {
-      prom.reject(error);
-    } else {
-      prom.resolve(token);
+let refreshAccessTokenPromise: Promise<string> | null = null;
+
+const clearAuthenticationAndRedirect = () => {
+  removeLocalStorageValue("access_token");
+  removeLocalStorageValue("refresh_token");
+  removeLocalStorageValue("user");
+
+  if (
+    typeof window !== "undefined" &&
+    !window.location.pathname.includes("/login")
+  ) {
+    window.location.href = "/login";
+  }
+};
+
+const readRefreshResponse = (refreshData: RefreshResponse) => {
+  const accessToken =
+    refreshData.accessToken ??
+    refreshData.access_token ??
+    refreshData.data?.accessToken ??
+    refreshData.data?.access_token;
+  const nextRefreshToken =
+    refreshData.refreshToken ??
+    refreshData.refresh_token ??
+    refreshData.data?.refreshToken ??
+    refreshData.data?.refresh_token;
+
+  return { accessToken, nextRefreshToken };
+};
+
+export const refreshAccessToken = async (): Promise<string> => {
+  if (refreshAccessTokenPromise) {
+    return refreshAccessTokenPromise;
+  }
+
+  refreshAccessTokenPromise = (async () => {
+    try {
+      if (typeof window === "undefined") {
+        throw new Error("Token refresh is only available in the browser");
+      }
+
+      const refreshToken = getLocalStorageValue("refresh_token");
+
+      if (!refreshToken) {
+        throw new Error("No refresh token available");
+      }
+
+      const response = await axios.post<RefreshResponse>(
+        `${API_BASE_URL}/auth/refresh`,
+        { refreshToken },
+      );
+
+      const { accessToken, nextRefreshToken } = readRefreshResponse(
+        response.data,
+      );
+
+      if (!accessToken) {
+        throw new Error("Refresh response did not include an access token");
+      }
+
+      setLocalStorageValue("access_token", accessToken);
+      if (nextRefreshToken) {
+        setLocalStorageValue("refresh_token", nextRefreshToken);
+      }
+
+      api.defaults.headers.common.Authorization = `Bearer ${accessToken}`;
+
+      return accessToken;
+    } catch (error) {
+      clearAuthenticationAndRedirect();
+      throw error;
     }
-  });
-  failedQueue = [];
+  })();
+
+  try {
+    return await refreshAccessTokenPromise;
+  } finally {
+    refreshAccessTokenPromise = null;
+  }
 };
 
 // ✅ Attach token to every request
 api.interceptors.request.use((config) => {
-  if (typeof window !== "undefined") {
-    const token = localStorage.getItem("access_token");
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
+  const token = getLocalStorageValue("access_token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
@@ -40,8 +123,9 @@ api.interceptors.request.use((config) => {
 // ✅ Response Interceptor
 api.interceptors.response.use(
   (response) => response,
-  async (error) => {
-    const originalRequest = error.config;
+  async (error: unknown) => {
+    const axiosError = error as { config?: AxiosRequestConfig & { _retry?: boolean; url?: string }; response?: { status: number } };
+    const originalRequest = axiosError.config;
 
     // ✅ DO NOT INTERCEPT LOGIN REQUESTS
     if (
@@ -52,44 +136,26 @@ api.interceptors.response.use(
     }
 
     // ❌ If not 401 → reject normally
-    if (error.response?.status !== 401 || originalRequest._retry) {
+    if (axiosError.response?.status !== 401 || originalRequest?._retry) {
       return Promise.reject(error);
     }
 
-    originalRequest._retry = true;
+    if (originalRequest) {
+      originalRequest._retry = true;
+    }
+
+    if (typeof window === "undefined") {
+      return Promise.reject(error);
+    }
 
     try {
-      const refreshToken = localStorage.getItem("refresh_token");
-
-      if (!refreshToken) {
-        throw new Error("No refresh token available");
+      const accessToken = await refreshAccessToken();
+      if (originalRequest?.headers) {
+        (originalRequest.headers as Record<string, string>).Authorization = `Bearer ${accessToken}`;
       }
 
-      const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
-        refreshToken,
-      });
-
-      const { access_token, refresh_token } = response.data;
-
-      localStorage.setItem("access_token", access_token);
-      if (refresh_token) {
-        localStorage.setItem("refresh_token", refresh_token);
-      }
-
-      api.defaults.headers.common.Authorization = `Bearer ${access_token}`;
-      originalRequest.headers.Authorization = `Bearer ${access_token}`;
-
-      return api(originalRequest);
-    } catch (refreshError: any) {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("refresh_token");
-
-      if (typeof window !== "undefined") {
-        if (!window.location.pathname.includes("/login")) {
-          window.location.href = "/login";
-        }
-      }
-
+      return api(originalRequest as AxiosRequestConfig);
+    } catch (refreshError: unknown) {
       return Promise.reject(refreshError);
     }
   },
@@ -98,27 +164,63 @@ api.interceptors.response.use(
 export const authAPI = {
   login: (credentials: { username: string; password: string }) =>
     api.post("/auth/login", credentials),
-  logout: () => api.post("/auth/logout"),
+  logout: () => {
+    const refreshToken = getLocalStorageValue("refresh_token");
+    return api.post("/auth/logout", { refreshToken });
+  },
   changePassword: (data: { currentPassword: string; newPassword: string }) =>
     api.post("/auth/change-password", data),
 };
 
+interface AdminParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  [key: string]: string | number | boolean | undefined;
+}
+
+interface AdminData {
+  username?: string;
+  password?: string;
+  role?: string;
+  isActive?: boolean;
+  [key: string]: string | boolean | undefined;
+}
+
 export const adminAPI = {
   getProfile: () => api.get("/admin/profile"),
   getAdmin: (id: string) => api.get(`/admin/${id}`),
-  getAllAdmins: (params?: any) => api.get("/admin", { params }),
-  createAdmin: (data: any) => api.post("/admin", data),
-  updateAdmin: (id: string, data: any) => api.put(`/admin/${id}`, data),
+  getAllAdmins: (params?: AdminParams) => api.get("/admin", { params }),
+  createAdmin: (data: AdminData) => api.post("/admin", data),
+  updateAdmin: (id: string, data: AdminData) => api.put(`/admin/${id}`, data),
   deleteAdmin: (id: string) => api.delete(`/admin/${id}`),
   toggleActive: (id: string) => api.put(`/admin/${id}/toggle-active`),
 };
 
+interface PostParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  [key: string]: string | number | boolean | undefined;
+}
+
+interface PostData {
+  _id?: string;
+  author?: string;
+  [key: string]: string | boolean | undefined;
+}
+
+interface AuthorDetails {
+  data?: unknown;
+  [key: string]: unknown;
+}
+
 export const postsAPI = {
-  getAllPosts: (params?: any) => api.get("/posts", { params }),
+  getAllPosts: (params?: PostParams) => api.get("/posts", { params }),
 
   getPost: (id: string) => api.get(`/posts/${id}`),
   getStats: async () => {
-    const { data } = await api.get("/posts/stats");
+    const { data } = await api.get("/posts/statistics/summary");
     return data;
   },
 
@@ -153,10 +255,8 @@ export const postsAPI = {
   updatePost: async (id: string, formData: FormData) => {
     console.log("API: updatePost called with FormData");
 
-    // ✅ Don't set Content-Type here - let axios handle it
     const response = await api.put(`/posts/${id}`, formData, {
       headers: {
-        // Override the default Content-Type for this request
         "Content-Type": "multipart/form-data",
       },
     });
@@ -175,13 +275,11 @@ export const postsAPI = {
   // Get post with author details
   getPostWithAuthor: async (postId: string) => {
     try {
-      // First get the post
       const postResponse = await postsAPI.getPost(postId);
-      const post = postResponse.data;
+      const post = (postResponse.data?.data || postResponse.data) as PostData;
 
-      // Then get the author details using the author ID from the post
       if (post.author) {
-        const authorResponse = await postsAPI.getAuthorById(post.author);
+        const authorResponse = await postsAPI.getAuthorById(post.author) as AuthorDetails;
         return {
           ...post,
           authorDetails: authorResponse.data || authorResponse,
@@ -196,17 +294,16 @@ export const postsAPI = {
   },
 
   // Get all posts with author details
-  getAllPostsWithAuthors: async (params?: any) => {
+  getAllPostsWithAuthors: async (params?: PostParams) => {
     try {
       const postsResponse = await api.get("/posts", { params });
-      const posts = postsResponse.data;
+      const posts = (postsResponse.data?.data || postsResponse.data) as PostData[];
 
-      // Get author details for each post
       const postsWithAuthors = await Promise.all(
-        posts.map(async (post: any) => {
+        posts.map(async (post: PostData) => {
           if (post.author) {
             try {
-              const authorResponse = await postsAPI.getAuthorById(post.author);
+              const authorResponse = await postsAPI.getAuthorById(post.author) as AuthorDetails;
               return {
                 ...post,
                 authorDetails: authorResponse.data || authorResponse,
@@ -234,26 +331,67 @@ export const postsAPI = {
   },
 };
 
-export const adsAPI = {
-  getAllAds: (params?: any) => api.get("/ads", { params }),
-  getAdById: (id: string) => api.get(`/ads/${id}`),
-  createAd: (data: FormData) => {
-    // ✅ Use the api instance but let it handle headers
-    return api.post("/ads", data, {
+interface CarouselParams {
+  page?: number;
+  limit?: number;
+  [key: string]: string | number | boolean | undefined;
+}
+
+export const carouselsAPI = {
+  getAllCarousels: (params?: CarouselParams) => api.get("/carousels", { params }),
+  getCarouselById: (id: string) => api.get(`/carousels/${id}`),
+  createCarousel: (data: FormData) => {
+    return api.post("/carousels", data, {
       headers: {
         "Content-Type": "multipart/form-data",
       },
     });
   },
-  updateAd: (id: string, data: FormData) => {
-    return api.put(`/ads/${id}`, data, {
+  updateCarousel: (id: string, data: FormData) => {
+    return api.put(`/carousels/${id}`, data, {
       headers: {
         "Content-Type": "multipart/form-data",
       },
     });
   },
-  deleteAd: (id: string) => api.delete(`/ads/${id}`),
-  toggleActive: (id: string) => api.put(`/ads/${id}/toggle-active`),
+  deleteCarousel: (id: string) => api.delete(`/carousels/${id}`),
+  toggleActive: (id: string) => api.put(`/carousels/${id}/toggle-active`),
+};
+
+export const streamLinksAPI = {
+  getAll: () => api.get('/stream-links'),
+  getActive: () => api.get('/stream-links/active'),
+  getById: (id: string) => api.get(`/stream-links/${id}`),
+  create: (data: {
+    title: string;
+    url: string;
+    description?: string;
+    bitrate?: number | null;
+    displayOrder?: number;
+    isActive?: boolean;
+  }) => api.post('/stream-links', data),
+  update: (id: string, data: {
+    title?: string;
+    url?: string;
+    description?: string;
+    bitrate?: number | null;
+    displayOrder?: number;
+    isActive?: boolean;
+  }) => api.patch(`/stream-links/${id}`, data),
+  delete: (id: string) => api.delete(`/stream-links/${id}`),
+};
+
+export const notificationAPI = {
+  getAll: (limit: number = 20) =>
+    api.get(`/notifications?limit=${limit}`),
+  getUnreadCount: () =>
+    api.get('/notifications/unread-count'),
+  markAsRead: (id: string) =>
+    api.put(`/notifications/${id}/read`),
+  markAllAsRead: () =>
+    api.put('/notifications/mark-all-read'),
+  deleteAll: () =>
+    api.delete('/notifications/all'),
 };
 
 export default api;

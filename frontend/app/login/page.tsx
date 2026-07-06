@@ -1,13 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { authAPI } from "@/lib/api/api";
+import {
+  getLocalStorageValue,
+  setLocalStorageValue,
+} from "@/lib/browser-storage";
 
 export default function LoginPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const token = getLocalStorageValue("access_token");
+    const user = getLocalStorageValue("user");
+
+    if (token && user) {
+      router.replace("/dashboard");
+    }
+  }, [router]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -15,19 +28,39 @@ export default function LoginPage() {
     setError("");
 
     const formData = new FormData(e.currentTarget);
-    const username = formData.get("username") as string;
+    const username = String(formData.get("username") || "").trim();
     const password = formData.get("password") as string;
 
     try {
       const response = await authAPI.login({ username, password });
 
       if (response.data.success) {
-        localStorage.setItem("access_token", response.data.data.accessToken);
-        localStorage.setItem("user", JSON.stringify(response.data.data.admin));
+        setLocalStorageValue("access_token", response.data.data.accessToken);
+        setLocalStorageValue("refresh_token", response.data.data.refreshToken);
+        setLocalStorageValue("user", JSON.stringify(response.data.data.admin));
         router.push("/dashboard");
       }
-    } catch (err: any) {
-      setError(err.response?.data?.message || "Login failed");
+    } catch (err: unknown) {
+      let errorMessage = "Username or password is incorrect.";
+
+      if (err && typeof err === "object" && "response" in err) {
+        const axiosError = err as {
+          response?: {
+            status?: number;
+            data?: { message?: string };
+          };
+        };
+
+        if (axiosError.response?.status && axiosError.response.status !== 401) {
+          errorMessage =
+            axiosError.response.data?.message ||
+            "Unable to sign in. Please try again.";
+        }
+      } else if (err instanceof Error) {
+        errorMessage = "Unable to sign in. Please try again.";
+      }
+
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -66,7 +99,7 @@ export default function LoginPage() {
                 type="text"
                 required
                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-black"
-                defaultValue="superadmin"
+                autoComplete="username"
               />
             </div>
 
@@ -83,7 +116,7 @@ export default function LoginPage() {
                 type="password"
                 required
                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-black"
-                defaultValue="SuperAdmin123!"
+                autoComplete="current-password"
               />
             </div>
           </div>

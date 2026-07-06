@@ -1,17 +1,30 @@
 // src/posts/dto/update-post.dto.ts
 import { Transform } from 'class-transformer';
-import { IsString, IsOptional, IsBoolean } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsBoolean,
+  IsInt,
+  Min,
+  Max,
+} from 'class-validator';
 
 export class UpdatePostDto {
+  @IsOptional()
   @IsString()
-  title: string;
-
-  @IsString()
-  description: string;
+  title?: string;
 
   @IsOptional()
   @IsString()
-  video?: string;
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  youtubeUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  facebookUrl?: string;
 
   @IsOptional()
   @IsString()
@@ -23,6 +36,10 @@ export class UpdatePostDto {
 
   @IsOptional()
   @IsString()
+  eventTime?: string;
+
+  @IsOptional()
+  @IsString()
   location?: string;
 
   @IsOptional()
@@ -31,18 +48,8 @@ export class UpdatePostDto {
 
   @IsOptional()
   @Transform(({ value }) => {
-    console.log('=== DTO TRANSFORM isLive ===');
-    console.log('Input value:', value, 'type:', typeof value);
-
-    if (value === 'true' || value === true) {
-      console.log('Returning true');
-      return true;
-    }
-    if (value === 'false' || value === false) {
-      console.log('Returning false');
-      return false;
-    }
-    console.log('Returning undefined');
+    if (value === 'true' || value === true) return true;
+    if (value === 'false' || value === false) return false;
     return undefined;
   })
   @IsBoolean()
@@ -50,22 +57,42 @@ export class UpdatePostDto {
 
   @IsOptional()
   @Transform(({ value }) => {
-    console.log('=== DTO TRANSFORM isPublished ===');
-    console.log('Input value:', value, 'type:', typeof value);
-
-    if (value === 'true' || value === true) {
-      console.log('Returning true');
-      return true;
-    }
-    if (value === 'false' || value === false) {
-      console.log('Returning false');
-      return false;
-    }
-    console.log('Returning undefined');
+    if (value === 'true' || value === true) return true;
+    if (value === 'false' || value === false) return false;
     return undefined;
   })
   @IsBoolean()
   isPublished?: boolean;
+
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (value === 'true' || value === true) return true;
+    if (value === 'false' || value === false) return false;
+    return undefined;
+  })
+  @IsBoolean()
+  reminderEnabled?: boolean;
+
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (value === 'true' || value === true) return true;
+    if (value === 'false' || value === false) return false;
+    return undefined;
+  })
+  @IsBoolean()
+  autoExpire?: boolean;
+
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (value === '' || value === undefined || value === null) {
+      return undefined;
+    }
+    return Number(value);
+  })
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  expireAfterDays?: number;
 
   @IsOptional()
   @IsString()
@@ -73,9 +100,6 @@ export class UpdatePostDto {
 
   @IsOptional()
   removeImage?: string;
-
-  @IsOptional()
-  removeVideo?: string;
 
   @IsOptional()
   expiresAt?: Date;

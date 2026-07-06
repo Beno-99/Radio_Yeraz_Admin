@@ -1,4 +1,3 @@
-// components/admin/AdminCreateForm.tsx
 "use client";
 
 import { useState } from "react";
@@ -13,6 +12,15 @@ import { FormActions } from "./FormActions";
 import { ErrorAlert } from "./ErrorAlert";
 import { useAdminForm } from "@/hooks/useAdminForm";
 
+interface AdminFormData {
+  username: string;
+  displayName: string;
+  password: string;
+  confirmPassword: string;
+  role: "SUPER_ADMIN" | "ADMIN";
+  isActive: boolean;
+}
+
 export function AdminCreateForm() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -26,12 +34,19 @@ export function AdminCreateForm() {
     control,
   } = useAdminForm();
 
-  const onSubmit = async (data: any) => {
+  const onSubmit = async (data: AdminFormData) => {
     setLoading(true);
     setError(null);
 
     try {
-      const { confirmPassword, ...adminData } = data;
+      const adminData = {
+        username: data.username,
+        displayName: data.displayName,
+        password: data.password,
+        role: data.role,
+        isActive: data.isActive,
+      };
+
       const response = await adminAPI.createAdmin(adminData);
 
       if (response.data.success) {
@@ -40,8 +55,23 @@ export function AdminCreateForm() {
       } else {
         setError(response.data.message || "Failed to create admin");
       }
-    } catch (err: any) {
-      setError(err.response?.data?.message || "Failed to create admin");
+    } catch (err: unknown) {
+      const message =
+        typeof err === "object" &&
+        err !== null &&
+        "response" in err
+          ? (
+              err as {
+                response?: {
+                  data?: {
+                    message?: string;
+                  };
+                };
+              }
+            ).response?.data?.message
+          : undefined;
+
+      setError(message || "Failed to create admin");
     } finally {
       setLoading(false);
     }
@@ -50,7 +80,9 @@ export function AdminCreateForm() {
   const handleCancel = () => {
     if (isDirty) {
       if (
-        confirm("You have unsaved changes. Are you sure you want to cancel?")
+        window.confirm(
+          "You have unsaved changes. Are you sure you want to cancel?",
+        )
       ) {
         router.back();
       }
@@ -67,8 +99,14 @@ export function AdminCreateForm() {
 
       <div className="space-y-6">
         <BasicInfoFields register={register} errors={errors} />
+
         <PasswordFields register={register} errors={errors} />
-        <RoleStatusFields register={register} watch={watch} control={control} />
+
+        <RoleStatusFields
+          register={register}
+          watch={watch}
+          control={control}
+        />
       </div>
 
       <FormActions

@@ -6,7 +6,9 @@ export function usePostStats(posts: Post[]) {
     const now = new Date();
 
     const livePosts = posts.filter((p) => p.isLive).length;
-    const postsWithMedia = posts.filter((p) => p.mainImage || p.video).length;
+    const postsWithMedia = posts.filter(
+      (p) => p.mainImage || p.youtubeVideoId || p.youtubeUrl,
+    ).length;
 
     const postsThisMonth = posts.filter((p) => {
       const d = new Date(p.createdAt);

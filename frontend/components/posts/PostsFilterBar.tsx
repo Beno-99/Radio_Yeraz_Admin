@@ -1,13 +1,15 @@
 // components/posts/PostsFilterBar.tsx
 import { Filter } from "lucide-react";
 
+type FilterType = "all" | "published" | "draft" | "live" | "expired";
+
 interface PostsFilterBarProps {
-  filter: "all" | "published" | "draft" | "live";
+  filter: FilterType;
   page: number;
   total: number;
   totalPosts: number;
   selectedPosts: number;
-  onFilterChange: (filter: "all" | "published" | "draft" | "live") => void;
+  onFilterChange: (filter: FilterType) => void;
   onClearSelection: () => void;
 }
 
@@ -22,19 +24,21 @@ export function PostsFilterBar({
 }: PostsFilterBarProps) {
   const PAGE_LIMIT = 12;
 
+  const handleFilterChange = (filterType: FilterType) => {
+    onFilterChange(filterType);
+    onClearSelection();
+  };
+
   return (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-white rounded-xl border border-gray-200">
       <div className="flex items-center gap-2">
         <Filter size={18} className="text-gray-500" />
         <span className="text-sm text-gray-700">Filter by:</span>
         <div className="flex gap-2">
-          {["all", "published", "draft", "live"].map((filterType) => (
+          {["all", "published", "draft", "live", "expired"].map((filterType) => (
             <button
               key={filterType}
-              onClick={() => {
-                onFilterChange(filterType as any);
-                onClearSelection();
-              }}
+              onClick={() => handleFilterChange(filterType as FilterType)}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                 filter === filterType
                   ? filterType === "all"
@@ -43,7 +47,9 @@ export function PostsFilterBar({
                       ? "bg-green-100 text-green-700"
                       : filterType === "draft"
                         ? "bg-gray-100 text-gray-700"
-                        : "bg-red-100 text-red-700"
+                        : filterType === "live"
+                          ? "bg-red-100 text-red-700"
+                          : "bg-slate-200 text-slate-700"
                   : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >

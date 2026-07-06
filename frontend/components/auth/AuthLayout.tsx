@@ -1,5 +1,4 @@
 // components/auth/AuthLayout.tsx
-import Image from "next/image";
 import { Radio } from "lucide-react";
 
 export default function AuthLayout({

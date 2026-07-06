@@ -2,25 +2,56 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { io, Socket } from "socket.io-client";
+import {
+  getLocalStorageValue,
+  setLocalStorageValue,
+  subscribeToLocalStorage,
+} from "@/lib/browser-storage";
+import { refreshAccessToken } from "@/lib/api/api";
 
 export interface AdminNotification {
-  id: string;
-  _id?: string;
+  _id: string;
   title: string;
   message: string;
   type: string;
-  data?: any;
+  data?: unknown;
   createdAt: string;
   isRead: boolean;
 }
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL
-  ? process.env.NEXT_PUBLIC_API_URL.replace("/api", "")
-  : "http://192.168.1.197:8000";
+const getBackendUrl = (): string => {
+  const configuredUrl =
+    process.env.NEXT_PUBLIC_SOCKET_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    "https://api.radioyeraz.com";
+
+  try {
+    const normalizedUrl = configuredUrl.startsWith("//")
+      ? `https:${configuredUrl}`
+      : configuredUrl;
+
+    return new URL(normalizedUrl).origin;
+  } catch {
+    return `https://${configuredUrl.replace(/^\/+|\/+$/g, "")}`;
+  }
+};
+
+const BACKEND_URL = getBackendUrl();
+
+type SocketAuthErrorCode =
+  | "AUTH_REQUIRED"
+  | "TOKEN_EXPIRED"
+  | "INVALID_TOKEN"
+  | "INACTIVE_ACCOUNT";
+
+interface SocketAuthErrorPayload {
+  code?: SocketAuthErrorCode;
+  message?: string;
+}
 
 const getStorageKey = () => {
   try {
-    const user = localStorage.getItem("user");
+    const user = getLocalStorageValue("user");
     const parsed = user ? JSON.parse(user) : null;
     return `notifications_read_${parsed?.id || "guest"}`;
   } catch {
@@ -30,7 +61,7 @@ const getStorageKey = () => {
 
 const getLocalReadIds = (): Set<string> => {
   try {
-    const stored = localStorage.getItem(getStorageKey());
+    const stored = getLocalStorageValue(getStorageKey());
     return stored ? new Set(JSON.parse(stored)) : new Set();
   } catch {
     return new Set();
@@ -39,19 +70,32 @@ const getLocalReadIds = (): Set<string> => {
 
 const saveLocalReadIds = (ids: Set<string>) => {
   try {
-    localStorage.setItem(getStorageKey(), JSON.stringify([...ids]));
-  } catch {}
+    setLocalStorageValue(getStorageKey(), JSON.stringify([...ids]));
+  } catch {
+    // ignore localStorage errors
+  }
+};
+
+const getAccessToken = () => getLocalStorageValue("access_token") || "";
+
+const updateSocketAuth = (socket: Socket) => {
+  socket.auth = {
+    ...(typeof socket.auth === "object" && socket.auth ? socket.auth : {}),
+    token: getAccessToken(),
+  };
 };
 
 export function useAdminNotifications() {
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+
   const socketRef = useRef<Socket | null>(null);
   const readIdsRef = useRef<Set<string>>(new Set());
+  const cleanupRef = useRef(false);
 
   const calculateUnread = useCallback(
     (notifs: AdminNotification[], readIds: Set<string>) => {
-      return notifs.filter((n) => !readIds.has(n.id || n._id || "")).length;
+      return notifs.filter((n) => !readIds.has(n._id)).length;
     },
     [],
   );
@@ -60,24 +104,32 @@ export function useAdminNotifications() {
     (notifs: AdminNotification[], readIds: Set<string>) => {
       return notifs.map((n) => ({
         ...n,
-        isRead: readIds.has(n.id || n._id || ""),
+        isRead: readIds.has(n._id),
       }));
     },
     [],
   );
 
-  // Shared handler for both new_notification and admin_notification
   const handleIncomingNotification = useCallback(
     (data: AdminNotification) => {
-      const id = data.id || data._id || "";
-      const isAlreadyRead = readIdsRef.current.has(id);
-      const notifWithReadState = { ...data, isRead: isAlreadyRead };
+      const id = data._id;
+
+      const notifWithReadState = {
+        ...data,
+        isRead: readIdsRef.current.has(id),
+      };
 
       setNotifications((prev) => {
-        // ← prevent duplicates
-        if (prev.some((n) => (n.id || n._id) === id)) return prev;
+        if (prev.some((n) => n._id === id)) {
+          return prev;
+        }
+
         const updated = [notifWithReadState, ...prev].slice(0, 50);
-        setUnreadCount(calculateUnread(updated, readIdsRef.current));
+
+        setUnreadCount(
+          calculateUnread(updated, readIdsRef.current),
+        );
+
         return updated;
       });
     },
@@ -85,93 +137,225 @@ export function useAdminNotifications() {
   );
 
   useEffect(() => {
-    console.log("🔌 BACKEND_URL:", BACKEND_URL);
-    console.log("🔌 ENV VAR:", process.env.NEXT_PUBLIC_BACKEND_URL);
-
     if (socketRef.current?.connected) {
-      console.log("⚡ Already connected, skipping");
       return;
     }
+
     readIdsRef.current = getLocalReadIds();
+    const token = getAccessToken();
+    if (!token) {
+      return;
+    }
 
-    if (socketRef.current?.connected) return;
-
-    console.log("🔌 Connecting to:", BACKEND_URL);
+    cleanupRef.current = false;
 
     const socket = io(BACKEND_URL, {
       path: "/socket.io",
-      transports: ["websocket", "polling"],
+      auth: { token },
+      transports: ["websocket"],
       reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 2000,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000,
     });
 
     socketRef.current = socket;
+    let pendingAuthErrorCode: SocketAuthErrorCode | null = null;
+    let tokenExpiredRetryUsed = false;
+    let refreshReconnectPromise: Promise<void> | null = null;
 
-    socket.on("connect", () => {
-      console.log("✅ Admin socket connected:", socket.id);
+    const reconnectWithRefreshedToken = () => {
+      if (
+        cleanupRef.current ||
+        tokenExpiredRetryUsed ||
+        refreshReconnectPromise
+      ) {
+        return;
+      }
+
+      tokenExpiredRetryUsed = true;
+      refreshReconnectPromise = (async () => {
+        try {
+          const accessToken = await refreshAccessToken();
+          socket.auth = {
+            ...(typeof socket.auth === "object" && socket.auth
+              ? socket.auth
+              : {}),
+            token: accessToken,
+          };
+          pendingAuthErrorCode = null;
+
+          if (!cleanupRef.current && !socket.connected) {
+            socket.connect();
+          }
+        } catch {
+          pendingAuthErrorCode = null;
+        } finally {
+          refreshReconnectPromise = null;
+        }
+      })();
+    };
+
+    const handleConnect = () => {
+      pendingAuthErrorCode = null;
+      tokenExpiredRetryUsed = false;
+      console.log("Admin socket connected");
       socket.emit("get_notifications");
+    };
+
+    const handleDisconnect = (reason: string) => {
+      if (cleanupRef.current) {
+        return;
+      }
+
+      if (pendingAuthErrorCode === "TOKEN_EXPIRED") {
+        reconnectWithRefreshedToken();
+        return;
+      }
+
+      if (
+        pendingAuthErrorCode === "INVALID_TOKEN" ||
+        pendingAuthErrorCode === "AUTH_REQUIRED" ||
+        pendingAuthErrorCode === "INACTIVE_ACCOUNT"
+      ) {
+        console.warn(`Admin socket authentication failed: ${pendingAuthErrorCode}`);
+        return;
+      }
+
+      if (socket.active) {
+        console.info(`Admin socket disconnected temporarily: ${reason}`);
+        return;
+      }
+
+      console.warn(`Admin socket disconnected: ${reason}`);
+    };
+
+    const handleConnectError = (err: Error) => {
+      console.warn(`Admin socket connection error: ${err.message}`);
+    };
+
+    const handleAuthError = (payload: SocketAuthErrorPayload) => {
+      const code = payload.code ?? "INVALID_TOKEN";
+      pendingAuthErrorCode = code;
+
+      if (code === "TOKEN_EXPIRED" && socket.disconnected) {
+        reconnectWithRefreshedToken();
+      }
+    };
+
+    const handleReconnectAttempt = () => {
+      updateSocketAuth(socket);
+    };
+
+    const handleReconnect = (attempt: number) => {
+      console.log(`Admin socket reconnected after ${attempt} attempt(s)`);
+      socket.emit("get_notifications");
+    };
+
+    const handleReconnectError = (err: Error) => {
+      console.warn(`Admin socket reconnect failed: ${err.message}`);
+    };
+
+    const handleNotificationsList = (data: {
+      notifications: AdminNotification[];
+      unreadCount: number;
+    }) => {
+      const readIds = readIdsRef.current;
+
+      const withLocalRead = applyLocalReadState(
+        data.notifications || [],
+        readIds,
+      );
+
+      setNotifications(withLocalRead);
+
+      setUnreadCount(
+        calculateUnread(withLocalRead, readIds),
+      );
+    };
+
+    const unsubscribeStorage = subscribeToLocalStorage(() => {
+      updateSocketAuth(socket);
     });
 
-    socket.on("disconnect", (reason) => {
-      console.log("❌ Disconnected:", reason);
-    });
-
-    socket.on("connect_error", (err) => {
-      console.log("❌ Socket connect error:", err.message);
-    });
-
-    // Initial list
-    socket.on(
-      "notifications_list",
-      (data: { notifications: AdminNotification[]; unreadCount: number }) => {
-        const readIds = readIdsRef.current;
-        const withLocalRead = applyLocalReadState(
-          data.notifications || [],
-          readIds,
-        );
-        setNotifications(withLocalRead);
-        setUnreadCount(calculateUnread(withLocalRead, readIds));
-      },
-    );
-
-    // Mobile + admin (published posts)
+    socket.on("connect", handleConnect);
+    socket.on("disconnect", handleDisconnect);
+    socket.on("connect_error", handleConnectError);
+    socket.on("auth_error", handleAuthError);
+    socket.on("notifications_list", handleNotificationsList);
     socket.on("new_notification", handleIncomingNotification);
-
-    // Admin only (draft, updated, deleted)
     socket.on("admin_notification", handleIncomingNotification);
+    socket.io.on("reconnect_attempt", handleReconnectAttempt);
+    socket.io.on("reconnect", handleReconnect);
+    socket.io.on("reconnect_error", handleReconnectError);
 
     return () => {
+      cleanupRef.current = true;
+      unsubscribeStorage();
+      socket.off("connect", handleConnect);
+      socket.off("disconnect", handleDisconnect);
+      socket.off("connect_error", handleConnectError);
+      socket.off("auth_error", handleAuthError);
+      socket.off("notifications_list", handleNotificationsList);
+      socket.off("new_notification", handleIncomingNotification);
+      socket.off("admin_notification", handleIncomingNotification);
+      socket.io.off("reconnect_attempt", handleReconnectAttempt);
+      socket.io.off("reconnect", handleReconnect);
+      socket.io.off("reconnect_error", handleReconnectError);
       socket.disconnect();
+      socketRef.current = null;
     };
-  }, [applyLocalReadState, calculateUnread, handleIncomingNotification]);
+  }, [
+    applyLocalReadState,
+    calculateUnread,
+    handleIncomingNotification,
+  ]);
 
   const markAllRead = useCallback(() => {
     setNotifications((prev) => {
-      const allIds = new Set(prev.map((n) => n.id || n._id || ""));
+      const allIds = new Set(prev.map((n) => n._id));
+
       readIdsRef.current = allIds;
       saveLocalReadIds(allIds);
+
       setUnreadCount(0);
-      return prev.map((n) => ({ ...n, isRead: true }));
+
+      return prev.map((n) => ({
+        ...n,
+        isRead: true,
+      }));
     });
   }, []);
 
   const markRead = useCallback(
     (id: string) => {
       if (!id) return;
+
       readIdsRef.current.add(id);
       saveLocalReadIds(readIdsRef.current);
 
       setNotifications((prev) => {
         const updated = prev.map((n) =>
-          n.id === id || n._id === id ? { ...n, isRead: true } : n,
+          n._id === id
+            ? { ...n, isRead: true }
+            : n,
         );
-        setUnreadCount(calculateUnread(updated, readIdsRef.current));
+
+        setUnreadCount(
+          calculateUnread(updated, readIdsRef.current),
+        );
+
         return updated;
       });
     },
     [calculateUnread],
   );
 
-  return { notifications, unreadCount, markAllRead, markRead };
+  return {
+    notifications,
+    unreadCount,
+    markAllRead,
+    markRead,
+  };
 }

@@ -10,11 +10,11 @@ export enum NotificationType {
   POST_UPDATED = 'POST_UPDATED',
   POST_DELETED = 'POST_DELETED',
   POST_PUBLISHED = 'POST_PUBLISHED',
-  AD_CREATED = 'AD_CREATED',
-  AD_UPDATED = 'AD_UPDATED',
-  AD_DELETED = 'AD_DELETED',
-  AD_TOGGLED = 'AD_TOGGLED',
-  AD_EXPIRING = 'AD_EXPIRING',
+  CAROUSEL_CREATED = 'CAROUSEL_CREATED',
+  CAROUSEL_UPDATED = 'CAROUSEL_UPDATED',
+  CAROUSEL_DELETED = 'CAROUSEL_DELETED',
+  CAROUSEL_TOGGLED = 'CAROUSEL_TOGGLED',
+  CAROUSEL_EXPIRING = 'CAROUSEL_EXPIRING',
   ADMIN_CREATED = 'ADMIN_CREATED',
   ADMIN_UPDATED = 'ADMIN_UPDATED',
   ADMIN_DELETED = 'ADMIN_DELETED',
@@ -33,7 +33,7 @@ export class Notification {
   type: NotificationType;
 
   @Prop({ type: Object })
-  data?: Record<string, any>;
+  data?: Record<string, unknown>;
 
   @Prop({ default: false })
   isRead: boolean;

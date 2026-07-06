@@ -1,318 +1,1081 @@
-// src/posts/posts.service.ts
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { Post, PostDocument } from './schemas/post.schema';
-import { CreatePostDto } from './dto/create-post.dto';
-import { UpdatePostDto } from './dto/update-post.dto';
-import { Admin, Role } from '../admin/schemas/admin.schema';
-import { NotificationGateway } from '../notifications/notification.gateway';
-import { BadRequestException, NotFoundException,Injectable } from '@nestjs/common';
-import { isValidObjectId } from 'mongoose';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  Admin as PrismaAdmin,
+  AdminRole,
+  Post as PrismaPost,
+  PostLiveStatus,
+  PostStatus,
+  PostVideoSource,
+  Prisma,
+} from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
+import { Role } from '../admin/schemas/admin.schema';
+import {
+  createObjectIdString,
+  isObjectIdString,
+} from '../common/utils/object-id.utils';
+import { NotificationGateway } from '../notifications/notification.gateway';
+import { PrismaService } from '../prisma/prisma.service';
+import { CreatePostDto } from './dto/create-post.dto';
+import { UpdatePostDto } from './dto/update-post.dto';
+import { normalizeFacebookUrl } from './facebook-url.util';
+import { normalizeYoutubeUrl } from './youtube-url.util';
+
+const postAuthorSelect = {
+  id: true,
+  username: true,
+  displayName: true,
+  role: true,
+} satisfies Prisma.AdminSelect;
+
+const postInclude = {
+  author: { select: postAuthorSelect },
+} satisfies Prisma.PostInclude;
+
+const DEFAULT_POST_EXPIRY_DAYS = 5;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+type PostWithAuthor = Prisma.PostGetPayload<{ include: typeof postInclude }>;
+
+interface NotificationActor {
+  id?: string;
+  name: string;
+}
+
+export type PostSortField =
+  | 'postedDate'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'eventDate'
+  | 'title'
+  | 'status';
+
+export interface PostSortOptions {
+  field: PostSortField;
+  direction: Prisma.SortOrder;
+}
+
+export interface PostFindAllFilters {
+  author?: string;
+  isLive?: boolean;
+  isPublished?: boolean;
+  status?: PostStatus;
+}
+
+export interface PostAuthorResponse
+  extends Pick<PrismaAdmin, 'id' | 'username' | 'displayName'> {
+  _id: string;
+  role: Role;
+}
+
+export interface PostResponse
+  extends Omit<PrismaPost, 'authorId' | 'author'> {
+  _id: string;
+  author: PostAuthorResponse | null;
+  __v: number;
+}
+
+export interface PostStatistics {
+  total: number;
+  live: number;
+  draft: number;
+  topAuthors: Array<{ _id: string | null; count: number }>;
+  recentPosts: PostResponse[];
+  postsByMonth: Array<{
+    _id: { year: number; month: number };
+    count: number;
+  }>;
+}
 
 @Injectable()
 export class PostsService {
   constructor(
-    @InjectModel(Post.name) private postModel: Model<PostDocument>,
-    @InjectModel(Admin.name) private adminModel: Model<any>,
-    private notificationGateway: NotificationGateway,
+    private readonly prisma: PrismaService,
+    private readonly notificationGateway: NotificationGateway,
   ) {}
 
-  // ============ CREATE ============
-  async create(
-    createPostDto: CreatePostDto & { author: string },
-    authorId: string,
-  ): Promise<PostDocument> {
-    console.log('=== SERVICE CREATE POST ===');
-    console.log('DTO:', createPostDto);
-    console.log('Author ID:', authorId);
+  private toApiRole(role: AdminRole): Role {
+    return role === AdminRole.SUPER_ADMIN ? Role.SUPER_ADMIN : Role.ADMIN;
+  }
+
+  private toPostResponse(post: PostWithAuthor): PostResponse {
+    return {
+      id: post.id,
+      _id: post.id,
+      title: post.title,
+      description: post.description,
+      mainImage: post.mainImage,
+      videoSource: post.videoSource,
+      youtubeUrl: post.youtubeUrl,
+      youtubeVideoId: post.youtubeVideoId,
+      facebookUrl: post.facebookUrl,
+      profileName: post.profileName,
+      eventDate: post.eventDate,
+      eventTime: post.eventTime,
+      location: post.location,
+      isLive: post.isLive,
+      liveStatus: post.liveStatus,
+      liveStatusCheckedAt: post.liveStatusCheckedAt,
+      isPublished: post.isPublished,
+      status: post.status,
+      postedDate: post.postedDate,
+      link: post.link,
+      createdAt: post.createdAt,
+      updatedAt: post.updatedAt,
+      expiresAt: post.expiresAt,
+      reminderEnabled: post.reminderEnabled,
+      reminderSentAt: post.reminderSentAt,
+      author: post.author
+        ? {
+            id: post.author.id,
+            _id: post.author.id,
+            username: post.author.username,
+            displayName: post.author.displayName,
+            role: this.toApiRole(post.author.role),
+          }
+        : null,
+      __v: 0,
+    };
+  }
+
+  private calculateExpiryFromDays(
+    postedDate: Date,
+    expireAfterDays?: number | null,
+  ): Date {
+    const days =
+      Number.isInteger(expireAfterDays) && Number(expireAfterDays) > 0
+        ? Number(expireAfterDays)
+        : DEFAULT_POST_EXPIRY_DAYS;
+
+    return new Date(postedDate.getTime() + days * DAY_MS);
+  }
+
+  private resolveCreateExpiresAt(
+    createPostDto: CreatePostDto,
+    postedDate: Date,
+  ): Date | null {
+    const autoExpire = this.parseOptionalBoolean(createPostDto.autoExpire);
+
+    if (autoExpire === false) return null;
+    if (autoExpire === true || createPostDto.expireAfterDays !== undefined) {
+      return this.calculateExpiryFromDays(
+        postedDate,
+        createPostDto.expireAfterDays,
+      );
+    }
+
+    const explicitExpiresAt = this.parseOptionalDate(createPostDto.expiresAt);
+    if (explicitExpiresAt !== undefined) return explicitExpiresAt;
+
+    return this.calculateExpiryFromDays(postedDate, DEFAULT_POST_EXPIRY_DAYS);
+  }
+
+  private resolveUpdateExpiresAt(
+    updatePostDto: UpdatePostDto,
+    postedDate: Date,
+  ): Date | null | undefined {
+    const autoExpire = this.parseOptionalBoolean(updatePostDto.autoExpire);
+
+    if (autoExpire === false) return null;
+    if (autoExpire === true || updatePostDto.expireAfterDays !== undefined) {
+      return this.calculateExpiryFromDays(
+        postedDate,
+        updatePostDto.expireAfterDays,
+      );
+    }
+
+    if (updatePostDto.expiresAt !== undefined) {
+      return this.parseOptionalDate(updatePostDto.expiresAt);
+    }
+
+    return undefined;
+  }
+
+  private buildVisibleExpiryWhere(now: Date = new Date()): Prisma.PostWhereInput {
+    return {
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    };
+  }
+
+  private parseOptionalDate(
+    value: string | Date | null | undefined,
+  ): Date | null | undefined {
+    if (value === undefined) return undefined;
+    if (value === null || value === '') return null;
+
+    const parsed = value instanceof Date ? value : new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  private parseOptionalBoolean(value: unknown): boolean | undefined {
+    if (value === true || value === 'true') return true;
+    if (value === false || value === 'false') return false;
+    if (value === undefined || value === null) return undefined;
+    return Boolean(value);
+  }
+
+  private getTrimmedValue(value?: string | null): string {
+    return typeof value === 'string' ? value.trim() : '';
+  }
+
+  private hasVideoMedia(
+    post: Pick<
+      PrismaPost,
+      'videoSource' | 'youtubeUrl' | 'youtubeVideoId' | 'facebookUrl'
+    >,
+  ): boolean {
+    return Boolean(
+      post.videoSource ||
+        post.youtubeUrl ||
+        post.youtubeVideoId ||
+        post.facebookUrl,
+    );
+  }
+
+  private getManualLiveStatus(
+    isLive: boolean,
+    post: Pick<
+      PrismaPost,
+      'videoSource' | 'youtubeUrl' | 'youtubeVideoId' | 'facebookUrl'
+    >,
+  ): PostLiveStatus {
+    if (isLive) return PostLiveStatus.LIVE;
+    return this.hasVideoMedia(post)
+      ? PostLiveStatus.WAS_LIVE
+      : PostLiveStatus.NOT_LIVE;
+  }
+
+  private parseFacebookVideoId(value?: string | null): string | null {
+    const input = this.getTrimmedValue(value);
+    if (!input) return null;
 
     try {
-      const author = await this.adminModel.findById(authorId);
-      if (!author) {
-        console.log('Author not found:', authorId);
-        throw new NotFoundException('Author not found');
+      const parsed = new URL(input);
+      const watchId = parsed.searchParams.get('v');
+      if (watchId) return watchId;
+
+      const segments = parsed.pathname.split('/').filter(Boolean);
+      const videoSegmentIndex = segments.findIndex((segment) =>
+        ['videos', 'live_videos', 'watch'].includes(segment),
+      );
+      if (videoSegmentIndex >= 0 && segments[videoSegmentIndex + 1]) {
+        return segments[videoSegmentIndex + 1];
       }
 
-      const post = new this.postModel({
-        ...createPostDto,
-        author: authorId,
-        postedDate: new Date(),
-      });
-
-      const savedPost = await post.save();
-      console.log('Post saved:', savedPost._id);
-
-      // ── Notification logic ───────────────────────────────────────
-      try {
-        const authorName =
-          author.displayName || author.username || author.email || 'Admin';
-
-        if (savedPost.isPublished) {
-          // Published → notify everyone (mobile + admin)
-          await this.notificationGateway.emitNewPost(savedPost, authorName);
-          console.log('✅ Published notification emitted to everyone');
-        } else {
-          // Draft → notify admin dashboard only
-          await this.notificationGateway.emitNewDraft(savedPost, authorName);
-          console.log('✅ Draft notification emitted to admin only');
-        }
-      } catch (notifError) {
-        console.error('⚠️ Notification emit failed:', (notifError as Error).message);
-      }
-      // ────────────────────────────────────────────────────────────
-
-      return savedPost.populate('author', 'username displayName role');
-    } catch (error) {
-      console.error('Service create error:', error);
-      console.error('Error stack:', (error as Error).stack);
-      throw error;
+      const numericSegment = [...segments]
+        .reverse()
+        .find((segment) => /^\d+$/.test(segment));
+      return numericSegment ?? null;
+    } catch {
+      return null;
     }
   }
 
-  // ============ READ ============
+  private async fetchYoutubeLiveStatus(
+    videoId?: string | null,
+  ): Promise<PostLiveStatus | null> {
+    const apiKey = process.env.YOUTUBE_API_KEY;
+    if (!apiKey || !videoId) return null;
+
+    try {
+      const url = new URL('https://www.googleapis.com/youtube/v3/videos');
+      url.searchParams.set('part', 'snippet,liveStreamingDetails');
+      url.searchParams.set('id', videoId);
+      url.searchParams.set('key', apiKey);
+
+      const response = await fetch(url);
+      if (!response.ok) return null;
+
+      const payload = (await response.json()) as {
+        items?: Array<{
+          snippet?: { liveBroadcastContent?: string };
+          liveStreamingDetails?: {
+            actualStartTime?: string;
+            actualEndTime?: string;
+            scheduledStartTime?: string;
+          };
+        }>;
+      };
+      const item = payload.items?.[0];
+      if (!item) return PostLiveStatus.NOT_LIVE;
+
+      const liveContent = item.snippet?.liveBroadcastContent;
+      const liveDetails = item.liveStreamingDetails;
+
+      if (liveDetails?.actualEndTime) return PostLiveStatus.WAS_LIVE;
+      if (liveContent === 'live' || liveDetails?.actualStartTime) {
+        return PostLiveStatus.LIVE;
+      }
+      if (liveContent === 'upcoming' || liveDetails?.scheduledStartTime) {
+        return PostLiveStatus.UPCOMING;
+      }
+
+      return PostLiveStatus.NOT_LIVE;
+    } catch (error) {
+      console.error('Failed to fetch YouTube live status:', error);
+      return null;
+    }
+  }
+
+  private async fetchFacebookLiveStatus(
+    facebookUrl?: string | null,
+  ): Promise<PostLiveStatus | null> {
+    const accessToken = process.env.FACEBOOK_ACCESS_TOKEN;
+    const videoId = this.parseFacebookVideoId(facebookUrl);
+    if (!accessToken || !videoId) return null;
+
+    try {
+      const url = new URL(`https://graph.facebook.com/v21.0/${videoId}`);
+      url.searchParams.set('fields', 'live_status,status');
+      url.searchParams.set('access_token', accessToken);
+
+      const response = await fetch(url);
+      if (!response.ok) return null;
+
+      const payload = (await response.json()) as {
+        live_status?: string;
+        status?: string;
+      };
+      const status = (payload.live_status || payload.status || '').toUpperCase();
+
+      if (['LIVE', 'LIVE_NOW'].includes(status)) return PostLiveStatus.LIVE;
+      if (['SCHEDULED', 'SCHEDULED_UNPUBLISHED'].includes(status)) {
+        return PostLiveStatus.UPCOMING;
+      }
+      if (['VOD', 'LIVE_STOPPED', 'UNPUBLISHED', 'FINISHED'].includes(status)) {
+        return PostLiveStatus.WAS_LIVE;
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Failed to fetch Facebook live status:', error);
+      return null;
+    }
+  }
+
+  private async fetchProviderLiveStatus(
+    post: Pick<
+      PrismaPost,
+      'videoSource' | 'youtubeVideoId' | 'youtubeUrl' | 'facebookUrl'
+    >,
+  ): Promise<PostLiveStatus | null> {
+    if (post.videoSource === PostVideoSource.YOUTUBE) {
+      return this.fetchYoutubeLiveStatus(post.youtubeVideoId);
+    }
+
+    if (post.videoSource === PostVideoSource.FACEBOOK) {
+      return this.fetchFacebookLiveStatus(post.facebookUrl);
+    }
+
+    return null;
+  }
+
+  private liveStatusToIsLive(liveStatus: PostLiveStatus): boolean {
+    return liveStatus === PostLiveStatus.LIVE;
+  }
+
+  private deleteMediaFileIfExists(filePath?: string): void {
+    if (!filePath || filePath.trim() === '') return;
+
+    const possiblePaths = [
+      filePath,
+      filePath.startsWith('/uploads') ? filePath : `/uploads${filePath}`,
+      filePath.startsWith('/') ? filePath : `/${filePath}`,
+    ];
+
+    for (const candidate of possiblePaths) {
+      const fullPath = path.join(process.cwd(), candidate);
+      if (fs.existsSync(fullPath)) {
+        fs.unlinkSync(fullPath);
+        break;
+      }
+    }
+  }
+
+  private buildOrderBy(
+    sort: PostSortOptions,
+  ): Prisma.PostOrderByWithRelationInput {
+    switch (sort.field) {
+      case 'createdAt':
+        return { createdAt: sort.direction };
+      case 'updatedAt':
+        return { updatedAt: sort.direction };
+      case 'eventDate':
+        return { eventDate: sort.direction };
+      case 'title':
+        return { title: sort.direction };
+      case 'status':
+        return { status: sort.direction };
+      case 'postedDate':
+      default:
+        return { postedDate: sort.direction };
+    }
+  }
+
+  private buildFindAllWhere(
+    filters: PostFindAllFilters,
+    search?: string,
+  ): Prisma.PostWhereInput {
+    const where: Prisma.PostWhereInput = {};
+
+    if (filters.author) where.authorId = filters.author;
+    if (filters.isLive !== undefined) where.isLive = filters.isLive;
+    if (filters.isPublished !== undefined) {
+      where.isPublished = filters.isPublished;
+    }
+    if (filters.status !== undefined) where.status = filters.status;
+
+    if (search) {
+      where.OR = [
+        { title: { contains: search } },
+        { description: { contains: search } },
+        { location: { contains: search } },
+        { profileName: { contains: search } },
+      ];
+    }
+
+    return where;
+  }
+
+  async expirePostsPastExpiryDate(): Promise<number> {
+    const now = new Date();
+
+    const result = await this.prisma.post.updateMany({
+      where: {
+        expiresAt: { lte: now },
+        isPublished: true,
+        status: { not: PostStatus.expired },
+      },
+      data: {
+        isPublished: false,
+        isLive: false,
+        liveStatus: PostLiveStatus.NOT_LIVE,
+        liveStatusCheckedAt: now,
+        status: PostStatus.expired,
+        updatedAt: now,
+      },
+    });
+
+    return result.count;
+  }
+
+  async syncMediaLiveStatuses(): Promise<number> {
+    const posts = await this.prisma.post.findMany({
+      where: {
+        videoSource: { not: null },
+        status: { not: PostStatus.expired },
+        OR: [
+          { isLive: true },
+          {
+            liveStatus: {
+              in: [
+                PostLiveStatus.UNKNOWN,
+                PostLiveStatus.UPCOMING,
+                PostLiveStatus.LIVE,
+              ],
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        videoSource: true,
+        youtubeUrl: true,
+        youtubeVideoId: true,
+        facebookUrl: true,
+        isLive: true,
+        liveStatus: true,
+      },
+    });
+
+    let updatedCount = 0;
+
+    for (const post of posts) {
+      const liveStatus = await this.fetchProviderLiveStatus(post);
+      if (!liveStatus || liveStatus === post.liveStatus) continue;
+
+      await this.prisma.post.update({
+        where: { id: post.id },
+        data: {
+          liveStatus,
+          liveStatusCheckedAt: new Date(),
+          isLive: this.liveStatusToIsLive(liveStatus),
+          updatedAt: new Date(),
+        },
+      });
+      updatedCount += 1;
+    }
+
+    return updatedCount;
+  }
+
+  async create(
+    createPostDto: CreatePostDto & { author: string },
+    authorId: string,
+  ): Promise<PostResponse> {
+    const author = await this.prisma.admin.findUnique({
+      where: { id: authorId },
+    });
+    if (!author) throw new NotFoundException('Author not found');
+
+    const isPublishedValue =
+      this.parseOptionalBoolean(createPostDto.isPublished) ?? false;
+    const isLiveValue = this.parseOptionalBoolean(createPostDto.isLive) ?? false;
+    const eventDate = this.parseOptionalDate(createPostDto.eventDate);
+    const reminderEnabledValue =
+      this.parseOptionalBoolean(createPostDto.reminderEnabled) ?? false;
+    const postedDate = new Date();
+    const expiresAt = this.resolveCreateExpiresAt(createPostDto, postedDate);
+    const youtubeInput = this.getTrimmedValue(createPostDto.youtubeUrl);
+    const facebookInput = this.getTrimmedValue(createPostDto.facebookUrl);
+
+    if (reminderEnabledValue && !eventDate) {
+      throw new BadRequestException('Reminder requires an event date');
+    }
+
+    if (youtubeInput && facebookInput) {
+      throw new BadRequestException(
+        'Choose either a YouTube URL or a Facebook URL, not both',
+      );
+    }
+
+    if (createPostDto.mainImage && (youtubeInput || facebookInput)) {
+      throw new BadRequestException(
+        'Choose either an image or a video URL, not both',
+      );
+    }
+
+    const youtubeMedia = youtubeInput
+      ? normalizeYoutubeUrl(youtubeInput)
+      : null;
+    const facebookMedia = facebookInput
+      ? normalizeFacebookUrl(facebookInput)
+      : null;
+    const hasVideoMedia = Boolean(youtubeMedia || facebookMedia);
+
+    const savedPost = await this.prisma.post.create({
+      data: {
+        id: createObjectIdString(),
+        title: createPostDto.title,
+        description: createPostDto.description,
+        mainImage: youtubeMedia || facebookMedia ? '' : createPostDto.mainImage || '',
+        videoSource: youtubeMedia
+          ? PostVideoSource.YOUTUBE
+          : facebookMedia
+            ? PostVideoSource.FACEBOOK
+            : null,
+        youtubeUrl: youtubeMedia?.youtubeUrl ?? null,
+        youtubeVideoId: youtubeMedia?.youtubeVideoId ?? null,
+        facebookUrl: facebookMedia?.facebookUrl ?? null,
+        profileName: createPostDto.profileName || 'Radio Yeraz',
+        eventDate,
+        eventTime: createPostDto.eventTime,
+        location: createPostDto.location,
+        isLive: isLiveValue,
+        liveStatus: isLiveValue
+          ? PostLiveStatus.LIVE
+          : hasVideoMedia
+            ? PostLiveStatus.UNKNOWN
+            : PostLiveStatus.NOT_LIVE,
+        isPublished: isPublishedValue,
+        status: isPublishedValue ? PostStatus.published : PostStatus.draft,
+        postedDate,
+        authorId,
+        link: createPostDto.link,
+        expiresAt,
+        reminderEnabled: reminderEnabledValue,
+      },
+      include: postInclude,
+    });
+
+    const postResponse = this.toPostResponse(savedPost);
+
+    try {
+      const authorName = author.displayName || author.username || 'Admin';
+
+      if (savedPost.isPublished) {
+        await this.notificationGateway.emitNewPost(
+          postResponse,
+          authorName,
+          authorId,
+        );
+      } else {
+        await this.notificationGateway.emitNewDraft(
+          postResponse,
+          authorName,
+          authorId,
+        );
+      }
+    } catch (notifError: unknown) {
+      console.error(
+        'Notification emit failed:',
+        notifError instanceof Error ? notifError.message : String(notifError),
+      );
+    }
+
+    return postResponse;
+  }
+
   async findAll(
     page: number = 1,
     limit: number = 10,
-    filters: any = {},
-    sort: any = { postedDate: -1 },
+    filters: PostFindAllFilters = {},
+    sort: PostSortOptions = { field: 'postedDate', direction: 'desc' },
     search?: string,
   ): Promise<{
-    data: PostDocument[];
+    data: PostResponse[];
     total: number;
     page: number;
     pages: number;
   }> {
+    await this.expirePostsPastExpiryDate();
+
     const skip = (page - 1) * limit;
-    const query: any = { ...filters };
-
-    if (query.author && typeof query.author === 'string') {
-      query.author = new Types.ObjectId(query.author);
-    }
-
-    if (search) {
-      query.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-        { location: { $regex: search, $options: 'i' } },
-        { profileName: { $regex: search, $options: 'i' } },
-      ];
-    }
+    const where = this.buildFindAllWhere(filters, search);
+    const orderBy = this.buildOrderBy(sort);
 
     const [data, total] = await Promise.all([
-      this.postModel
-        .find(query)
-        .populate('author', 'username displayName role')
-        .sort(sort)
-        .skip(skip)
-        .limit(limit)
-        .exec(),
-      this.postModel.countDocuments(query),
+      this.prisma.post.findMany({
+        where,
+        include: postInclude,
+        orderBy,
+        skip,
+        take: limit,
+      }),
+      this.prisma.post.count({ where }),
     ]);
 
     return {
-      data,
+      data: data.map((post) => this.toPostResponse(post)),
       total,
       page,
       pages: Math.ceil(total / limit),
     };
   }
 
-  async findById(id: string): Promise<PostDocument> {
-    if (!isValidObjectId(id)) {
-    throw new BadRequestException('Invalid post id');
-  }
-    const post = await this.postModel
-      .findById(id)
-      .populate('author', 'username displayName role')
-      .exec();
+  async findById(id: string): Promise<PostResponse> {
+    await this.expirePostsPastExpiryDate();
+
+    if (!isObjectIdString(id)) {
+      throw new BadRequestException('Invalid post id');
+    }
+
+    const post = await this.prisma.post.findUnique({
+      where: { id },
+      include: postInclude,
+    });
 
     if (!post) throw new NotFoundException('Post not found');
-    return post;
+    return this.toPostResponse(post);
   }
 
-  async findByAuthor(authorId: string): Promise<PostDocument[]> {
-    return this.postModel
-      .find({ author: new Types.ObjectId(authorId) })
-      .populate('author', 'username displayName role')
-      .sort({ postedDate: -1 })
-      .exec();
+  async findByAuthor(authorId: string): Promise<PostResponse[]> {
+    await this.expirePostsPastExpiryDate();
+
+    const posts = await this.prisma.post.findMany({
+      where: { authorId },
+      include: postInclude,
+      orderBy: { postedDate: 'desc' },
+    });
+
+    return posts.map((post) => this.toPostResponse(post));
   }
 
-  async findLivePosts() {
-    return this.postModel
-      .find({ isLive: true, isPublished: true })
-      .populate('author', 'username displayName')
-      .sort({ postedDate: -1 })
-      .exec();
-  }
+  async findLivePosts(): Promise<PostResponse[]> {
+    await this.expirePostsPastExpiryDate();
 
-  async findRecentPosts(limit: number = 5) {
-    return this.postModel
-      .find({ isPublished: true })
-      .populate('author', 'username displayName')
-      .sort({ postedDate: -1 })
-      .limit(limit)
-      .exec();
-  }
-
-  async searchPosts(query: string, limit: number = 20) {
-    return this.postModel
-      .find({
+    const posts = await this.prisma.post.findMany({
+      where: {
+        isLive: true,
         isPublished: true,
-        $or: [
-          { title: { $regex: query, $options: 'i' } },
-          { description: { $regex: query, $options: 'i' } },
-          { location: { $regex: query, $options: 'i' } },
-        ],
-      })
-      .populate('author', 'username displayName')
-      .sort({ postedDate: -1 })
-      .limit(limit)
-      .exec();
+        status: PostStatus.published,
+        ...this.buildVisibleExpiryWhere(),
+      },
+      include: postInclude,
+      orderBy: { postedDate: 'desc' },
+    });
+
+    return posts.map((post) => this.toPostResponse(post));
   }
 
-  // ============ UPDATE ============
+  async findRecentPosts(limit: number = 5): Promise<PostResponse[]> {
+    await this.expirePostsPastExpiryDate();
+
+    const posts = await this.prisma.post.findMany({
+      where: {
+        isPublished: true,
+        status: PostStatus.published,
+        ...this.buildVisibleExpiryWhere(),
+      },
+      include: postInclude,
+      orderBy: { postedDate: 'desc' },
+      take: limit,
+    });
+
+    return posts.map((post) => this.toPostResponse(post));
+  }
+
+  async searchPosts(query: string, limit: number = 20): Promise<PostResponse[]> {
+    await this.expirePostsPastExpiryDate();
+
+    const posts = await this.prisma.post.findMany({
+      where: {
+        isPublished: true,
+        status: PostStatus.published,
+        AND: [
+          this.buildVisibleExpiryWhere(),
+          {
+            OR: [
+              { title: { contains: query } },
+              { description: { contains: query } },
+              { location: { contains: query } },
+            ],
+          },
+        ],
+      },
+      include: postInclude,
+      orderBy: { postedDate: 'desc' },
+      take: limit,
+    });
+
+    return posts.map((post) => this.toPostResponse(post));
+  }
+
   async update(
     id: string,
     updatePostDto: UpdatePostDto,
-  ): Promise<PostDocument> {
-    // Get old post to check if isPublished changed
-    const oldPost = await this.postModel.findById(id).exec();
+    actor?: NotificationActor,
+  ): Promise<PostResponse> {
+    const oldPost = await this.prisma.post.findUnique({
+      where: { id },
+      include: postInclude,
+    });
+    if (!oldPost) throw new NotFoundException('Post not found');
 
-    const updateData: any = { ...updatePostDto };
-    Object.keys(updateData).forEach(
-      (key) => updateData[key] === undefined && delete updateData[key],
-    );
-    updateData.updatedAt = new Date();
+    const oldMainImage = oldPost.mainImage || '';
+    const data: Prisma.PostUncheckedUpdateInput = {
+      updatedAt: new Date(),
+    };
 
-    const post = await this.postModel
-      .findByIdAndUpdate(id, updateData, { new: true, runValidators: true })
-      .exec();
-
-    if (!post) throw new NotFoundException('Post not found');
-
-    // ── Notification logic ───────────────────────────────────────
-    try {
-      const author = await this.adminModel.findById(post.author);
-      const authorName =
-        author?.displayName || author?.username || author?.email || 'Admin';
-
-      if (!oldPost?.isPublished && post.isPublished) {
-        // Was draft → now published: notify everyone (mobile + admin)
-        await this.notificationGateway.emitNewPost(post, authorName);
-        console.log('✅ Post published — notification sent to everyone');
-      } else {
-        // Just updated → notify admin only
-        await this.notificationGateway.emitPostUpdated(post, authorName);
-        console.log('✅ Post updated — notification sent to admin only');
-      }
-    } catch (notifError) {
-      console.error('⚠️ Notification emit failed:', notifError instanceof Error ? notifError.message : String(notifError));
+    if (updatePostDto.title !== undefined) data.title = updatePostDto.title;
+    if (updatePostDto.description !== undefined) {
+      data.description = updatePostDto.description;
     }
-    // ────────────────────────────────────────────────────────────
+    if (updatePostDto.profileName !== undefined) {
+      data.profileName = updatePostDto.profileName;
+    }
+    if (updatePostDto.location !== undefined) {
+      data.location = updatePostDto.location;
+    }
+    if (updatePostDto.link !== undefined) data.link = updatePostDto.link;
+    if (updatePostDto.eventTime !== undefined) {
+      data.eventTime = updatePostDto.eventTime;
+    }
 
-    return post;
+    const parsedIsLive = this.parseOptionalBoolean(updatePostDto.isLive);
+    if (parsedIsLive !== undefined) {
+      data.isLive = parsedIsLive;
+      data.liveStatus = this.getManualLiveStatus(parsedIsLive, oldPost);
+      data.liveStatusCheckedAt = new Date();
+    }
+
+    const parsedIsPublished = this.parseOptionalBoolean(
+      updatePostDto.isPublished,
+    );
+    if (parsedIsPublished !== undefined) {
+      data.isPublished = parsedIsPublished;
+      data.status = parsedIsPublished ? PostStatus.published : PostStatus.draft;
+    }
+
+    const parsedEventDate = this.parseOptionalDate(updatePostDto.eventDate);
+    const parsedReminderEnabled = this.parseOptionalBoolean(
+      updatePostDto.reminderEnabled,
+    );
+    const nextEventDate =
+      parsedEventDate !== undefined ? parsedEventDate : oldPost.eventDate;
+    let nextReminderEnabled =
+      parsedReminderEnabled !== undefined
+        ? parsedReminderEnabled
+        : oldPost.reminderEnabled;
+
+    if (nextReminderEnabled && !nextEventDate) {
+      if (parsedReminderEnabled === true) {
+        throw new BadRequestException('Reminder requires an event date');
+      }
+
+      nextReminderEnabled = false;
+      data.reminderEnabled = false;
+    } else if (parsedReminderEnabled !== undefined) {
+      data.reminderEnabled = parsedReminderEnabled;
+    }
+
+    if (parsedEventDate !== undefined) {
+      data.eventDate = parsedEventDate;
+      const oldEventTime = oldPost.eventDate?.getTime();
+      const newEventTime = parsedEventDate?.getTime();
+      const eventDateChanged =
+        (oldEventTime ?? null) !== (newEventTime ?? null);
+
+      if (
+        oldEventTime !== undefined &&
+        newEventTime !== undefined &&
+        oldEventTime !== newEventTime
+      ) {
+        data.isPublished = true;
+        data.status = PostStatus.published;
+      }
+
+      if (eventDateChanged) {
+        data.reminderSentAt = null;
+      }
+    }
+
+    if (parsedReminderEnabled === true && !oldPost.reminderEnabled) {
+      data.reminderSentAt = null;
+    }
+
+    const updatedExpiresAt = this.resolveUpdateExpiresAt(
+      updatePostDto,
+      oldPost.postedDate,
+    );
+    if (updatedExpiresAt !== undefined) {
+      data.expiresAt = updatedExpiresAt;
+    }
+
+    const shouldRemoveImage = updatePostDto.removeImage === 'true';
+    const hasNewImage = !!updatePostDto.mainImage;
+    const hasYoutubeUpdate = updatePostDto.youtubeUrl !== undefined;
+    const hasFacebookUpdate = updatePostDto.facebookUrl !== undefined;
+    const youtubeInput = this.getTrimmedValue(updatePostDto.youtubeUrl);
+    const facebookInput = this.getTrimmedValue(updatePostDto.facebookUrl);
+    const requestedIsLive = parsedIsLive ?? oldPost.isLive;
+
+    if (youtubeInput && facebookInput) {
+      throw new BadRequestException(
+        'Choose either a YouTube URL or a Facebook URL, not both',
+      );
+    }
+
+    if (hasNewImage && (youtubeInput || facebookInput)) {
+      throw new BadRequestException(
+        'Choose either an image or a video URL, not both',
+      );
+    }
+
+    const youtubeMedia = youtubeInput ? normalizeYoutubeUrl(youtubeInput) : null;
+    const facebookMedia = facebookInput
+      ? normalizeFacebookUrl(facebookInput)
+      : null;
+
+    if (hasNewImage) {
+      data.mainImage = updatePostDto.mainImage;
+      data.videoSource = null;
+      data.youtubeUrl = null;
+      data.youtubeVideoId = null;
+      data.facebookUrl = null;
+      data.liveStatus = requestedIsLive
+        ? PostLiveStatus.LIVE
+        : PostLiveStatus.NOT_LIVE;
+      data.liveStatusCheckedAt = new Date();
+    }
+    if (shouldRemoveImage) data.mainImage = '';
+
+    if (youtubeMedia) {
+      data.mainImage = '';
+      data.videoSource = PostVideoSource.YOUTUBE;
+      data.youtubeUrl = youtubeMedia?.youtubeUrl ?? null;
+      data.youtubeVideoId = youtubeMedia?.youtubeVideoId ?? null;
+      data.facebookUrl = null;
+      data.liveStatus = requestedIsLive
+        ? PostLiveStatus.LIVE
+        : PostLiveStatus.UNKNOWN;
+      data.liveStatusCheckedAt = requestedIsLive ? new Date() : null;
+    } else if (facebookMedia) {
+      data.mainImage = '';
+      data.videoSource = PostVideoSource.FACEBOOK;
+      data.youtubeUrl = null;
+      data.youtubeVideoId = null;
+      data.facebookUrl = facebookMedia.facebookUrl;
+      data.liveStatus = requestedIsLive
+        ? PostLiveStatus.LIVE
+        : PostLiveStatus.UNKNOWN;
+      data.liveStatusCheckedAt = requestedIsLive ? new Date() : null;
+    } else if (
+      (hasYoutubeUpdate &&
+        !youtubeInput &&
+        oldPost.videoSource === PostVideoSource.YOUTUBE) ||
+      (hasFacebookUpdate &&
+        !facebookInput &&
+        oldPost.videoSource === PostVideoSource.FACEBOOK) ||
+      (hasYoutubeUpdate && hasFacebookUpdate && !youtubeInput && !facebookInput)
+    ) {
+      data.videoSource = null;
+      data.youtubeUrl = null;
+      data.youtubeVideoId = null;
+      data.facebookUrl = null;
+      data.liveStatus = PostLiveStatus.NOT_LIVE;
+      data.liveStatusCheckedAt = new Date();
+    }
+
+    const post = await this.prisma.post.update({
+      where: { id },
+      data,
+      include: postInclude,
+    });
+    const postResponse = this.toPostResponse(post);
+
+    try {
+      if ((shouldRemoveImage || hasNewImage) && oldMainImage.trim() !== '') {
+        const replacedWithDifferentImage =
+          hasNewImage && oldMainImage !== post.mainImage;
+        if (shouldRemoveImage || replacedWithDifferentImage) {
+          this.deleteMediaFileIfExists(oldMainImage);
+        }
+      }
+    } catch (fileError) {
+      console.error('Failed to delete replaced/removed media file:', fileError);
+    }
+
+    try {
+      const actorName =
+        actor?.name ||
+        post.author?.displayName || post.author?.username || 'Admin';
+      const becamePublished =
+        (!oldPost.isPublished && post.isPublished) ||
+        (oldPost.status !== PostStatus.published &&
+          post.status === PostStatus.published);
+
+      if (becamePublished) {
+        await this.notificationGateway.emitNewPost(
+          postResponse,
+          actorName,
+          actor?.id,
+        );
+      } else {
+        await this.notificationGateway.emitPostUpdated(
+          postResponse,
+          actorName,
+          actor?.id,
+        );
+      }
+    } catch (notifError: unknown) {
+      console.error(
+        'Notification emit failed:',
+        notifError instanceof Error ? notifError.message : String(notifError),
+      );
+    }
+
+    return postResponse;
   }
 
-  async toggleLiveStatus(id: string): Promise<PostDocument> {
-    const post = await this.postModel.findById(id);
-    if (!post) throw new NotFoundException('Post not found');
+  async toggleLiveStatus(
+    id: string,
+    actor?: NotificationActor,
+  ): Promise<PostResponse> {
+    const existingPost = await this.prisma.post.findUnique({
+      where: { id },
+      include: postInclude,
+    });
+    if (!existingPost) throw new NotFoundException('Post not found');
 
-    post.isLive = !post.isLive;
-    post.updatedAt = new Date();
-    await post.save();
+    const nextIsLive = !existingPost.isLive;
+    const post = await this.prisma.post.update({
+      where: { id },
+      data: {
+        isLive: nextIsLive,
+        liveStatus: this.getManualLiveStatus(nextIsLive, existingPost),
+        liveStatusCheckedAt: new Date(),
+        updatedAt: new Date(),
+      },
+      include: postInclude,
+    });
+    const postResponse = this.toPostResponse(post);
 
     try {
       if (post.isLive) {
-        const author = await this.adminModel.findById(post.author);
-        const authorName =
-          author?.displayName || author?.username || author?.email || 'Admin';
-        await this.notificationGateway.emitPostPublished(post, authorName);
+        const actorName =
+          actor?.name ||
+          post.author?.displayName || post.author?.username || 'Admin';
+        await this.notificationGateway.emitPostPublished(
+          postResponse,
+          actorName,
+          actor?.id,
+        );
       }
-    } catch (notifError) {
-      console.error('⚠️ Notification emit failed:', notifError instanceof Error ? notifError.message : String(notifError));
+    } catch (notifError: unknown) {
+      console.error(
+        'Notification emit failed:',
+        notifError instanceof Error ? notifError.message : String(notifError),
+      );
     }
 
-    return post.populate('author', 'username displayName role');
+    return postResponse;
   }
 
-  // ============ DELETE WITH MEDIA CLEANUP ============
-  async delete(id: string): Promise<PostDocument> {
-    console.log('=== DELETING POST WITH MEDIA CLEANUP ===');
+  async republish(id: string): Promise<PostResponse> {
+    const existingPost = await this.prisma.post.findUnique({ where: { id } });
+    if (!existingPost) throw new NotFoundException('Post not found');
 
-    const post = await this.postModel.findById(id).exec();
+    const postedDate = new Date();
+    const post = await this.prisma.post.update({
+      where: { id },
+      data: {
+        status: PostStatus.published,
+        isPublished: true,
+        isLive: true,
+        liveStatus: PostLiveStatus.LIVE,
+        liveStatusCheckedAt: new Date(),
+        postedDate,
+        expiresAt: this.calculateExpiryFromDays(
+          postedDate,
+          DEFAULT_POST_EXPIRY_DAYS,
+        ),
+        updatedAt: new Date(),
+      },
+      include: postInclude,
+    });
+
+    return this.toPostResponse(post);
+  }
+
+  async delete(id: string, actor?: NotificationActor): Promise<PostResponse> {
+    const post = await this.prisma.post.findUnique({
+      where: { id },
+      include: postInclude,
+    });
     if (!post) throw new NotFoundException('Post not found');
 
-    console.log('🗑️ Deleting post:', post.title);
-    console.log('📸 mainImage:', post.mainImage || 'none');
-    console.log('🎥 video:', post.video || 'none');
-
     try {
-      if (post.mainImage && post.mainImage.trim() !== '') {
-        const possiblePaths = [
-          post.mainImage,
-          post.mainImage.startsWith('/uploads')
-            ? post.mainImage
-            : `/uploads${post.mainImage}`,
-          post.mainImage.startsWith('/')
-            ? post.mainImage
-            : `/${post.mainImage}`,
-        ];
-
-        for (const filePath of possiblePaths) {
-          const fullPath = path.join(process.cwd(), filePath);
-          if (fs.existsSync(fullPath)) {
-            fs.unlinkSync(fullPath);
-            console.log('✅ Image deleted successfully');
-            break;
-          }
-        }
-      }
-
-      if (post.video && post.video.trim() !== '') {
-        const possiblePaths = [
-          post.video,
-          post.video.startsWith('/uploads')
-            ? post.video
-            : `/uploads${post.video}`,
-          post.video.startsWith('/') ? post.video : `/${post.video}`,
-        ];
-
-        for (const filePath of possiblePaths) {
-          const fullPath = path.join(process.cwd(), filePath);
-          if (fs.existsSync(fullPath)) {
-            fs.unlinkSync(fullPath);
-            console.log('✅ Video deleted successfully');
-            break;
-          }
-        }
-      }
+      this.deleteMediaFileIfExists(post.mainImage);
     } catch (error) {
-      console.error('❌ Error deleting media files:', error);
+      console.error('Error deleting media files:', error);
     }
 
-    // Admin only notification for delete
     try {
-      const author = await this.adminModel.findById(post.author);
-      const authorName =
-        author?.displayName || author?.username || author?.email || 'Admin';
-      await this.notificationGateway.emitPostDeleted(post.title, authorName);
-    } catch (notifError) {
-      console.error('⚠️ Notification emit failed:', notifError instanceof Error ? notifError.message : String(notifError));
+      const actorName =
+        actor?.name ||
+        post.author?.displayName || post.author?.username || 'Admin';
+      await this.notificationGateway.emitPostDeleted(
+        post.title,
+        actorName,
+        actor?.id,
+      );
+    } catch (notifError: unknown) {
+      console.error(
+        'Notification emit failed:',
+        notifError instanceof Error ? notifError.message : String(notifError),
+      );
     }
 
-    const deletedPost = await this.postModel
-      .findByIdAndDelete(id)
-      .populate('author', 'username displayName role')
-      .exec();
-
-    console.log('✅ Post document deleted successfully from MongoDB');
-    return deletedPost;
+    await this.prisma.post.delete({ where: { id } });
+    return this.toPostResponse(post);
   }
 
-  // ============ AUTHORIZATION ============
   async canAdminEditPost(
     postId: string,
     adminId: string,
@@ -329,103 +1092,104 @@ export class PostsService {
     if (adminRole === Role.SUPER_ADMIN) return true;
 
     if (adminRole === Role.ADMIN) {
-      const post = await this.postModel.findById(postId);
+      const post = await this.prisma.post.findUnique({
+        where: { id: postId },
+        select: { authorId: true },
+      });
       if (!post) return false;
-      return post.author.toString() === adminId;
+      return post.authorId === adminId;
     }
 
     return false;
   }
 
-  // ============ STATISTICS ============
-  async getStatistics(): Promise<any> {
-    const [total, live, byAuthor, recentPosts, postsByMonth] =
+  async getStatistics(): Promise<PostStatistics> {
+    const [total, live, groupedAuthors, recentPosts, postedDates] =
       await Promise.all([
-        this.postModel.countDocuments(),
-        this.postModel.countDocuments({ isLive: true }),
-        this.postModel.aggregate([
-          { $group: { _id: '$author', count: { $sum: 1 } } },
-          { $sort: { count: -1 } },
-          { $limit: 5 },
-        ]),
-        this.postModel
-          .find()
-          .sort({ postedDate: -1 })
-          .limit(5)
-          .populate('author', 'username displayName')
-          .exec(),
-        this.postModel.aggregate([
-          {
-            $group: {
-              _id: {
-                year: { $year: '$postedDate' },
-                month: { $month: '$postedDate' },
-              },
-              count: { $sum: 1 },
-            },
-          },
-          { $sort: { '_id.year': -1, '_id.month': -1 } },
-          { $limit: 6 },
-        ]),
+        this.prisma.post.count(),
+        this.prisma.post.count({ where: { isLive: true } }),
+        this.prisma.post.groupBy({
+          by: ['authorId'],
+          _count: { _all: true },
+        }),
+        this.prisma.post.findMany({
+          include: postInclude,
+          orderBy: { postedDate: 'desc' },
+          take: 5,
+        }),
+        this.prisma.post.findMany({
+          select: { postedDate: true },
+        }),
       ]);
+
+    const topAuthors = groupedAuthors
+      .map((author) => ({
+        _id: author.authorId,
+        count: author._count._all,
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    const monthCounts = new Map<string, number>();
+    for (const post of postedDates) {
+      const year = post.postedDate.getFullYear();
+      const month = post.postedDate.getMonth() + 1;
+      const key = `${year}-${month}`;
+      monthCounts.set(key, (monthCounts.get(key) || 0) + 1);
+    }
+
+    const postsByMonth = Array.from(monthCounts.entries())
+      .map(([key, count]) => {
+        const [year, month] = key.split('-').map((value) => parseInt(value, 10));
+        return { _id: { year, month }, count };
+      })
+      .sort((a, b) => {
+        if (a._id.year !== b._id.year) return b._id.year - a._id.year;
+        return b._id.month - a._id.month;
+      })
+      .slice(0, 6);
 
     return {
       total,
       live,
       draft: total - live,
-      topAuthors: byAuthor,
-      recentPosts,
+      topAuthors,
+      recentPosts: recentPosts.map((post) => this.toPostResponse(post)),
       postsByMonth,
     };
   }
 
-  // ============ BULK OPERATIONS ============
   async bulkUpdateIsLive(ids: string[], isLive: boolean): Promise<number> {
-    const result = await this.postModel.updateMany(
-      { _id: { $in: ids } },
-      { isLive, updatedAt: new Date() },
-    );
-    return result.modifiedCount;
+    const result = await this.prisma.post.updateMany({
+      where: { id: { in: ids } },
+      data: {
+        isLive,
+        liveStatus: isLive ? PostLiveStatus.LIVE : PostLiveStatus.WAS_LIVE,
+        liveStatusCheckedAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+    return result.count;
   }
 
   async deleteByAuthor(authorId: string): Promise<number> {
-    console.log('=== BULK DELETE BY AUTHOR ===');
+    const posts = await this.prisma.post.findMany({
+      where: { authorId },
+      select: { id: true, mainImage: true },
+    });
 
-    const posts = await this.postModel
-      .find({ author: new Types.ObjectId(authorId) })
-      .exec();
-
-    console.log(`Found ${posts.length} posts to delete`);
-
-    let mediaFilesDeleted = 0;
     posts.forEach((post) => {
       try {
-        if (post.mainImage && post.mainImage.trim() !== '') {
-          const imagePath = path.join(process.cwd(), post.mainImage);
-          if (fs.existsSync(imagePath)) {
-            fs.unlinkSync(imagePath);
-            mediaFilesDeleted++;
-          }
-        }
-        if (post.video && post.video.trim() !== '') {
-          const videoPath = path.join(process.cwd(), post.video);
-          if (fs.existsSync(videoPath)) {
-            fs.unlinkSync(videoPath);
-            mediaFilesDeleted++;
-          }
-        }
+        this.deleteMediaFileIfExists(post.mainImage);
       } catch (error) {
-        console.error(`Error deleting media for post ${post._id}:`, error);
+        console.error(`Error deleting media for post ${post.id}:`, error);
       }
     });
 
-    console.log(`Deleted ${mediaFilesDeleted} media files`);
-
-    const result = await this.postModel.deleteMany({
-      author: new Types.ObjectId(authorId),
+    const result = await this.prisma.post.deleteMany({
+      where: { authorId },
     });
 
-    console.log(`Deleted ${result.deletedCount} post documents`);
-    return result.deletedCount;
+    return result.count;
   }
 }

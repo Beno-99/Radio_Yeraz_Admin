@@ -5,9 +5,6 @@ import {
   Users,
   FileText,
   Megaphone,
-  TrendingUp,
-  Eye,
-  Calendar,
 } from "lucide-react";
 
 export interface StatCard {
@@ -27,7 +24,7 @@ interface StatsCardsProps {
   stats?: {
     totalAdmins?: number;
     totalPosts?: number;
-    totalAds?: number;
+    totalCarousels?: number;
     activePosts?: number;
     clicksToday?: number;
     upcomingEvents?: number;
@@ -42,7 +39,7 @@ export default function StatsCards({
   const defaultStats = {
     totalAdmins: stats?.totalAdmins || 0,
     totalPosts: stats?.totalPosts || 0,
-    totalAds: stats?.totalAds || 0,
+    totalCarousels: stats?.totalCarousels || 0,
     activePosts: stats?.activePosts || 0,
     clicksToday: stats?.clicksToday || 0,
     upcomingEvents: stats?.upcomingEvents || 0,
@@ -74,8 +71,8 @@ export default function StatsCards({
       description: "Published content",
     },
     {
-      title: "Active Ads",
-      value: defaultStats.totalAds.toLocaleString(),
+      title: "Active Carousels",
+      value: defaultStats.totalCarousels.toLocaleString(),
       icon: Megaphone,
       color: "bg-purple-500",
       trend: {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect} from "react";
 import { useRouter, useParams } from "next/navigation";
 import {
   ArrowLeft,
@@ -12,75 +12,72 @@ import {
   Calendar,
 } from "lucide-react";
 import { adminAPI } from "@/lib/api/api";
+import { getLocalStorageValue } from "@/lib/browser-storage";
 import { format } from "date-fns";
 import type { Admin } from "@/types";
 
 export default function AdminDetailPage() {
   const router = useRouter();
   const params = useParams();
+
+  const adminId =
+    typeof params.id === "string" ? params.id : undefined;
+
   const [admin, setAdmin] = useState<Admin | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [loading, setLoading] = useState(Boolean(adminId));
+  const [error, setError] = useState<string | null>(
+    adminId ? null : "Invalid admin ID"
+  );
 
-  const isSuperAdmin = localStorage.getItem("user")
-    ? JSON.parse(localStorage.getItem("user") || "").role === "SUPER_ADMIN"
-    : false;
-
-  console.log();
+  const isSuperAdmin =
+    typeof window !== "undefined" &&
+    getLocalStorageValue("user")
+      ? JSON.parse(getLocalStorageValue("user") || "{}").role ===
+        "SUPER_ADMIN"
+      : false;
 
   useEffect(() => {
-    console.log(params.id);
-  }, [expandedRow]);
+  if (!adminId) return;
 
-  const handleGetAdmin = async (id: string) => {
-    if (!id || id === "undefined") {
-      console.error("Invalid ID:", id);
-      return;
-    }
-    return await adminAPI.getAdmin(id);
-  };
-  useEffect(() => {
-    const fetchAdmin = async () => {
-      try {
-        setLoading(true);
-        console.log("Fetching admin with ID:", params.id);
+  let isMounted = true;
 
-        const response = await adminAPI.getAdmin(params.id as string);
-        console.log("API Response:", response);
-        console.log("Response data:", response.data);
+  const fetchAdmin = async () => {
+    try {
+      const response = await adminAPI.getAdmin(adminId);
 
-        if (response.data) {
-          // response.data should be the admin object directly
-          setAdmin(response.data); // Set the entire admin object
-          console.log("Admin data set:", response.data);
-        } else {
-          console.error("No data in response");
-          setError("Admin not found");
-        }
-      } catch (err: any) {
-        console.error("Error fetching admin:", err);
-        setError(err.message || "Failed to fetch admin");
-      } finally {
+      if (!isMounted) return;
+
+      if (response.data) {
+        setAdmin(response.data);
+        setError(null);
+      } else {
+        setError("Admin not found");
+      }
+    } catch (err: unknown) {
+      console.error("Error fetching admin:", err);
+
+      if (!isMounted) return;
+
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("Failed to fetch admin");
+      }
+    } finally {
+      if (isMounted) {
         setLoading(false);
       }
-    };
-
-    if (params.id && params.id !== "undefined") {
-      fetchAdmin();
-    } else {
-      setError("Invalid admin ID");
-      setLoading(false);
     }
-  }, [params.id]);
-  useEffect(() => {
-    console.log("Admin state changed:", admin);
-  }, [admin]);
+  };
 
-  // Add this to see params.id
-  useEffect(() => {
-    console.log("Params ID:", params.id);
-  }, [params.id]);
+  fetchAdmin();
+
+  return () => {
+    isMounted = false;
+  };
+}, [adminId]);
+
+ 
 
   if (loading) {
     return (
@@ -96,6 +93,7 @@ export default function AdminDetailPage() {
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
           {error || "Admin not found"}
         </div>
+
         <button
           onClick={() => router.back()}
           className="mt-4 flex items-center gap-2 text-blue-600 hover:text-blue-800"
@@ -119,8 +117,14 @@ export default function AdminDetailPage() {
             <ArrowLeft className="h-4 w-4" />
             Back to Admins
           </button>
-          <h1 className="text-2xl font-bold text-gray-900">Admin Profile</h1>
-          <p className="text-gray-600">Viewing admin details</p>
+
+          <h1 className="text-2xl font-bold text-gray-900">
+            Admin Profile
+          </h1>
+
+          <p className="text-gray-600">
+            Viewing admin details
+          </p>
         </div>
 
         {/* Admin Card */}
@@ -130,11 +134,16 @@ export default function AdminDetailPage() {
             <div className="h-20 w-20 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-black text-2xl font-bold">
               {admin.displayName?.charAt(0) || "A"}
             </div>
+
             <div>
               <h2 className="text-xl font-bold text-gray-600">
                 {admin.displayName}
               </h2>
-              <p className="text-gray-600">@{admin.username}</p>
+
+              <p className="text-gray-600">
+                @{admin.username}
+              </p>
+
               <div className="flex gap-2 mt-2">
                 <span
                   className={`px-3 py-1 rounded-full text-sm font-medium ${
@@ -145,6 +154,7 @@ export default function AdminDetailPage() {
                 >
                   {admin.isActive ? "Active" : "Inactive"}
                 </span>
+
                 <span
                   className={`px-3 py-1 rounded-full text-sm font-medium ${
                     admin.role === "SUPER_ADMIN"
@@ -172,8 +182,12 @@ export default function AdminDetailPage() {
                 ) : (
                   <XCircle className="h-5 w-5 text-red-500" />
                 )}
+
                 <div>
-                  <p className="text-sm text-gray-500">Status</p>
+                  <p className="text-sm text-gray-500">
+                    Status
+                  </p>
+
                   <p className="font-medium text-gray-600">
                     {admin.isActive ? "Active" : "Inactive"}
                   </p>
@@ -182,8 +196,12 @@ export default function AdminDetailPage() {
 
               <div className="flex items-center gap-3">
                 <Shield className="h-5 w-5 text-purple-500" />
+
                 <div>
-                  <p className="text-sm text-gray-500">Role</p>
+                  <p className="text-sm text-gray-500">
+                    Role
+                  </p>
+
                   <p className="font-medium text-gray-600">
                     {admin.role || "Administrator"}
                   </p>
@@ -192,21 +210,33 @@ export default function AdminDetailPage() {
 
               <div className="flex items-center gap-3">
                 <User className="h-5 w-5 text-gray-400" />
+
                 <div>
-                  <p className="text-sm text-gray-500">Username</p>
-                  <p className="font-medium text-gray-600">{admin.username}</p>
+                  <p className="text-sm text-gray-500">
+                    Username
+                  </p>
+
+                  <p className="font-medium text-gray-600">
+                    {admin.username}
+                  </p>
                 </div>
               </div>
             </div>
 
             {/* Activity Details */}
             <div className="space-y-4">
-              <h3 className="font-semibold text-gray-900">Activity</h3>
+              <h3 className="font-semibold text-gray-900">
+                Activity
+              </h3>
 
               <div className="flex items-center gap-3">
                 <Calendar className="h-5 w-5 text-gray-400" />
+
                 <div>
-                  <p className="text-sm text-gray-500">Last Login</p>
+                  <p className="text-sm text-gray-500">
+                    Last Login
+                  </p>
+
                   <p className="font-medium text-gray-600">
                     {admin.lastLogin
                       ? format(
@@ -220,9 +250,15 @@ export default function AdminDetailPage() {
 
               {admin.createdAt && (
                 <div>
-                  <p className="text-sm text-gray-500">Account Created</p>
+                  <p className="text-sm text-gray-500">
+                    Account Created
+                  </p>
+
                   <p className="font-medium text-gray-600">
-                    {format(new Date(admin.createdAt), "MMMM d, yyyy")}
+                    {format(
+                      new Date(admin.createdAt),
+                      "MMMM d, yyyy"
+                    )}
                   </p>
                 </div>
               )}
@@ -237,10 +273,13 @@ export default function AdminDetailPage() {
             >
               Back to List
             </button>
+
             {isSuperAdmin && (
               <button
                 onClick={() =>
-                  router.push(`/dashboard/admin/${admin._id}/edit`)
+                  router.push(
+                    `/dashboard/admin/${admin._id}/edit`
+                  )
                 }
                 className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
               >

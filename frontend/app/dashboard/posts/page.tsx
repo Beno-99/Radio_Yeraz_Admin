@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { PostsHeader } from "@/components/posts/PostsHeader";
 import { PostsStats } from "@/components/posts/PostStats";
 import { PostsFilterBar } from "@/components/posts/PostsFilterBar";
@@ -12,91 +12,41 @@ import {
   usePostsPagination,
   usePostsStats,
 } from "../../../hooks/UsePostsData";
-import { adminAPI, postsAPI } from "@/lib/api/api";
+import { postsAPI } from "@/lib/api/api";
 import Swal from "sweetalert2";
-import { toast } from "sonner";
 
-const PAGE_LIMIT = 12;
 
 export default function PostsPage() {
   const [page, setPage] = useState(1);
-  const [filter, setFilter] = useState<"all" | "published" | "draft" | "live">(
-    "all",
-  );
+  const [filter, setFilter] = useState<
+    "all" | "published" | "draft" | "live" | "expired"
+  >("all");
 
   // Use custom hooks
-  const {
-    allPosts,
-    setAllPosts,
-    selectedPosts,
-    setSelectedPosts,
-    isDeleting,
-    setIsDeleting,
-    isUpdating,
-    setIsUpdating,
-    isLoading,
-    fetchAllPosts,
-  } = usePostsData();
+ const {
+  allPosts,
+  setAllPosts,
+  selectedPosts,
+  setSelectedPosts,
+  isDeleting,
+  setIsDeleting,
+  isUpdating,
+  isLoading,
+  fetchAllPosts,
+} = usePostsData();
 
   const filteredPosts = usePostsFilter(allPosts, filter);
   const { paginatedPosts, pagination } = usePostsPagination(
     filteredPosts,
     page,
   );
-  const [authorsMap, setAuthorsMap] = useState<Record<string, any>>({});
-  const { livePosts, publishedPosts, postsWithMedia } =
-    usePostsStats(paginatedPosts);
+  const { livePosts, publishedPosts, draftPosts, postsWithMedia, expiredPosts } =
+    usePostsStats(allPosts);
 
   const mediaUrl =
-    process.env.NEXT_PUBLIC_MEDIA_GET_URL || "http://localhost:8000";
+    process.env.NEXT_PUBLIC_MEDIA_GET_URL || "https://api.radioyeraz.com";
 
-  // Reset page when filter changes
-  useEffect(() => {
-    setPage(1);
-  }, [filter]);
-
-  useEffect(() => {
-    const fetchAuthorsForPosts = async () => {
-      // Extract the _id from the author object
-      const authorIds = [
-        ...new Set(
-          paginatedPosts
-            .map((post) => {
-              // Check if author is an object with _id property
-              if (post.author && typeof post.author === "object") {
-                return post.author._id; // Extract the ID string
-              }
-              return post.author; // If it's already a string, use it directly
-            })
-            .filter(Boolean), // Remove null/undefined
-        ),
-      ];
-
-      if (authorIds.length === 0) return;
-
-      try {
-        const authorsData: Record<string, any> = {};
-
-        await Promise.all(
-          authorIds.map(async (authorId) => {
-            try {
-              // Now authorId is a string, not an object
-              const response = await adminAPI.getAdmin(authorId);
-              authorsData[authorId] = response.data;
-            } catch (error) {
-              console.error(`Failed to fetch author ${authorId}:`, error);
-            }
-          }),
-        );
-
-        setAuthorsMap(authorsData);
-      } catch (error) {
-        console.error("Error fetching authors:", error);
-      }
-    };
-
-    fetchAuthorsForPosts();
-  }, [paginatedPosts]);
+ 
 
   // Handle bulk delete
   const handleBulkDelete = async () => {
@@ -184,19 +134,24 @@ export default function PostsPage() {
         totalPosts={pagination.total}
         totalPages={pagination.totalPages}
         publishedPosts={publishedPosts}
+        draftPosts={draftPosts}
         livePosts={livePosts}
         postsWithMedia={postsWithMedia}
+        expiredPosts={expiredPosts}
       />
 
       <PostsFilterBar
-        filter={filter}
-        page={page}
-        total={pagination.total}
-        totalPosts={paginatedPosts.length}
-        selectedPosts={selectedPosts.length}
-        onFilterChange={setFilter}
-        onClearSelection={clearSelection}
-      />
+  filter={filter}
+  page={page}
+  total={pagination.total}
+  totalPosts={paginatedPosts.length}
+  selectedPosts={selectedPosts.length}
+  onFilterChange={(newFilter) => {
+    setFilter(newFilter);
+    setPage(1);
+  }}
+  onClearSelection={clearSelection}
+/>
 
       <PostsGrid
         posts={paginatedPosts}

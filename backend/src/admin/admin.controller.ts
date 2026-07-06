@@ -1,37 +1,42 @@
 // src/admin/admin.controller.ts
 import {
-  Controller,
-  Get,
-  Post,
-  Put,
-  Delete,
+  BadRequestException,
   Body,
-  Param,
-  Query,
-  UseGuards,
-  Req,
+  Controller,
+  Delete,
+  Get,
   HttpCode,
   HttpStatus,
-  BadRequestException,
+  Param,
+  Post,
+  Put,
+  Query,
+  Req,
   UnauthorizedException,
+  UseGuards,
 } from '@nestjs/common';
-import { AdminService } from './admin.service';
-import { CreateAdminDto } from './dto/create-admin.dto';
-import { UpdateAdminDto } from './dto/update-admin.dto';
-import { LoginAdminDto } from './dto/login-admin.dto';
-import { ChangePasswordDto } from './dto/change-password.dto';
+import { AuthenticatedRequest } from '../auth/interfaces/authenticated-request.interface';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import { isObjectIdString } from '../common/utils/object-id.utils';
+import { AdminService } from './admin.service';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { CreateAdminDto } from './dto/create-admin.dto';
+import { LoginAdminDto } from './dto/login-admin.dto';
+import { UpdateAdminDto } from './dto/update-admin.dto';
+import { UpdateAdminProfileDto } from './dto/update-admin-profile.dto';
 import { Role } from './schemas/admin.schema';
-import { Request } from 'express';
-import mongoose from 'mongoose';
+
+interface AdminControllerFilters {
+  role?: Role;
+  isActive?: boolean;
+}
 
 @Controller('admin')
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 
-  // ============ AUTH ENDPOINTS ============
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(@Body() loginDto: LoginAdminDto) {
@@ -57,27 +62,23 @@ export class AdminController {
     };
   }
 
-  // ============ PROTECTED ENDPOINTS ============
   @UseGuards(JwtAuthGuard)
   @Get('profile')
-  async getProfile(@Req() req: Request) {
-    const adminId = req.user['sub'];
-    const admin = await this.adminService.findById(adminId);
+  async getProfile(@Req() req: AuthenticatedRequest) {
+    const admin = await this.adminService.findById(req.user.sub);
     return { success: true, data: admin };
   }
 
   @UseGuards(JwtAuthGuard)
   @Put('profile')
   async updateProfile(
-    @Req() req: Request,
-    @Body() updateAdminDto: UpdateAdminDto,
+    @Req() req: AuthenticatedRequest,
+    @Body() updateProfileDto: UpdateAdminProfileDto,
   ) {
-    const adminId = req.user['sub'];
-    const updaterName =
-      req.user['displayName'] || req.user['username'] || 'Admin';
-    const admin = await this.adminService.updateAdmin(
-      adminId,
-      updateAdminDto,
+    const updaterName = req.user.displayName || req.user.username || 'Admin';
+    const admin = await this.adminService.updateOwnProfile(
+      req.user.sub,
+      updateProfileDto,
       updaterName,
     );
     return {
@@ -90,29 +91,26 @@ export class AdminController {
   @UseGuards(JwtAuthGuard)
   @Post('change-password')
   async changePassword(
-    @Req() req: Request,
+    @Req() req: AuthenticatedRequest,
     @Body() changePasswordDto: ChangePasswordDto,
   ) {
-    const adminId = req.user['sub'];
     await this.adminService.changePassword(
-      adminId,
+      req.user.sub,
       changePasswordDto.currentPassword,
       changePasswordDto.newPassword,
     );
     return { success: true, message: 'Password changed successfully' };
   }
 
-  // ============ SUPER ADMIN ONLY ENDPOINTS ============
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPER_ADMIN)
   async createAdmin(
-    @Req() req: Request,
+    @Req() req: AuthenticatedRequest,
     @Body() createAdminDto: CreateAdminDto,
   ) {
-    const creatorId = req.user['sub'];
     const admin = await this.adminService.createAdmin(
-      creatorId,
+      req.user.sub,
       createAdminDto,
     );
     return {
@@ -135,7 +133,7 @@ export class AdminController {
     const pageNum = parseInt(page, 10) || 1;
     const limitNum = parseInt(limit, 10) || 10;
 
-    const filters: any = {};
+    const filters: AdminControllerFilters = {};
     if (role) filters.role = role;
     if (active !== undefined) filters.isActive = active === 'true';
 
@@ -149,8 +147,10 @@ export class AdminController {
   }
 
   @Get(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   async getAdmin(@Param('id') id: string) {
-    if (!id || id === 'undefined' || !mongoose.Types.ObjectId.isValid(id)) {
+    if (!id || id === 'undefined' || !isObjectIdString(id)) {
       throw new BadRequestException('Invalid ID format');
     }
     return this.adminService.findById(id);
@@ -160,16 +160,16 @@ export class AdminController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPER_ADMIN)
   async updateAdmin(
-    @Req() req: Request,
+    @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
     @Body() updateAdminDto: UpdateAdminDto,
   ) {
-    const updaterName =
-      req.user['displayName'] || req.user['username'] || 'Admin'; // ← GET name
+    const updaterName = req.user.displayName || req.user.username || 'Admin';
     const admin = await this.adminService.updateAdmin(
       id,
       updateAdminDto,
       updaterName,
+      req.user.sub,
     );
     return {
       success: true,
@@ -181,20 +181,25 @@ export class AdminController {
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPER_ADMIN)
-  async deleteAdmin(@Req() req: Request, @Param('id') id: string) {
-    const deleterName =
-      req.user['displayName'] || req.user['username'] || 'Admin'; // ← GET name
-    await this.adminService.deleteAdmin(id, deleterName);
+  async deleteAdmin(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    const deleterName = req.user.displayName || req.user.username || 'Admin';
+    await this.adminService.deleteAdmin(id, deleterName, req.user.sub);
     return { success: true, message: 'Admin deleted successfully' };
   }
 
   @Put(':id/toggle-active')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPER_ADMIN)
-  async toggleActiveStatus(@Req() req: Request, @Param('id') id: string) {
-    const togglerName =
-      req.user['displayName'] || req.user['username'] || 'Admin'; // ← GET name
-    const admin = await this.adminService.toggleActiveStatus(id, togglerName);
+  async toggleActiveStatus(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+  ) {
+    const togglerName = req.user.displayName || req.user.username || 'Admin';
+    const admin = await this.adminService.toggleActiveStatus(
+      id,
+      togglerName,
+      req.user.sub,
+    );
     return {
       success: true,
       message: `Admin ${admin.isActive ? 'activated' : 'deactivated'} successfully`,
