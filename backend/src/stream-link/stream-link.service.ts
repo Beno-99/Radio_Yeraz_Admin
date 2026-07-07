@@ -30,6 +30,7 @@ export class StreamLinkService {
         id: createObjectIdString(),
         title: dto.title,
         url: dto.url,
+        metadataUrl: dto.metadataUrl ?? null,
         description: dto.description,
         bitrate: dto.bitrate ?? null,
         displayOrder: dto.displayOrder ?? 0,
@@ -90,6 +91,7 @@ export class StreamLinkService {
       data: {
         title: dto.title,
         url: dto.url,
+        metadataUrl: dto.metadataUrl,
         description: dto.description,
         bitrate: dto.bitrate,
         displayOrder: dto.displayOrder,

@@ -53,6 +53,18 @@ export function StreamLinkCard({
           </p>
         )}
 
+        {streamLink.metadataUrl ? (
+          <a
+            href={streamLink.metadataUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mb-4 flex min-w-0 items-center gap-1 break-all text-xs text-slate-500 hover:text-blue-600 hover:underline"
+          >
+            Metadata: {streamLink.metadataUrl}
+            <ExternalLink className="h-3 w-3 flex-shrink-0" />
+          </a>
+        ) : null}
+
         <div className="mb-4 flex flex-wrap gap-2 text-xs font-medium text-gray-600">
           {streamLink.bitrate ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-blue-700">

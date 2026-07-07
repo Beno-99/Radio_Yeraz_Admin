@@ -162,6 +162,7 @@ model StreamLink {
   id           String   @id @map("_id") @db.Char(24)
   title        String   @db.VarChar(100)
   url          String   @db.VarChar(2048)
+  metadataUrl  String?  @db.VarChar(2048)
   description  String?  @db.VarChar(500)
   bitrate      Int?
   displayOrder Int      @default(0)

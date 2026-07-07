@@ -584,12 +584,14 @@ async function runStreamLinkTests(superToken) {
     body: {
       title: `${runId} stream`,
       url: 'https://example.com/stream',
+      metadataUrl: 'https://meta.radioyeraz.com/MetaData.txt',
       description: 'Smoke stream',
       bitrate: 64,
       displayOrder: 2,
       isActive: true,
     },
   }), 201);
+  assert(stream.data.metadataUrl === 'https://meta.radioyeraz.com/MetaData.txt', 'stream metadataUrl was not stored');
   assert(stream.data.bitrate === 64, 'stream bitrate was not stored');
   assert(stream.data.displayOrder === 2, 'stream displayOrder was not stored');
   const streamId = stream.data._id || stream.data.id;

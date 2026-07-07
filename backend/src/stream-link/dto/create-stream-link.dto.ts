@@ -27,6 +27,11 @@ export class CreateStreamLinkDto {
   url: string;
 
   @IsOptional()
+  @IsUrl({ require_protocol: true, require_tld: false })
+  @MaxLength(2048)
+  metadataUrl?: string | null;
+
+  @IsOptional()
   @IsString()
   @MaxLength(500)
   description?: string;

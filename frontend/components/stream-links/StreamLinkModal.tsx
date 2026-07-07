@@ -16,6 +16,7 @@ export function StreamLinkModal({ isOpen, onClose, initialData }: StreamLinkModa
   const [formData, setFormData] = useState<CreateStreamLinkDto>({
     title: '',
     url: '',
+    metadataUrl: '',
     description: '',
     bitrate: null,
     displayOrder: 0,
@@ -37,6 +38,7 @@ export function StreamLinkModal({ isOpen, onClose, initialData }: StreamLinkModa
       return {
         title: initialData.title,
         url: initialData.url,
+        metadataUrl: initialData.metadataUrl || '',
         description: initialData.description || '',
         bitrate: initialData.bitrate ?? null,
         displayOrder: initialData.displayOrder ?? 0,
@@ -46,6 +48,7 @@ export function StreamLinkModal({ isOpen, onClose, initialData }: StreamLinkModa
     return {
       title: '',
       url: '',
+      metadataUrl: '',
       description: '',
       bitrate: null,
       displayOrder: 0,
@@ -69,6 +72,12 @@ export function StreamLinkModal({ isOpen, onClose, initialData }: StreamLinkModa
     if (!formData.url?.trim()) newErrors.url = 'URL is required';
     else if (!/^https?:\/\//.test(formData.url)) {
       newErrors.url = 'URL must start with http:// or https://';
+    }
+    if (
+      formData.metadataUrl?.trim() &&
+      !/^https?:\/\//.test(formData.metadataUrl)
+    ) {
+      newErrors.metadataUrl = 'Metadata URL must start with http:// or https://';
     }
     if (formData.bitrate !== null && formData.bitrate !== undefined) {
       if (!Number.isInteger(formData.bitrate) || formData.bitrate < 1 || formData.bitrate > 512) {
@@ -103,6 +112,7 @@ export function StreamLinkModal({ isOpen, onClose, initialData }: StreamLinkModa
       ...formData,
       title: formData.title.trim(),
       url: formData.url.trim(),
+      metadataUrl: formData.metadataUrl?.trim() || null,
       description: formData.description?.trim() || undefined,
       bitrate: formData.bitrate ?? null,
       displayOrder: formData.displayOrder ?? 0,
@@ -179,6 +189,20 @@ export function StreamLinkModal({ isOpen, onClose, initialData }: StreamLinkModa
                   required
                 />
                 {errors.url && <p className="text-red-500 text-sm mt-1">{errors.url}</p>}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Metadata URL (Optional)
+                </label>
+                <input
+                  type="url"
+                  value={formData.metadataUrl ?? ''}
+                  onChange={(e) => setFormData({ ...formData, metadataUrl: e.target.value })}
+                  className="min-h-11 w-full rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="https://meta.radioyeraz.com/MetaData.txt"
+                />
+                {errors.metadataUrl && <p className="text-red-500 text-sm mt-1">{errors.metadataUrl}</p>}
               </div>
 
               <div>

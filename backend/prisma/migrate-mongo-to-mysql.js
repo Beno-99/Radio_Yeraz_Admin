@@ -314,6 +314,7 @@ async function migrateStreamLinks(prisma, database) {
       update: {
         title: doc.title,
         url: doc.url,
+        metadataUrl: doc.metadataUrl || doc.metaUrl || null,
         description: doc.description || null,
         bitrate: Number.isInteger(doc.bitrate) ? doc.bitrate : null,
         displayOrder: Number.isInteger(doc.displayOrder) ? doc.displayOrder : 0,
@@ -325,6 +326,7 @@ async function migrateStreamLinks(prisma, database) {
         id,
         title: doc.title,
         url: doc.url,
+        metadataUrl: doc.metadataUrl || doc.metaUrl || null,
         description: doc.description || null,
         bitrate: Number.isInteger(doc.bitrate) ? doc.bitrate : null,
         displayOrder: Number.isInteger(doc.displayOrder) ? doc.displayOrder : 0,

@@ -89,6 +89,7 @@ export interface StreamLink {
   _id: string;
   title: string;
   url: string;
+  metadataUrl?: string | null;
   description?: string;
   bitrate?: number | null;
   displayOrder?: number;
@@ -101,6 +102,7 @@ export interface StreamLink {
 export interface CreateStreamLinkDto {
   title: string;
   url: string;
+  metadataUrl?: string | null;
   description?: string;
   bitrate?: number | null;
   displayOrder?: number;

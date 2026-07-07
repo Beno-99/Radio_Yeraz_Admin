@@ -11,6 +11,9 @@ export class StreamLink {
   @Prop({ type: String, required: true })
   url: string;
 
+  @Prop({ type: String, trim: true, default: null })
+  metadataUrl?: string | null;
+
   @Prop({ type: String, trim: true })
   description?: string;
 

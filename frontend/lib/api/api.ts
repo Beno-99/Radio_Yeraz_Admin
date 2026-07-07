@@ -365,6 +365,7 @@ export const streamLinksAPI = {
   create: (data: {
     title: string;
     url: string;
+    metadataUrl?: string | null;
     description?: string;
     bitrate?: number | null;
     displayOrder?: number;
@@ -373,6 +374,7 @@ export const streamLinksAPI = {
   update: (id: string, data: {
     title?: string;
     url?: string;
+    metadataUrl?: string | null;
     description?: string;
     bitrate?: number | null;
     displayOrder?: number;
