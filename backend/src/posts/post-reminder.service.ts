@@ -48,11 +48,19 @@ export class PostReminderService {
 
     for (const post of posts) {
       try {
+        const title = `Live event today at ${post.eventTime || 'the scheduled time'}`;
+        const message = post.title;
         const messageId = await this.firebaseService.sendToTopic(
           'client',
-          `Live event today at ${post.eventTime || 'the scheduled time'}`,
-          post.title,
-          { postId: post.id },
+          title,
+          message,
+          {
+            type: 'EVENT_REMINDER',
+            postId: post.id,
+            postTitle: post.title,
+            title,
+            message,
+          },
         );
 
         sentPostIds.push(post.id);

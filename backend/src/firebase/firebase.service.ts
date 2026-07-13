@@ -5,6 +5,9 @@ import * as admin from 'firebase-admin';
 @Injectable()
 export class FirebaseService implements OnModuleInit {
   private readonly logger = new Logger(FirebaseService.name);
+  private readonly androidChannelId = 'radioyeraz-updates';
+  private readonly androidNotificationColor = '#D71920';
+  private readonly androidNotificationIcon = 'ic_notification';
 
   onModuleInit() {
     if (admin.apps.length) {
@@ -57,7 +60,17 @@ export class FirebaseService implements OnModuleInit {
       token,
       notification: { title, body },
       data,
-      android: { priority: 'high' },
+      android: {
+        priority: 'high',
+        notification: {
+          title,
+          body,
+          channelId: this.androidChannelId,
+          color: this.androidNotificationColor,
+          icon: this.androidNotificationIcon,
+          sound: 'default',
+        },
+      },
       apns: { payload: { aps: { sound: 'default' } } },
     };
     const messageId = await admin.messaging().send(message);
@@ -99,8 +112,13 @@ export class FirebaseService implements OnModuleInit {
         notification: {
           title,
           body,
+          channelId: this.androidChannelId,
+          color: this.androidNotificationColor,
+          icon: this.androidNotificationIcon,
+          sound: 'default',
         },
       },
+      apns: { payload: { aps: { sound: 'default' } } },
     };
     const messageId = await admin.messaging().send(message);
     this.logger.log(`Sent topic notification to "${topic}": ${messageId}`);

@@ -79,6 +79,42 @@ export class PostsController {
     return value === true || value === 'true';
   }
 
+  private getClientPostNotification(post: {
+    _id: string;
+    title: string;
+    isLive: boolean;
+  }) {
+    if (post.isLive) {
+      const title = 'Radio Yeraz is live';
+      const message = `Tap to watch "${post.title}".`;
+
+      return {
+        title,
+        message,
+        data: {
+          type: 'POST_LIVE',
+          postId: post._id,
+          postTitle: post.title,
+          title,
+          message,
+          liveStatus: 'LIVE',
+        },
+      };
+    }
+
+    return {
+      title: 'A New Post Added',
+      message: post.title,
+      data: {
+        type: 'NEW_POST',
+        postId: post._id,
+        postTitle: post.title,
+        title: 'A New Post Added',
+        message: post.title,
+      },
+    };
+  }
+
   private getNotificationActor(req: AuthenticatedRequest) {
     return {
       id: req.user.sub,
@@ -232,13 +268,13 @@ export class PostsController {
 
     if (post.isPublished) {
       try {
+        const notification = this.getClientPostNotification(post);
+
         await this.firebaseService.sendToTopic(
           'client',
-          'A New Post Added',
-          post.title,
-          {
-            postId: post._id,
-          },
+          notification.title,
+          notification.message,
+          notification.data,
         );
       } catch (notifError) {
         console.error(
@@ -307,15 +343,15 @@ export class PostsController {
       (previousPost.status !== PostStatus.published &&
         updatedPost.status === PostStatus.published);
 
-    if (becamePublished) {
+    if (becamePublished && !updatedPost.isLive) {
       try {
+        const notification = this.getClientPostNotification(updatedPost);
+
         await this.firebaseService.sendToTopic(
           'client',
-          'A New Post Added',
-          updatedPost.title,
-          {
-            postId: updatedPost._id,
-          },
+          notification.title,
+          notification.message,
+          notification.data,
         );
       } catch (notifError) {
         console.error(

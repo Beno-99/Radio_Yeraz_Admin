@@ -19,6 +19,7 @@ import {
   createObjectIdString,
   isObjectIdString,
 } from '../common/utils/object-id.utils';
+import { FirebaseService } from '../firebase/firebase.service';
 import { NotificationGateway } from '../notifications/notification.gateway';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePostDto } from './dto/create-post.dto';
@@ -97,6 +98,7 @@ export class PostsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationGateway: NotificationGateway,
+    private readonly firebaseService: FirebaseService,
   ) {}
 
   private toApiRole(role: AdminRole): Role {
@@ -379,6 +381,42 @@ export class PostsService {
     return liveStatus === PostLiveStatus.LIVE;
   }
 
+  private getLiveNotificationMessage(postTitle: string): string {
+    return postTitle
+      ? `Tap to watch "${postTitle}".`
+      : 'Tap to watch the live stream.';
+  }
+
+  private async sendPostStartedLiveNotification(
+    post: Pick<
+      PrismaPost,
+      'id' | 'title' | 'isPublished' | 'status' | 'videoSource'
+    >,
+  ): Promise<void> {
+    if (!post.isPublished || post.status !== PostStatus.published) return;
+
+    const title = 'Radio Yeraz is live';
+    const message = this.getLiveNotificationMessage(post.title);
+
+    try {
+      await this.firebaseService.sendToTopic('client', title, message, {
+        type: 'POST_LIVE',
+        postId: post.id,
+        postTitle: post.title,
+        title,
+        message,
+        liveStatus: String(PostLiveStatus.LIVE),
+        videoSource: post.videoSource ? String(post.videoSource) : '',
+        notificationId: `post-live-${post.id}-${Date.now()}`,
+      });
+    } catch (notifError: unknown) {
+      console.error(
+        'FCM live notification failed:',
+        notifError instanceof Error ? notifError.message : String(notifError),
+      );
+    }
+  }
+
   private deleteMediaFileIfExists(filePath?: string): void {
     if (!filePath || filePath.trim() === '') return;
 
@@ -484,12 +522,15 @@ export class PostsService {
       },
       select: {
         id: true,
+        title: true,
         videoSource: true,
         youtubeUrl: true,
         youtubeVideoId: true,
         facebookUrl: true,
         isLive: true,
         liveStatus: true,
+        isPublished: true,
+        status: true,
       },
     });
 
@@ -497,18 +538,40 @@ export class PostsService {
 
     for (const post of posts) {
       const liveStatus = await this.fetchProviderLiveStatus(post);
-      if (!liveStatus || liveStatus === post.liveStatus) continue;
+      const nextIsLive = liveStatus
+        ? this.liveStatusToIsLive(liveStatus)
+        : false;
+      if (
+        !liveStatus ||
+        (liveStatus === post.liveStatus && nextIsLive === post.isLive)
+      ) {
+        continue;
+      }
 
-      await this.prisma.post.update({
+      const checkedAt = new Date();
+
+      const updatedPost = await this.prisma.post.update({
         where: { id: post.id },
         data: {
           liveStatus,
-          liveStatusCheckedAt: new Date(),
-          isLive: this.liveStatusToIsLive(liveStatus),
-          updatedAt: new Date(),
+          liveStatusCheckedAt: checkedAt,
+          isLive: nextIsLive,
+          updatedAt: checkedAt,
+        },
+        select: {
+          id: true,
+          title: true,
+          isPublished: true,
+          status: true,
+          videoSource: true,
         },
       });
+
       updatedCount += 1;
+
+      if (liveStatus === PostLiveStatus.LIVE && !post.isLive) {
+        await this.sendPostStartedLiveNotification(updatedPost);
+      }
     }
 
     return updatedCount;
@@ -928,6 +991,10 @@ export class PostsService {
       include: postInclude,
     });
     const postResponse = this.toPostResponse(post);
+    const wasClientVisible =
+      oldPost.isPublished && oldPost.status === PostStatus.published;
+    const isClientVisible =
+      post.isPublished && post.status === PostStatus.published;
 
     try {
       if ((shouldRemoveImage || hasNewImage) && oldMainImage.trim() !== '') {
@@ -942,6 +1009,14 @@ export class PostsService {
     }
 
     try {
+      if (
+        post.isLive &&
+        (!oldPost.isLive || !wasClientVisible) &&
+        isClientVisible
+      ) {
+        await this.sendPostStartedLiveNotification(post);
+      }
+
       const actorName =
         actor?.name ||
         post.author?.displayName || post.author?.username || 'Admin';
@@ -997,6 +1072,10 @@ export class PostsService {
     const postResponse = this.toPostResponse(post);
 
     try {
+      if (!existingPost.isLive && post.isLive) {
+        await this.sendPostStartedLiveNotification(post);
+      }
+
       if (post.isLive) {
         const actorName =
           actor?.name ||
@@ -1039,6 +1118,10 @@ export class PostsService {
       },
       include: postInclude,
     });
+
+    if (!existingPost.isLive && post.isLive) {
+      await this.sendPostStartedLiveNotification(post);
+    }
 
     return this.toPostResponse(post);
   }
