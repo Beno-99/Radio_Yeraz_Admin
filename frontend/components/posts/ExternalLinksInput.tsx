@@ -54,7 +54,17 @@ export function ExternalLinksInput({
   };
 
   const handleChange = (index: number, nextValue: string) => {
-    updateRows(rows.map((row, rowIndex) => (rowIndex === index ? nextValue : row)));
+    setRows((currentRows) => {
+      const nextRows = currentRows.map((row, rowIndex) =>
+        rowIndex === index ? nextValue : row,
+      );
+      const serialized = serializeExternalLinks(nextRows);
+
+      emittedValueRef.current = serialized;
+      onChange(serialized);
+
+      return nextRows;
+    });
   };
 
   const handleAdd = () => {

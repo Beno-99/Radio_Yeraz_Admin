@@ -8,7 +8,11 @@ import { postsAPI } from "@/lib/api/api";
 import { SimpleImageUpload } from "@/components/posts/PostImageUpload";
 import { ExternalLinksInput } from "@/components/posts/ExternalLinksInput";
 import { parseFacebookUrl } from "@/lib/facebook";
-import { areExternalLinksValid } from "@/lib/postLinks";
+import {
+  areExternalLinksValid,
+  parseExternalLinks,
+  serializeExternalLinks,
+} from "@/lib/postLinks";
 import {
   getEffectiveLiveStatus,
   type PostLiveStatus,
@@ -243,7 +247,10 @@ export default function EditPostPage() {
       formDataToSend.append("profileName", formData.profileName || "");
       formDataToSend.append("eventDate", formData.eventDate);
       formDataToSend.append("location", formData.location || "");
-      formDataToSend.append("link", formData.link || "");
+      formDataToSend.append(
+        "link",
+        serializeExternalLinks(parseExternalLinks(formData.link)),
+      );
       formDataToSend.append("isLive", String(formData.isLive));
       formDataToSend.append("isPublished", String(formData.isPublished));
       formDataToSend.append(

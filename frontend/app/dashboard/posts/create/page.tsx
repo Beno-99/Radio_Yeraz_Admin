@@ -7,6 +7,7 @@ import { FormBuilder } from "@/components/forms/FormBuilder";
 import { postFormFields } from "@/config/postForm.fields";
 import { postFormSchema, PostFormValues } from "@/config/postForm.schema";
 import { postsAPI } from "@/lib/api/api";
+import { parseExternalLinks, serializeExternalLinks } from "@/lib/postLinks";
 import { z } from "zod";
 
 // Extend schema to make location required and add validation hint
@@ -34,6 +35,8 @@ export default function CreatePostPage() {
           formData.append(key, value);
         } else if (typeof value === "boolean") {
           formData.append(key, value ? "true" : "false");
+        } else if (key === "link" && typeof value === "string") {
+          formData.append(key, serializeExternalLinks(parseExternalLinks(value)));
         } else if (value !== undefined && value !== null) {
           formData.append(key, value as string);
         }
