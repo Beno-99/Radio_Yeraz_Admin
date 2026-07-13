@@ -1,5 +1,6 @@
 import { CalendarDays, MapPin, User, ExternalLink, Globe, Clock, Eye, ArrowLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { formatExternalLinkLabel, parseExternalLinks } from "@/lib/postLinks";
 
 // Define proper types instead of any
 interface Author {
@@ -29,12 +30,14 @@ interface PostDetailsProps {
 }
 
 export function PostDetails({ post }: PostDetailsProps) {
+  const links = parseExternalLinks(post.link);
+
   return (
     <div className="p-6 md:p-10 space-y-8">
       <TitleSection post={post} />
       <DescriptionSection description={post.description} />
       <DetailsGrid post={post} />
-      <ActionButtons link={post.link} />
+      <ActionButtons links={links} />
     </div>
   );
 }
@@ -108,6 +111,7 @@ interface DetailsGridProps {
 }
 
 function DetailsGrid({ post }: DetailsGridProps) {
+  const links = parseExternalLinks(post.link);
   const getAuthorName = (): string | null => {
     if (!post.author) return null;
 
@@ -166,18 +170,19 @@ function DetailsGrid({ post }: DetailsGridProps) {
         />
       )}
 
-      {post.link && (
+      {links.map((link, index) => (
         <DetailItem
+          key={`${link}-${index}`}
           icon={ExternalLink}
           iconBg="bg-green-100"
           iconColor="text-green-600"
           bgColor="bg-green-50"
-          label="External Link"
-          value={post.link.replace(/^https?:\/\//, "")}
+          label={links.length > 1 ? `External Link ${index + 1}` : "External Link"}
+          value={formatExternalLinkLabel(link)}
           isLink={true}
-          link={post.link}
+          link={link}
         />
-      )}
+      ))}
       {authorName && (
         <DetailItem
           icon={User}
@@ -243,25 +248,26 @@ function DetailItem({
 }
 
 interface ActionButtonsProps {
-  link?: string;
+  links: string[];
 }
 
-function ActionButtons({ link }: ActionButtonsProps) {
+function ActionButtons({ links }: ActionButtonsProps) {
   const router = useRouter();
 
   return (
     <div className="flex flex-wrap gap-3 pt-8 border-t border-gray-200">
-      {link && (
+      {links.map((link, index) => (
         <a
+          key={`${link}-${index}`}
           href={link}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
         >
           <ExternalLink size={16} />
-          Visit Link
+          {links.length > 1 ? `Visit Link ${index + 1}` : "Visit Link"}
         </a>
-      )}
+      ))}
       <button
         onClick={() => router.back()}
         className="inline-flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"

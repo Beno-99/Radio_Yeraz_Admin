@@ -35,6 +35,7 @@ import { cn } from "@/lib/utils";
 import Image from "next/image"; // Import Next.js Image component
 import { parseFacebookUrl } from "@/lib/facebook";
 import { parseYouTubeUrl } from "@/lib/youtube";
+import { ExternalLinksInput } from "@/components/posts/ExternalLinksInput";
 
 export type FieldType =
   | "text"
@@ -256,6 +257,45 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
       layout === "grid" && "col-span-1",
       field.className,
     );
+
+    if (field.name === "link") {
+      return (
+        <div className={fieldContainerClass}>
+          <label className="block text-sm font-medium text-gray-900 mb-2">
+            {field.label}
+            {field.required && <span className="text-red-500 ml-1">*</span>}
+          </label>
+
+          <Controller
+            name={field.name as Path<T>}
+            control={control}
+            render={({ field: controllerField }) => (
+              <ExternalLinksInput
+                value={
+                  typeof controllerField.value === "string"
+                    ? controllerField.value
+                    : ""
+                }
+                onChange={controllerField.onChange}
+                disabled={loading}
+                error={Boolean(error)}
+              />
+            )}
+          />
+
+          {field.description && (
+            <p className="mt-2 text-sm text-gray-600">{field.description}</p>
+          )}
+
+          {error && (
+            <div className="mt-2 flex items-center text-red-600 text-sm">
+              <AlertCircle className="h-4 w-4 mr-1" />
+              {String(error.message)}
+            </div>
+          )}
+        </div>
+      );
+    }
 
     switch (field.type) {
       case "checkbox":

@@ -120,6 +120,7 @@ export default function CreatePostPage() {
             youtubeUrl: "",
             facebookUrl: "",
             location: "",
+            link: "",
           }}
           submitText="Create Post"
           loading={loading}

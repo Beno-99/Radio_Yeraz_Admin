@@ -98,9 +98,9 @@ export const postFormFields: FormField[] = [
   },
   {
     name: "link",
-    label: "External Link",
+    label: "External Links",
     type: "text",
     placeholder: "https://example.com/article",
-    description: "Link to external content or source",
+    description: "Links to external content or sources",
   },
 ];

@@ -2,6 +2,7 @@
 import { z } from "zod";
 import { isValidFacebookUrl } from "@/lib/facebook";
 import { isValidYouTubeUrl } from "@/lib/youtube";
+import { areExternalLinksValid } from "@/lib/postLinks";
 
 export const postFormSchema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -38,7 +39,13 @@ export const postFormSchema = z.object({
     .min(1, "Keep days must be at least 1")
     .max(365, "Keep days cannot be more than 365")
     .default(5),
-  link: z.string().url("Must be a valid URL").optional().or(z.literal("")),
+  link: z
+    .string()
+    .optional()
+    .or(z.literal(""))
+    .refine((value) => areExternalLinksValid(value), {
+      message: "Enter valid http or https links",
+    }),
 });
 
 /** 🔥 THIS IS THE IMPORTANT ONE */

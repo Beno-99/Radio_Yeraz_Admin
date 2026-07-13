@@ -6,7 +6,9 @@ import { ArrowLeft, Upload, Image as ImageIcon, Video } from "lucide-react";
 import { toast } from "sonner";
 import { postsAPI } from "@/lib/api/api";
 import { SimpleImageUpload } from "@/components/posts/PostImageUpload";
+import { ExternalLinksInput } from "@/components/posts/ExternalLinksInput";
 import { parseFacebookUrl } from "@/lib/facebook";
+import { areExternalLinksValid } from "@/lib/postLinks";
 import {
   getEffectiveLiveStatus,
   type PostLiveStatus,
@@ -204,6 +206,16 @@ export default function EditPostPage() {
         icon: "warning",
         title: "Validation Error",
         text: "Keep days must be between 1 and 365",
+        confirmButtonColor: "#7c3aed",
+      });
+      return;
+    }
+
+    if (!areExternalLinksValid(formData.link)) {
+      await Swal.fire({
+        icon: "warning",
+        title: "Validation Error",
+        text: "Enter valid http or https links",
         confirmButtonColor: "#7c3aed",
       });
       return;
@@ -678,14 +690,13 @@ export default function EditPostPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2">Link</label>
-            <input
-              type="text"
+            <label className="block text-sm font-medium mb-2">
+              External Links
+            </label>
+            <ExternalLinksInput
               value={formData.link}
-              onChange={(e) =>
-                setFormData({ ...formData, link: e.target.value })
-              }
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+              onChange={(link) => setFormData({ ...formData, link })}
+              disabled={saving}
             />
           </div>
 
