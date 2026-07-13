@@ -9,6 +9,7 @@ import {
   Users,
   FileText,
   Megaphone,
+  Send,
   LogOut,
   X,
   User,
@@ -32,6 +33,7 @@ const navigation = [
   { name: "Posts", href: "/dashboard/posts", icon: FileText },
   { name: "Carousels", href: "/dashboard/carousels", icon: Megaphone },
   { name: "Stream Links", href: "/dashboard/streamLinks", icon: Radio },
+  { name: "Send Message", href: "/dashboard/send-message", icon: Send },
 ];
 
 export default function Sidebar({ isOpen, onClose, user }: SidebarProps) {

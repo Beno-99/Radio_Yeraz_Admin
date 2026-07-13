@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback, type FormEvent } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { notificationAPI } from "@/lib/api/api";
 import { getLocalStorageValue } from "@/lib/browser-storage";
 import { format } from "date-fns";
-import { Trash2, CheckCircle, Bell, Eye, Send } from "lucide-react";
+import { Trash2, CheckCircle, Bell, Eye } from "lucide-react";
 
 interface Notification {
   _id: string;
@@ -29,9 +29,6 @@ export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [broadcastTitle, setBroadcastTitle] = useState("");
-  const [broadcastMessage, setBroadcastMessage] = useState("");
-  const [broadcastSending, setBroadcastSending] = useState(false);
 
   const [currentUser] = useState<User | null>(() => {
     if (typeof window === "undefined") {
@@ -77,37 +74,6 @@ export default function NotificationsPage() {
 
     return () => clearInterval(interval);
   }, [loadNotifications]);
-
-  const handleSendBroadcast = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    const title = broadcastTitle.trim();
-    const message = broadcastMessage.trim();
-
-    if (!title || !message) {
-      alert("Title and message are required.");
-      return;
-    }
-
-    try {
-      setBroadcastSending(true);
-      const { data } = await notificationAPI.broadcast({ title, message });
-
-      setBroadcastTitle("");
-      setBroadcastMessage("");
-
-      if (data?.data) {
-        setNotifications((prev) => [data.data, ...prev].slice(0, 50));
-      } else {
-        await loadNotifications();
-      }
-    } catch (err) {
-      console.error(err);
-      alert("Failed to send broadcast notification.");
-    } finally {
-      setBroadcastSending(false);
-    }
-  };
 
   const handleMarkAsRead = async (id: string) => {
     try {
@@ -191,7 +157,6 @@ export default function NotificationsPage() {
   };
 
   const canDeleteNotifications = isSuperAdmin(currentUser);
-  const canSendBroadcast = Boolean(currentUser);
 
   return (
     <div className="min-w-0 p-3 sm:p-6">
@@ -228,57 +193,6 @@ export default function NotificationsPage() {
           )}
         </div>
       </div>
-
-      {canSendBroadcast && (
-        <form
-          onSubmit={handleSendBroadcast}
-          className="mb-6 rounded-xl bg-white p-4 shadow sm:p-5"
-        >
-          <div className="mb-4 flex items-center gap-2">
-            <Send className="h-5 w-5 text-red-600" />
-            <h2 className="text-lg font-semibold">Send Notification</h2>
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-[minmax(220px,0.8fr)_minmax(320px,1.4fr)_auto] lg:items-end">
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-gray-700">
-                Title
-              </span>
-              <input
-                type="text"
-                value={broadcastTitle}
-                onChange={(event) => setBroadcastTitle(event.target.value)}
-                maxLength={120}
-                className="min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 outline-none transition focus:border-red-500 focus:ring-2 focus:ring-red-100"
-                placeholder="Radio Yeraz"
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-gray-700">
-                Message
-              </span>
-              <textarea
-                value={broadcastMessage}
-                onChange={(event) => setBroadcastMessage(event.target.value)}
-                maxLength={240}
-                rows={2}
-                className="min-h-11 w-full resize-none rounded-lg border border-gray-300 px-3 py-2 outline-none transition focus:border-red-500 focus:ring-2 focus:ring-red-100"
-                placeholder="Write the news message"
-              />
-            </label>
-
-            <button
-              type="submit"
-              disabled={broadcastSending}
-              className="flex min-h-11 items-center justify-center gap-2 rounded-lg bg-red-600 px-5 py-2.5 text-white transition hover:bg-red-700 disabled:opacity-60"
-            >
-              <Send size={18} />
-              {broadcastSending ? "Sending..." : "Send"}
-            </button>
-          </div>
-        </form>
-      )}
 
       {loading ? (
         <p className="text-center py-12">
