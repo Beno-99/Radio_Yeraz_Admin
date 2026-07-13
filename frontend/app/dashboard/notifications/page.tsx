@@ -66,13 +66,18 @@ export default function NotificationsPage() {
   }, []);
 
   useEffect(() => {
-    void loadNotifications();
+    const initialLoad = window.setTimeout(() => {
+      void loadNotifications();
+    }, 0);
 
     const interval = setInterval(() => {
       void loadNotifications();
     }, 30000);
 
-    return () => clearInterval(interval);
+    return () => {
+      window.clearTimeout(initialLoad);
+      clearInterval(interval);
+    };
   }, [loadNotifications]);
 
   const handleMarkAsRead = async (id: string) => {
