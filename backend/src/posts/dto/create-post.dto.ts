@@ -8,6 +8,7 @@ import {
   Max,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { normalizePostLinks } from '../post-links.util';
 
 export class CreatePostDto {
   @IsString()
@@ -94,6 +95,7 @@ export class CreatePostDto {
   expireAfterDays?: number;
 
   @IsOptional()
+  @Transform(({ value }) => normalizePostLinks(value))
   @IsString()
   link?: string;
 
