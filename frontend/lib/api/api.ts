@@ -392,8 +392,16 @@ export const notificationAPI = {
     api.put(`/notifications/${id}/read`),
   markAllAsRead: () =>
     api.put('/notifications/mark-all-read'),
+  broadcast: (data: {
+    title: string;
+    message: string;
+    link?: string;
+    postId?: string;
+  }) => api.post('/notifications/broadcast', data),
   deleteAll: () =>
     api.delete('/notifications/all'),
+  deleteOne: (id: string) =>
+    api.delete(`/notifications/${id}`),
 };
 
 export default api;

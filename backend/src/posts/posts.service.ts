@@ -381,6 +381,21 @@ export class PostsService {
     return liveStatus === PostLiveStatus.LIVE;
   }
 
+  private async resolveProviderLiveStatusForVisiblePost(
+    post: Pick<
+      PrismaPost,
+      | 'videoSource'
+      | 'youtubeVideoId'
+      | 'youtubeUrl'
+      | 'facebookUrl'
+      | 'isPublished'
+      | 'status'
+    >,
+  ): Promise<PostLiveStatus | null> {
+    if (!post.isPublished || post.status !== PostStatus.published) return null;
+    return this.fetchProviderLiveStatus(post);
+  }
+
   private getLiveNotificationMessage(postTitle: string): string {
     return postTitle
       ? `Tap to watch "${postTitle}".`
@@ -620,6 +635,29 @@ export class PostsService {
       ? normalizeFacebookUrl(facebookInput)
       : null;
     const hasVideoMedia = Boolean(youtubeMedia || facebookMedia);
+    const videoSource = youtubeMedia
+      ? PostVideoSource.YOUTUBE
+      : facebookMedia
+        ? PostVideoSource.FACEBOOK
+        : null;
+    const detectedLiveStatus = isLiveValue
+      ? null
+      : await this.resolveProviderLiveStatusForVisiblePost({
+          videoSource,
+          youtubeUrl: youtubeMedia?.youtubeUrl ?? null,
+          youtubeVideoId: youtubeMedia?.youtubeVideoId ?? null,
+          facebookUrl: facebookMedia?.facebookUrl ?? null,
+          isPublished: isPublishedValue,
+          status: isPublishedValue ? PostStatus.published : PostStatus.draft,
+        });
+    const initialLiveStatus = isLiveValue
+      ? PostLiveStatus.LIVE
+      : detectedLiveStatus ??
+        (hasVideoMedia ? PostLiveStatus.UNKNOWN : PostLiveStatus.NOT_LIVE);
+    const initialIsLive =
+      isLiveValue || initialLiveStatus === PostLiveStatus.LIVE;
+    const initialLiveStatusCheckedAt =
+      isLiveValue || detectedLiveStatus ? new Date() : null;
 
     const savedPost = await this.prisma.post.create({
       data: {
@@ -627,11 +665,7 @@ export class PostsService {
         title: createPostDto.title,
         description: createPostDto.description,
         mainImage: youtubeMedia || facebookMedia ? '' : createPostDto.mainImage || '',
-        videoSource: youtubeMedia
-          ? PostVideoSource.YOUTUBE
-          : facebookMedia
-            ? PostVideoSource.FACEBOOK
-            : null,
+        videoSource,
         youtubeUrl: youtubeMedia?.youtubeUrl ?? null,
         youtubeVideoId: youtubeMedia?.youtubeVideoId ?? null,
         facebookUrl: facebookMedia?.facebookUrl ?? null,
@@ -639,12 +673,9 @@ export class PostsService {
         eventDate,
         eventTime: createPostDto.eventTime,
         location: createPostDto.location,
-        isLive: isLiveValue,
-        liveStatus: isLiveValue
-          ? PostLiveStatus.LIVE
-          : hasVideoMedia
-            ? PostLiveStatus.UNKNOWN
-            : PostLiveStatus.NOT_LIVE,
+        isLive: initialIsLive,
+        liveStatus: initialLiveStatus,
+        liveStatusCheckedAt: initialLiveStatusCheckedAt,
         isPublished: isPublishedValue,
         status: isPublishedValue ? PostStatus.published : PostStatus.draft,
         postedDate,
@@ -985,14 +1016,46 @@ export class PostsService {
       data.liveStatusCheckedAt = new Date();
     }
 
-    const post = await this.prisma.post.update({
+    let post = await this.prisma.post.update({
       where: { id },
       data,
       include: postInclude,
     });
-    const postResponse = this.toPostResponse(post);
     const wasClientVisible =
       oldPost.isPublished && oldPost.status === PostStatus.published;
+    const shouldCheckProviderImmediately =
+      !post.isLive &&
+      (hasYoutubeUpdate ||
+        hasFacebookUpdate ||
+        parsedIsPublished === true ||
+        post.liveStatus === PostLiveStatus.UNKNOWN ||
+        post.liveStatus === PostLiveStatus.UPCOMING);
+
+    if (shouldCheckProviderImmediately) {
+      const detectedLiveStatus =
+        await this.resolveProviderLiveStatusForVisiblePost(post);
+      const detectedIsLive = detectedLiveStatus
+        ? this.liveStatusToIsLive(detectedLiveStatus)
+        : false;
+
+      if (
+        detectedLiveStatus &&
+        (detectedLiveStatus !== post.liveStatus || detectedIsLive !== post.isLive)
+      ) {
+        post = await this.prisma.post.update({
+          where: { id },
+          data: {
+            liveStatus: detectedLiveStatus,
+            liveStatusCheckedAt: new Date(),
+            isLive: detectedIsLive,
+            updatedAt: new Date(),
+          },
+          include: postInclude,
+        });
+      }
+    }
+
+    const postResponse = this.toPostResponse(post);
     const isClientVisible =
       post.isPublished && post.status === PostStatus.published;
 
