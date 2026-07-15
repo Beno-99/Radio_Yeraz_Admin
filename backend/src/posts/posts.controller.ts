@@ -80,10 +80,13 @@ export class PostsController {
   }
 
   private getClientPostNotification(post: {
-    _id: string;
+    id?: string;
+    _id?: string;
     title: string;
     isLive: boolean;
   }) {
+    const postId = post.id || post._id || '';
+
     if (post.isLive) {
       const title = 'Radio Yeraz is live';
       const message = `Tap to watch "${post.title}".`;
@@ -93,7 +96,7 @@ export class PostsController {
         message,
         data: {
           type: 'POST_LIVE',
-          postId: post._id,
+          postId,
           postTitle: post.title,
           title,
           message,
@@ -110,7 +113,7 @@ export class PostsController {
       message,
       data: {
         type: 'NEW_POST',
-        postId: post._id,
+        postId,
         postTitle: post.title,
         title,
         message,
