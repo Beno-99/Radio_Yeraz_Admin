@@ -8,6 +8,7 @@ export class FirebaseService implements OnModuleInit {
   private readonly androidChannelId = 'radioyeraz-updates';
   private readonly androidNotificationColor = '#D71920';
   private readonly androidNotificationIcon = 'ic_notification';
+  private readonly newPostNotificationTitle = 'Radio Yeraz shared a new post';
 
   onModuleInit() {
     if (admin.apps.length) {
@@ -49,6 +50,36 @@ export class FirebaseService implements OnModuleInit {
     }
   }
 
+  private normalizeNotificationPayload(
+    title: string,
+    body: string,
+    data?: Record<string, string>,
+  ) {
+    const type = String(data?.type || '').toUpperCase();
+    const isNewPost =
+      type === 'NEW_POST' ||
+      type === 'POST_CREATED' ||
+      type === 'POST_PUBLISHED' ||
+      title === 'A New Post Added';
+
+    if (!isNewPost) {
+      return { title, body, data };
+    }
+
+    const message = body || data?.postTitle || 'Tap to read the latest update.';
+
+    return {
+      title: this.newPostNotificationTitle,
+      body: message,
+      data: {
+        ...data,
+        type: data?.type || 'NEW_POST',
+        title: this.newPostNotificationTitle,
+        message,
+      },
+    };
+  }
+
   async sendToDevice(
     token: string,
     title: string,
@@ -56,15 +87,16 @@ export class FirebaseService implements OnModuleInit {
     data?: Record<string, string>,
   ) {
     this.ensureInitialized();
+    const normalized = this.normalizeNotificationPayload(title, body, data);
     const message: admin.messaging.Message = {
       token,
-      notification: { title, body },
-      data,
+      notification: { title: normalized.title, body: normalized.body },
+      data: normalized.data,
       android: {
         priority: 'high',
         notification: {
-          title,
-          body,
+          title: normalized.title,
+          body: normalized.body,
           channelId: this.androidChannelId,
           color: this.androidNotificationColor,
           icon: this.androidNotificationIcon,
@@ -103,15 +135,16 @@ export class FirebaseService implements OnModuleInit {
     data?: Record<string, string>,
   ) {
     this.ensureInitialized();
+    const normalized = this.normalizeNotificationPayload(title, body, data);
     const message: admin.messaging.Message = {
       topic,
-      notification: { title, body },
-      data,
+      notification: { title: normalized.title, body: normalized.body },
+      data: normalized.data,
       android: {
         priority: 'high',
         notification: {
-          title,
-          body,
+          title: normalized.title,
+          body: normalized.body,
           channelId: this.androidChannelId,
           color: this.androidNotificationColor,
           icon: this.androidNotificationIcon,
