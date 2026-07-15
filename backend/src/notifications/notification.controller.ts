@@ -158,9 +158,14 @@ export class NotificationController {
   ) {
     const messageId = await this.firebaseService.sendToDevice(
       body.token,
-      body.title || 'Device Test',
-      body.body || 'Testing direct FCM delivery from backend',
-      { postId: body.postId || 'test-post-id' },
+      body.title || 'Radio Yeraz shared a new post',
+      body.body || 'Tap to read the latest update.',
+      {
+        type: 'NEW_POST',
+        postId: body.postId || 'test-post-id',
+        title: body.title || 'Radio Yeraz shared a new post',
+        message: body.body || 'Tap to read the latest update.',
+      },
     );
 
     return { success: true, messageId };
@@ -172,9 +177,14 @@ export class NotificationController {
   ) {
     const messageId = await this.firebaseService.sendToTopic(
       body.topic || 'client',
-      body.title || 'Topic Test',
-      body.body || 'Testing topic FCM delivery from backend',
-      { postId: body.postId || 'test-post-id' },
+      body.title || 'Radio Yeraz shared a new post',
+      body.body || 'Tap to read the latest update.',
+      {
+        type: 'NEW_POST',
+        postId: body.postId || 'test-post-id',
+        title: body.title || 'Radio Yeraz shared a new post',
+        message: body.body || 'Tap to read the latest update.',
+      },
     );
 
     return { success: true, messageId };

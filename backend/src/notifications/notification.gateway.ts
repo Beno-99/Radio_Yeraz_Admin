@@ -230,15 +230,19 @@ export class NotificationGateway
     actorId?: string,
   ): Promise<void> {
     const postId = this.getEntityId(post);
+    const title = 'Radio Yeraz shared a new post';
+    const message = post.title || 'Tap to read the latest update.';
     const notification = await this.notificationService.create({
-      title: post.title,
-      message: `${actorName} published "${post.title}".`,
+      title,
+      message,
       type: NotificationType.NEW_POST,
       postId,
       authorName: actorName,
       data: {
         postId,
-        title: post.title,
+        title,
+        message,
+        postTitle: post.title,
         authorName: actorName,
         actorId,
         action: 'post_published',

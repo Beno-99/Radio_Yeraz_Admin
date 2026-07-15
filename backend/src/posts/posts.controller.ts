@@ -102,15 +102,18 @@ export class PostsController {
       };
     }
 
+    const title = 'Radio Yeraz shared a new post';
+    const message = post.title || 'Tap to read the latest update.';
+
     return {
-      title: 'A New Post Added',
-      message: post.title,
+      title,
+      message,
       data: {
         type: 'NEW_POST',
         postId: post._id,
         postTitle: post.title,
-        title: 'A New Post Added',
-        message: post.title,
+        title,
+        message,
       },
     };
   }
