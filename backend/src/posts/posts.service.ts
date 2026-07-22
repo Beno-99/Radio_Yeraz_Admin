@@ -93,6 +93,11 @@ export interface PostStatistics {
   }>;
 }
 
+interface PostDeletePermissionResult {
+  allowed: boolean;
+  message?: string;
+}
+
 @Injectable()
 export class PostsService {
   constructor(
@@ -1234,19 +1239,44 @@ export class PostsService {
     postId: string,
     adminId: string,
     adminRole: Role,
-  ): Promise<boolean> {
-    if (adminRole === Role.SUPER_ADMIN) return true;
+  ): Promise<PostDeletePermissionResult> {
+    if (adminRole === Role.SUPER_ADMIN) return { allowed: true };
 
     if (adminRole === Role.ADMIN) {
       const post = await this.prisma.post.findUnique({
         where: { id: postId },
-        select: { authorId: true },
+        select: {
+          authorId: true,
+          author: { select: { role: true } },
+        },
       });
-      if (!post) return false;
-      return post.authorId === adminId;
+      if (!post) {
+        return {
+          allowed: false,
+          message: 'Post not found',
+        };
+      }
+
+      if (post.authorId === adminId) return { allowed: true };
+
+      if (post.author?.role === AdminRole.SUPER_ADMIN) {
+        return {
+          allowed: false,
+          message:
+            "This post was created by a super admin. You don't have permission to delete super admin-created posts.",
+        };
+      }
+
+      return {
+        allowed: false,
+        message: "You don't have permission to delete posts created by another admin.",
+      };
     }
 
-    return false;
+    return {
+      allowed: false,
+      message: 'You are not authorized to delete this post',
+    };
   }
 
   async getStatistics(): Promise<PostStatistics> {

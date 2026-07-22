@@ -236,7 +236,13 @@ export const postsAPI = {
     try {
       const response = await api.delete(`/posts/${id}`);
       console.log("API Delete response:", response.data);
-      return response.data;
+      const data = response.data as { success?: boolean; message?: string };
+
+      if (data?.success === false) {
+        throw new Error(data.message || "Failed to delete post");
+      }
+
+      return data;
     } catch (error) {
       console.error("API Delete error:", error);
       throw error;

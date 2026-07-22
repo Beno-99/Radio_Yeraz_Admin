@@ -31,6 +31,19 @@ import { getYouTubeEmbedUrl, parseYouTubeUrl } from "@/lib/youtube";
 
 const POST_REFRESH_INTERVAL_MS = 60 * 1000;
 
+const getPostDeleteErrorMessage = (error: unknown) => {
+  const apiError = error as {
+    response?: { data?: { message?: string } };
+    message?: string;
+  };
+
+  return (
+    apiError.response?.data?.message ||
+    apiError.message ||
+    "Failed to delete post"
+  );
+};
+
 interface Post {
   _id: string;
   title: string;
@@ -141,8 +154,8 @@ export default function PostDetailPage() {
       await postsAPI.deletePost(postId);
       toast.success("Post deleted successfully");
       router.push("/dashboard/posts");
-    } catch {
-      toast.error("Failed to delete post");
+    } catch (error) {
+      toast.error(getPostDeleteErrorMessage(error));
     }
   };
 

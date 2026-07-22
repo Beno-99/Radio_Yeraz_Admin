@@ -12,6 +12,7 @@ import {
   Req,
   UseInterceptors,
   BadRequestException,
+  ForbiddenException,
   UploadedFiles,
 } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
@@ -378,16 +379,15 @@ export class PostsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   async deletePost(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    const canDelete = await this.postsService.canAdminDeletePost(
+    const deletePermission = await this.postsService.canAdminDeletePost(
       id,
       req.user.sub,
       req.user.role,
     );
-    if (!canDelete) {
-      return {
-        success: false,
-        message: 'You are not authorized to delete this post',
-      };
+    if (!deletePermission.allowed) {
+      throw new ForbiddenException(
+        deletePermission.message || 'You are not authorized to delete this post',
+      );
     }
 
     await this.postsService.delete(id, this.getNotificationActor(req));

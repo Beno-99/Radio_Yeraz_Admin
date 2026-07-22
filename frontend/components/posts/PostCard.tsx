@@ -22,6 +22,19 @@ import {
 import { getYouTubeEmbedUrl, parseYouTubeUrl } from "@/lib/youtube";
 import Swal from "sweetalert2";
 
+const getPostDeleteErrorMessage = (error: unknown) => {
+  const apiError = error as {
+    response?: { data?: { message?: string } };
+    message?: string;
+  };
+
+  return (
+    apiError.response?.data?.message ||
+    apiError.message ||
+    "Failed to delete post"
+  );
+};
+
 interface PostCardProps {
   post: Post;
   mediaUrl: string;
@@ -59,7 +72,7 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
     } catch (err) {
       // Changed from 'error' to 'err' and added console.error to use the variable
       console.error("Delete error:", err);
-      toast.error("Failed to delete post");
+      toast.error(getPostDeleteErrorMessage(err));
     } finally {
       setIsDeleting(false);
     }

@@ -15,6 +15,18 @@ import {
 import { postsAPI } from "@/lib/api/api";
 import Swal from "sweetalert2";
 
+const getPostDeleteErrorMessage = (error: unknown) => {
+  const apiError = error as {
+    response?: { data?: { message?: string } };
+    message?: string;
+  };
+
+  return (
+    apiError.response?.data?.message ||
+    apiError.message ||
+    "Failed to delete post"
+  );
+};
 
 export default function PostsPage() {
   const [page, setPage] = useState(1);
@@ -74,18 +86,39 @@ export default function PostsPage() {
       const postsToDelete = [...selectedPosts];
       setSelectedPosts([]);
 
-      await Promise.all(
-        postsToDelete.map((id) =>
-          postsAPI.deletePost(id).catch((error) => {
-            console.error(`Failed to delete post ${id}:`, error);
-            return null;
-          }),
-        ),
+      const deleteResults = await Promise.allSettled(
+        postsToDelete.map((id) => postsAPI.deletePost(id)),
       );
 
-      setAllPosts((prev) =>
-        prev.filter((post) => !postsToDelete.includes(post._id)),
+      const deletedPostIds = postsToDelete.filter(
+        (_, index) => deleteResults[index].status === "fulfilled",
       );
+      const failedMessages = deleteResults
+        .map((deleteResult) =>
+          deleteResult.status === "rejected"
+            ? getPostDeleteErrorMessage(deleteResult.reason)
+            : null,
+        )
+        .filter((message): message is string => Boolean(message));
+
+      if (deletedPostIds.length > 0) {
+        setAllPosts((prev) =>
+          prev.filter((post) => !deletedPostIds.includes(post._id)),
+        );
+      }
+
+      if (failedMessages.length > 0) {
+        await Swal.fire({
+          title:
+            deletedPostIds.length > 0
+              ? "Some posts were not deleted"
+              : "Delete failed",
+          text: Array.from(new Set(failedMessages)).join("\n"),
+          icon: "error",
+          confirmButtonColor: "#ef4444",
+        });
+        return;
+      }
 
       await Swal.fire({
         title: "Success!",
