@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   Admin as PrismaAdmin,
   AdminRole,
@@ -34,6 +38,11 @@ interface StreamLinkDeletePermissionResult {
 interface StreamLinkEditPermissionResult {
   allowed: boolean;
   message?: string;
+}
+
+interface StreamLinkActor {
+  id: string;
+  role: Role;
 }
 
 export interface StreamLinkAuthorResponse
@@ -140,7 +149,21 @@ export class StreamLinkService {
   async update(
     id: string,
     dto: UpdateStreamLinkDto,
+    actor?: StreamLinkActor,
   ): Promise<StreamLinkResponse> {
+    if (actor) {
+      const editPermission = await this.canAdminEditStreamLink(
+        id,
+        actor.id,
+        actor.role,
+      );
+      if (!editPermission.allowed) {
+        throw new ForbiddenException(
+          editPermission.message || "You can't edit this stream link.",
+        );
+      }
+    }
+
     const existing = await this.prisma.streamLink.findUnique({
       where: { id },
     });
@@ -267,7 +290,20 @@ export class StreamLinkService {
     };
   }
 
-  async remove(id: string): Promise<void> {
+  async remove(id: string, actor?: StreamLinkActor): Promise<void> {
+    if (actor) {
+      const deletePermission = await this.canAdminDeleteStreamLink(
+        id,
+        actor.id,
+        actor.role,
+      );
+      if (!deletePermission.allowed) {
+        throw new ForbiddenException(
+          deletePermission.message || "You can't delete this stream link.",
+        );
+      }
+    }
+
     const result = await this.prisma.streamLink.deleteMany({
       where: { id },
     });

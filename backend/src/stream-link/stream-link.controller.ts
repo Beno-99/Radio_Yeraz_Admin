@@ -71,7 +71,10 @@ export class StreamLinkController {
       );
     }
 
-    return this.streamLinkService.update(id, dto);
+    return this.streamLinkService.update(id, dto, {
+      id: req.user.sub,
+      role: req.user.role,
+    });
   }
 
   @Delete(':id')
@@ -90,6 +93,9 @@ export class StreamLinkController {
       );
     }
 
-    return this.streamLinkService.remove(id);
+    return this.streamLinkService.remove(id, {
+      id: req.user.sub,
+      role: req.user.role,
+    });
   }
 }

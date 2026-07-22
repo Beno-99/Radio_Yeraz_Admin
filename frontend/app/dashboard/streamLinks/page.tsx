@@ -7,6 +7,64 @@ import { StreamLinkModal } from "@/components/stream-links/StreamLinkModal";
 import { ConfirmationDialog } from "@/components/ConfirmationDialog";
 import { StreamLink } from "@/types";
 import { streamLinksAPI } from "@/lib/api/api";
+import { getLocalStorageValue } from "@/lib/browser-storage";
+
+type AdminRole = "SUPER_ADMIN" | "ADMIN";
+
+interface StoredAdmin {
+  _id?: string;
+  id?: string;
+  sub?: string;
+  role?: string;
+}
+
+const normalizeAdminRole = (role?: string): AdminRole | undefined => {
+  if (role === "SUPER_ADMIN" || role === "ADMIN") return role;
+  return undefined;
+};
+
+const getCurrentAdmin = () => {
+  const rawUser = getLocalStorageValue("user");
+  if (!rawUser) return null;
+
+  try {
+    const user = JSON.parse(rawUser) as StoredAdmin;
+
+    return {
+      id: user._id || user.id || user.sub,
+      role: normalizeAdminRole(user.role),
+    };
+  } catch {
+    return null;
+  }
+};
+
+const getStreamLinkPermissionMessage = (
+  streamLink: StreamLink | undefined,
+  action: "edit" | "delete",
+) => {
+  const currentAdmin = getCurrentAdmin();
+
+  if (currentAdmin?.role !== "ADMIN") return null;
+
+  if (
+    streamLink?.author?._id &&
+    currentAdmin.id &&
+    streamLink.author._id === currentAdmin.id
+  ) {
+    return null;
+  }
+
+  if (streamLink?.author?.role === "SUPER_ADMIN") {
+    return `You can't ${action} a stream link created by a super admin.`;
+  }
+
+  if (streamLink?.author?.role === "ADMIN") {
+    return `You can't ${action} a stream link created by another admin.`;
+  }
+
+  return `You can't ${action} this stream link.`;
+};
 
 const getStreamLinkDeleteErrorMessage = (error: unknown) => {
   const apiError = error as {
@@ -82,11 +140,24 @@ export default function StreamLinksPage() {
   }, [streamLinks, searchTerm, filter]);
 
   const handleEdit = (link: StreamLink) => {
+    const permissionMessage = getStreamLinkPermissionMessage(link, "edit");
+    if (permissionMessage) {
+      alert(permissionMessage);
+      return;
+    }
+
     setEditingLink(link);
     setShowModal(true);
   };
 
   const openDeleteDialog = (id: string) => {
+    const link = streamLinks.find((streamLink) => streamLink._id === id);
+    const permissionMessage = getStreamLinkPermissionMessage(link, "delete");
+    if (permissionMessage) {
+      alert(permissionMessage);
+      return;
+    }
+
     setLinkToDelete(id);
     setShowDeleteDialog(true);
   };
@@ -95,6 +166,13 @@ export default function StreamLinksPage() {
     if (!linkToDelete) return;
 
     try {
+      const link = streamLinks.find((streamLink) => streamLink._id === linkToDelete);
+      const permissionMessage = getStreamLinkPermissionMessage(link, "delete");
+      if (permissionMessage) {
+        alert(permissionMessage);
+        return;
+      }
+
       await streamLinksAPI.delete(linkToDelete);
 
       setStreamLinks((prev) =>

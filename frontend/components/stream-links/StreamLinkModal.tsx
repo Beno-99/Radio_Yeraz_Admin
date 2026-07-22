@@ -5,6 +5,61 @@ import { X } from 'lucide-react';
 import { StreamLink, CreateStreamLinkDto } from '@/types';
 import { streamLinksAPI } from '@/lib/api/api';
 import { ConfirmationDialog } from '@/components/ConfirmationDialog';
+import { getLocalStorageValue } from '@/lib/browser-storage';
+
+type AdminRole = 'SUPER_ADMIN' | 'ADMIN';
+
+interface StoredAdmin {
+  _id?: string;
+  id?: string;
+  sub?: string;
+  role?: string;
+}
+
+const normalizeAdminRole = (role?: string): AdminRole | undefined => {
+  if (role === 'SUPER_ADMIN' || role === 'ADMIN') return role;
+  return undefined;
+};
+
+const getCurrentAdmin = () => {
+  const rawUser = getLocalStorageValue('user');
+  if (!rawUser) return null;
+
+  try {
+    const user = JSON.parse(rawUser) as StoredAdmin;
+
+    return {
+      id: user._id || user.id || user.sub,
+      role: normalizeAdminRole(user.role),
+    };
+  } catch {
+    return null;
+  }
+};
+
+const getStreamLinkEditPermissionMessage = (streamLink: StreamLink | null | undefined) => {
+  const currentAdmin = getCurrentAdmin();
+
+  if (currentAdmin?.role !== 'ADMIN') return null;
+
+  if (
+    streamLink?.author?._id &&
+    currentAdmin.id &&
+    streamLink.author._id === currentAdmin.id
+  ) {
+    return null;
+  }
+
+  if (streamLink?.author?.role === 'SUPER_ADMIN') {
+    return "You can't edit a stream link created by a super admin.";
+  }
+
+  if (streamLink?.author?.role === 'ADMIN') {
+    return "You can't edit a stream link created by another admin.";
+  }
+
+  return "You can't edit this stream link.";
+};
 
 interface StreamLinkModalProps {
   isOpen: boolean;
@@ -105,6 +160,14 @@ export function StreamLinkModal({ isOpen, onClose, initialData }: StreamLinkModa
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const permissionMessage = initialData
+      ? getStreamLinkEditPermissionMessage(initialData)
+      : null;
+    if (permissionMessage) {
+      alert(permissionMessage);
+      return;
+    }
+
     if (!validateForm()) return;
 
     setLoading(true);
