@@ -56,7 +56,7 @@ const getStreamLinkPermissionMessage = (
   }
 
   if (streamLink?.author?.role === "SUPER_ADMIN") {
-    return `You can't ${action} a stream link created by a super admin.`;
+    return `You can't ${action} content created by a super admin.`;
   }
 
   if (streamLink?.author?.role === "ADMIN") {

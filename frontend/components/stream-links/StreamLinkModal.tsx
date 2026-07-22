@@ -51,7 +51,7 @@ const getStreamLinkEditPermissionMessage = (streamLink: StreamLink | null | unde
   }
 
   if (streamLink?.author?.role === 'SUPER_ADMIN') {
-    return "You can't edit a stream link created by a super admin.";
+    return "You can't edit content created by a super admin.";
   }
 
   if (streamLink?.author?.role === 'ADMIN') {

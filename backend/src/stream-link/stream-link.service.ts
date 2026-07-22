@@ -224,7 +224,7 @@ export class StreamLinkService {
       if (streamLink.author?.role === AdminRole.SUPER_ADMIN) {
         return {
           allowed: false,
-          message: "You can't delete a stream link created by a super admin.",
+          message: "You can't delete content created by a super admin.",
         };
       }
 
@@ -274,7 +274,7 @@ export class StreamLinkService {
       if (streamLink.author?.role === AdminRole.SUPER_ADMIN) {
         return {
           allowed: false,
-          message: "You can't edit a stream link created by a super admin.",
+          message: "You can't edit content created by a super admin.",
         };
       }
 
