@@ -386,7 +386,7 @@ export class PostsController {
     );
     if (!deletePermission.allowed) {
       throw new ForbiddenException(
-        deletePermission.message || 'You are not authorized to delete this post',
+        deletePermission.message || "You can't delete this post.",
       );
     }
 

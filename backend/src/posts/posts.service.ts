@@ -1262,8 +1262,7 @@ export class PostsService {
       if (post.author?.role === AdminRole.SUPER_ADMIN) {
         return {
           allowed: false,
-          message:
-            "This post was created by a super admin. You don't have permission to delete super admin-created posts.",
+          message: "You can't delete a post created by a super admin.",
         };
       }
 
@@ -1275,7 +1274,7 @@ export class PostsService {
 
     return {
       allowed: false,
-      message: 'You are not authorized to delete this post',
+      message: "You can't delete this post.",
     };
   }
 
