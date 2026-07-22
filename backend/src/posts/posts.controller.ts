@@ -126,6 +126,7 @@ export class PostsController {
     return {
       id: req.user.sub,
       name: req.user.displayName || req.user.username || 'Admin',
+      role: req.user.role,
     };
   }
 
@@ -467,7 +468,10 @@ export class PostsController {
       );
     }
 
-    const post = await this.postsService.republish(id);
+    const post = await this.postsService.republish(
+      id,
+      this.getNotificationActor(req),
+    );
 
     return {
       success: true,

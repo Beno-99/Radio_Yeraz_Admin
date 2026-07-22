@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -46,6 +47,7 @@ type PostWithAuthor = Prisma.PostGetPayload<{ include: typeof postInclude }>;
 interface NotificationActor {
   id?: string;
   name: string;
+  role?: Role;
 }
 
 export type PostSortField =
@@ -855,6 +857,15 @@ export class PostsService {
     updatePostDto: UpdatePostDto,
     actor?: NotificationActor,
   ): Promise<PostResponse> {
+    if (actor?.id && actor.role) {
+      const editPermission = await this.canAdminEditPost(id, actor.id, actor.role);
+      if (!editPermission.allowed) {
+        throw new ForbiddenException(
+          editPermission.message || "You can't edit this post.",
+        );
+      }
+    }
+
     const oldPost = await this.prisma.post.findUnique({
       where: { id },
       include: postInclude,
@@ -1125,6 +1136,15 @@ export class PostsService {
     id: string,
     actor?: NotificationActor,
   ): Promise<PostResponse> {
+    if (actor?.id && actor.role) {
+      const editPermission = await this.canAdminEditPost(id, actor.id, actor.role);
+      if (!editPermission.allowed) {
+        throw new ForbiddenException(
+          editPermission.message || "You can't edit this post.",
+        );
+      }
+    }
+
     const existingPost = await this.prisma.post.findUnique({
       where: { id },
       include: postInclude,
@@ -1169,7 +1189,16 @@ export class PostsService {
     return postResponse;
   }
 
-  async republish(id: string): Promise<PostResponse> {
+  async republish(id: string, actor?: NotificationActor): Promise<PostResponse> {
+    if (actor?.id && actor.role) {
+      const editPermission = await this.canAdminEditPost(id, actor.id, actor.role);
+      if (!editPermission.allowed) {
+        throw new ForbiddenException(
+          editPermission.message || "You can't edit this post.",
+        );
+      }
+    }
+
     const existingPost = await this.prisma.post.findUnique({ where: { id } });
     if (!existingPost) throw new NotFoundException('Post not found');
 
