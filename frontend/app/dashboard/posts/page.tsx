@@ -20,12 +20,13 @@ const getPostDeleteErrorMessage = (error: unknown) => {
     response?: { data?: { message?: string } };
     message?: string;
   };
+  const message = apiError.response?.data?.message || apiError.message;
 
-  return (
-    apiError.response?.data?.message ||
-    apiError.message ||
-    "Failed to delete post"
-  );
+  if (message === "You are not authorized to delete this post") {
+    return "You can't delete a post created by a super admin.";
+  }
+
+  return message || "Failed to delete post";
 };
 
 export default function PostsPage() {
