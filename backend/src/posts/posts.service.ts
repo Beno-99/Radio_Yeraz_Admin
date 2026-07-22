@@ -1201,6 +1201,8 @@ export class PostsService {
     });
     if (!post) throw new NotFoundException('Post not found');
 
+    await this.prisma.post.delete({ where: { id } });
+
     try {
       this.deleteMediaFileIfExists(post.mainImage);
     } catch (error) {
@@ -1222,8 +1224,6 @@ export class PostsService {
         notifError instanceof Error ? notifError.message : String(notifError),
       );
     }
-
-    await this.prisma.post.delete({ where: { id } });
     return this.toPostResponse(post);
   }
 
