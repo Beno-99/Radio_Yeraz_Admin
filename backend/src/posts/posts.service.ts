@@ -98,6 +98,11 @@ interface PostDeletePermissionResult {
   message?: string;
 }
 
+interface PostEditPermissionResult {
+  allowed: boolean;
+  message?: string;
+}
+
 @Injectable()
 export class PostsService {
   constructor(
@@ -1231,8 +1236,50 @@ export class PostsService {
     postId: string,
     adminId: string,
     adminRole: Role,
-  ): Promise<boolean> {
-    return adminRole === Role.SUPER_ADMIN || adminRole === Role.ADMIN;
+  ): Promise<PostEditPermissionResult> {
+    if (adminRole === Role.SUPER_ADMIN) return { allowed: true };
+
+    if (adminRole === Role.ADMIN) {
+      const post = await this.prisma.post.findUnique({
+        where: { id: postId },
+        select: {
+          authorId: true,
+          author: { select: { role: true } },
+        },
+      });
+      if (!post) {
+        return {
+          allowed: false,
+          message: 'Post not found',
+        };
+      }
+
+      if (post.authorId === adminId) return { allowed: true };
+
+      if (!post.authorId) {
+        return {
+          allowed: false,
+          message: "You can't edit this post.",
+        };
+      }
+
+      if (post.author?.role === AdminRole.SUPER_ADMIN) {
+        return {
+          allowed: false,
+          message: "You can't edit a post created by a super admin.",
+        };
+      }
+
+      return {
+        allowed: false,
+        message: "You can't edit a post created by another admin.",
+      };
+    }
+
+    return {
+      allowed: false,
+      message: "You can't edit this post.",
+    };
   }
 
   async canAdminDeletePost(
@@ -1259,6 +1306,13 @@ export class PostsService {
 
       if (post.authorId === adminId) return { allowed: true };
 
+      if (!post.authorId) {
+        return {
+          allowed: false,
+          message: "You can't delete this post.",
+        };
+      }
+
       if (post.author?.role === AdminRole.SUPER_ADMIN) {
         return {
           allowed: false,
@@ -1268,7 +1322,7 @@ export class PostsService {
 
       return {
         allowed: false,
-        message: "You don't have permission to delete posts created by another admin.",
+        message: "You can't delete a post created by another admin.",
       };
     }
 

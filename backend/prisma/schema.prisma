@@ -66,6 +66,7 @@ model Admin {
   updatedAt     DateTime       @updatedAt
   posts         Post[]
   carousels     Carousel[]
+  streamLinks   StreamLink[]
   refreshTokens RefreshToken[]
 
   @@index([role], map: "admins_role_idx")
@@ -167,9 +168,12 @@ model StreamLink {
   bitrate      Int?
   displayOrder Int      @default(0)
   isActive     Boolean  @default(true)
+  authorId     String?  @map("author") @db.Char(24)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  author       Admin?   @relation(fields: [authorId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
+  @@index([authorId], map: "streamlinks_author_idx")
   @@index([isActive], map: "streamlinks_is_active_idx")
   @@index([displayOrder], map: "streamlinks_display_order_idx")
   @@index([isActive, displayOrder], map: "streamlinks_active_order_idx")

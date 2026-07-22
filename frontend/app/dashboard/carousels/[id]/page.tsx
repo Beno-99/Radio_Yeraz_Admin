@@ -14,6 +14,15 @@ import { toast } from "sonner";
 import Swal from "sweetalert2";
 import { carouselsAPI } from "@/lib/api/api";
 
+const getCarouselDeleteErrorMessage = (error: unknown) => {
+  const apiError = error as {
+    response?: { data?: { message?: string } };
+    message?: string;
+  };
+
+  return apiError.response?.data?.message || apiError.message || "Failed to delete";
+};
+
 interface Carousel {
   _id: string;
   name: string;
@@ -68,8 +77,8 @@ export default function CarouselDetailPage() {
       await carouselsAPI.deleteCarousel(carouselId);
       toast.success("Carousel deleted");
       router.push("/dashboard/carousels");
-    } catch {
-      toast.error("Failed to delete");
+    } catch (error) {
+      toast.error(getCarouselDeleteErrorMessage(error));
     }
   };
 

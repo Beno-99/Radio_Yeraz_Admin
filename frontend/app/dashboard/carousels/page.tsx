@@ -12,6 +12,15 @@ import { toast } from "sonner";
 
 const PAGE_LIMIT = 12;
 
+const getCarouselDeleteErrorMessage = (error: unknown) => {
+  const apiError = error as {
+    response?: { data?: { message?: string } };
+    message?: string;
+  };
+
+  return apiError.response?.data?.message || apiError.message || "Failed to delete carousel";
+};
+
 interface Carousel {
   _id: string;
   name: string;
@@ -147,11 +156,34 @@ export default function CarouselsPage() {
 
       setSelectedCarousels([]);
 
-      await Promise.all(
+      const deleteResults = await Promise.allSettled(
         carouselsToDelete.map((id) => carouselsAPI.deleteCarousel(id))
       );
 
-      await fetchCarousels();
+      const deletedCarouselCount = deleteResults.filter(
+        (deleteResult) => deleteResult.status === "fulfilled"
+      ).length;
+      const failedMessages = deleteResults
+        .map((deleteResult) =>
+          deleteResult.status === "rejected"
+            ? getCarouselDeleteErrorMessage(deleteResult.reason)
+            : null
+        )
+        .filter((message): message is string => Boolean(message));
+
+      if (deletedCarouselCount > 0) {
+        await fetchCarousels();
+      }
+
+      if (failedMessages.length > 0) {
+        if (deletedCarouselCount > 0) {
+          toast.success(
+            `Successfully deleted ${deletedCarouselCount} carousel(s)`
+          );
+        }
+        toast.error(Array.from(new Set(failedMessages)).join("\n"));
+        return;
+      }
 
       toast.success(
         `Successfully deleted ${carouselsToDelete.length} carousel(s)`

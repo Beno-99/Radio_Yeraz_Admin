@@ -330,11 +330,31 @@ export class PostsController {
     @Body() updatePostDto: UpdatePostDto,
     @UploadedFiles() files?: PostUploadFiles,
   ) {
-    const previousPost = await this.postsService.findById(id);
-
     if (!updatePostDto) {
       throw new BadRequestException('No data provided');
     }
+
+    const editPermission = await this.postsService.canAdminEditPost(
+      id,
+      req.user.sub,
+      req.user.role,
+    );
+    if (!editPermission.allowed) {
+      try {
+        const uploadedPath = files?.mainImage?.[0]?.path;
+        if (uploadedPath && fs.existsSync(uploadedPath)) {
+          fs.unlinkSync(uploadedPath);
+        }
+      } catch (error) {
+        console.error('Failed to delete unauthorized post upload:', error);
+      }
+
+      throw new ForbiddenException(
+        editPermission.message || "You can't edit this post.",
+      );
+    }
+
+    const previousPost = await this.postsService.findById(id);
 
     if (files?.mainImage?.[0]) {
       updatePostDto.mainImage = `/uploads/posts/images/${files.mainImage[0].filename}`;
@@ -405,16 +425,15 @@ export class PostsController {
     @Param('id') id: string,
     @Req() req: AuthenticatedRequest,
   ) {
-    const canEdit = await this.postsService.canAdminEditPost(
+    const editPermission = await this.postsService.canAdminEditPost(
       id,
       req.user.sub,
       req.user.role,
     );
-    if (!canEdit) {
-      return {
-        success: false,
-        message: 'You are not authorized to modify this post',
-      };
+    if (!editPermission.allowed) {
+      throw new ForbiddenException(
+        editPermission.message || "You can't edit this post.",
+      );
     }
 
     const post = await this.postsService.toggleLiveStatus(
@@ -436,17 +455,16 @@ export class PostsController {
     @Param('id') id: string,
     @Req() req: AuthenticatedRequest,
   ) {
-    const canEdit = await this.postsService.canAdminEditPost(
+    const editPermission = await this.postsService.canAdminEditPost(
       id,
       req.user.sub,
       req.user.role,
     );
 
-    if (!canEdit) {
-      return {
-        success: false,
-        message: 'You are not authorized to modify this post',
-      };
+    if (!editPermission.allowed) {
+      throw new ForbiddenException(
+        editPermission.message || "You can't edit this post.",
+      );
     }
 
     const post = await this.postsService.republish(id);
@@ -495,12 +513,28 @@ export class PostsController {
   @Put('bulk/toggle-live')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)
-  async bulkToggleLive(@Body() body: { ids: string[]; isLive: boolean }) {
+  async bulkToggleLive(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: { ids: string[]; isLive: boolean },
+  ) {
     if (!body.ids || !Array.isArray(body.ids) || body.ids.length === 0) {
       return {
         success: false,
         message: 'No post IDs provided',
       };
+    }
+
+    for (const id of body.ids) {
+      const editPermission = await this.postsService.canAdminEditPost(
+        id,
+        req.user.sub,
+        req.user.role,
+      );
+      if (!editPermission.allowed) {
+        throw new ForbiddenException(
+          editPermission.message || "You can't edit this post.",
+        );
+      }
     }
 
     const updatedCount = await this.postsService.bulkUpdateIsLive(

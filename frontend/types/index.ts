@@ -96,6 +96,12 @@ export interface StreamLink {
   isActive: boolean;
   createdAt: string | Date;
   updatedAt: string | Date;
+  author?: {
+    _id: string;
+    username?: string;
+    displayName?: string;
+    role: "SUPER_ADMIN" | "ADMIN";
+  } | null;
 }
 
 // Optional: Type for creating new link (without _id and timestamps)

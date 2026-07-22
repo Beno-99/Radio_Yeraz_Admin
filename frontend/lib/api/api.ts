@@ -248,7 +248,16 @@ export const postsAPI = {
       throw error;
     }
   },
-  toggleLive: (id: string) => api.put(`/posts/${id}/toggle-live`),
+  toggleLive: async (id: string) => {
+    const response = await api.put(`/posts/${id}/toggle-live`);
+    const data = response.data as { success?: boolean; message?: string };
+
+    if (data?.success === false) {
+      throw new Error(data.message || "Failed to update live status");
+    }
+
+    return data;
+  },
   createPost: async (formData: FormData) => {
     const response = await api.post("/posts", formData, {
       headers: {

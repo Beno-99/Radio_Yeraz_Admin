@@ -25,6 +25,20 @@ type MediaType = "image" | "youtube" | "facebook" | "none";
 const DEFAULT_EXPIRE_AFTER_DAYS = 5;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+const getPostEditErrorMessage = (error: unknown) => {
+  const apiError = error as {
+    response?: { data?: { message?: string } };
+    message?: string;
+  };
+  const message = apiError.response?.data?.message || apiError.message;
+
+  if (message === "You are not authorized to modify this post") {
+    return "You can't edit a post created by a super admin.";
+  }
+
+  return message || "Failed to update post";
+};
+
 const getExpireAfterDays = (postedDate?: string, expiresAt?: string) => {
   if (!postedDate || !expiresAt) return DEFAULT_EXPIRE_AFTER_DAYS;
 
@@ -319,24 +333,7 @@ export default function EditPostPage() {
     } catch (error: unknown) {
   Swal.close();
 
-  let errorMessage = "Failed to update post";
-
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "response" in error
-  ) {
-    const err = error as {
-      response?: {
-        data?: {
-          message?: string;
-        };
-      };
-    };
-
-    errorMessage =
-      err.response?.data?.message || errorMessage;
-  }
+  const errorMessage = getPostEditErrorMessage(error);
 
   Swal.fire({
     icon: "error",

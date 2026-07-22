@@ -7,6 +7,8 @@ import {
   Param,
   Delete,
   UseGuards,
+  Req,
+  ForbiddenException,
 } from '@nestjs/common';
 import { StreamLinkService } from './stream-link.service';
 import { CreateStreamLinkDto } from './dto/create-stream-link.dto';
@@ -20,6 +22,7 @@ import { AdminActiveGuard } from '../auth/guards/admin-active.guard';
 // Decorators
 import { Roles } from '../common/decorators/roles.decorator';
 import { Role } from '../admin/schemas/admin.schema';
+import { AuthenticatedRequest } from '../auth/interfaces/authenticated-request.interface';
 
 @Controller('stream-links')
 export class StreamLinkController {
@@ -45,21 +48,48 @@ export class StreamLinkController {
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard, AdminActiveGuard)
   @Roles(Role.ADMIN, Role.SUPER_ADMIN)
-  create(@Body() dto: CreateStreamLinkDto) {
-    return this.streamLinkService.create(dto);
+  create(@Req() req: AuthenticatedRequest, @Body() dto: CreateStreamLinkDto) {
+    return this.streamLinkService.create(dto, req.user.sub);
   }
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard, AdminActiveGuard)
   @Roles(Role.ADMIN, Role.SUPER_ADMIN)
-  update(@Param('id') id: string, @Body() dto: UpdateStreamLinkDto) {
+  async update(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() dto: UpdateStreamLinkDto,
+  ) {
+    const editPermission = await this.streamLinkService.canAdminEditStreamLink(
+      id,
+      req.user.sub,
+      req.user.role,
+    );
+    if (!editPermission.allowed) {
+      throw new ForbiddenException(
+        editPermission.message || "You can't edit this stream link.",
+      );
+    }
+
     return this.streamLinkService.update(id, dto);
   }
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard, AdminActiveGuard)
   @Roles(Role.ADMIN, Role.SUPER_ADMIN)
-  remove(@Param('id') id: string) {
+  async remove(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    const deletePermission =
+      await this.streamLinkService.canAdminDeleteStreamLink(
+        id,
+        req.user.sub,
+        req.user.role,
+      );
+    if (!deletePermission.allowed) {
+      throw new ForbiddenException(
+        deletePermission.message || "You can't delete this stream link.",
+      );
+    }
+
     return this.streamLinkService.remove(id);
   }
 }

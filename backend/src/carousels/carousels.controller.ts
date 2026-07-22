@@ -13,6 +13,7 @@ import {
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CarouselStatus } from '@prisma/client';
@@ -156,6 +157,25 @@ export class CarouselsController {
     @Body() updateCarouselDto: UpdateCarouselDto,
     @UploadedFile() file?: Express.Multer.File,
   ) {
+    const editPermission = await this.carouselsService.canAdminEditCarousel(
+      id,
+      req.user.sub,
+      req.user.role,
+    );
+    if (!editPermission.allowed) {
+      try {
+        if (file?.path && fs.existsSync(file.path)) {
+          fs.unlinkSync(file.path);
+        }
+      } catch (error) {
+        console.error('Failed to delete unauthorized carousel upload:', error);
+      }
+
+      throw new ForbiddenException(
+        editPermission.message || "You can't edit this carousel.",
+      );
+    }
+
     const authorName = req.user.displayName || req.user.username || 'Admin';
 
     if (file) {
@@ -206,10 +226,30 @@ export class CarouselsController {
     }),
   )
   async uploadCarouselImage(
+    @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) throw new BadRequestException('Image file is required');
+
+    const editPermission = await this.carouselsService.canAdminEditCarousel(
+      id,
+      req.user.sub,
+      req.user.role,
+    );
+    if (!editPermission.allowed) {
+      try {
+        if (file.path && fs.existsSync(file.path)) {
+          fs.unlinkSync(file.path);
+        }
+      } catch (error) {
+        console.error('Failed to delete unauthorized carousel upload:', error);
+      }
+
+      throw new ForbiddenException(
+        editPermission.message || "You can't edit this carousel.",
+      );
+    }
 
     const imagePath = `/uploads/carousels/${file.filename}`;
     const updatedCarousel = await this.carouselsService.updateImage(id, imagePath);
@@ -228,6 +268,17 @@ export class CarouselsController {
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
   ) {
+    const editPermission = await this.carouselsService.canAdminEditCarousel(
+      id,
+      req.user.sub,
+      req.user.role,
+    );
+    if (!editPermission.allowed) {
+      throw new ForbiddenException(
+        editPermission.message || "You can't edit this carousel.",
+      );
+    }
+
     const authorName = req.user.displayName || req.user.username || 'Admin';
     const carousel = await this.carouselsService.toggleActive(
       id,
@@ -246,6 +297,17 @@ export class CarouselsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   async deleteCarousel(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    const deletePermission = await this.carouselsService.canAdminDeleteCarousel(
+      id,
+      req.user.sub,
+      req.user.role,
+    );
+    if (!deletePermission.allowed) {
+      throw new ForbiddenException(
+        deletePermission.message || "You can't delete this carousel.",
+      );
+    }
+
     const authorName = req.user.displayName || req.user.username || 'Admin';
     await this.carouselsService.delete(id, authorName, req.user.sub);
 

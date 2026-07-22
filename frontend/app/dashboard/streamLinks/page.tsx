@@ -8,6 +8,19 @@ import { ConfirmationDialog } from "@/components/ConfirmationDialog";
 import { StreamLink } from "@/types";
 import { streamLinksAPI } from "@/lib/api/api";
 
+const getStreamLinkDeleteErrorMessage = (error: unknown) => {
+  const apiError = error as {
+    response?: { data?: { message?: string } };
+    message?: string;
+  };
+
+  return (
+    apiError.response?.data?.message ||
+    apiError.message ||
+    "Failed to delete stream link"
+  );
+};
+
 export default function StreamLinksPage() {
   const [streamLinks, setStreamLinks] = useState<StreamLink[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,7 +106,7 @@ export default function StreamLinksPage() {
       );
     } catch (error) {
       console.error("Delete failed:", error);
-      alert("Failed to delete stream link");
+      alert(getStreamLinkDeleteErrorMessage(error));
     } finally {
       setShowDeleteDialog(false);
       setLinkToDelete(null);

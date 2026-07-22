@@ -45,6 +45,20 @@ const getPostDeleteErrorMessage = (error: unknown) => {
   return message || "Failed to delete post";
 };
 
+const getPostEditErrorMessage = (error: unknown) => {
+  const apiError = error as {
+    response?: { data?: { message?: string } };
+    message?: string;
+  };
+  const message = apiError.response?.data?.message || apiError.message;
+
+  if (message === "You are not authorized to modify this post") {
+    return "You can't edit a post created by a super admin.";
+  }
+
+  return message || "Failed to update post";
+};
+
 interface Post {
   _id: string;
   title: string;
@@ -178,8 +192,8 @@ export default function PostDetailPage() {
     });
 
     toast.success("Live status updated");
-  } catch {
-    toast.error("Failed to update live status");
+  } catch (error) {
+    toast.error(getPostEditErrorMessage(error));
   }
 };
 

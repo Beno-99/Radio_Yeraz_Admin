@@ -50,6 +50,16 @@ export interface CarouselFindAllFilters {
   endDateGte?: Date;
 }
 
+interface CarouselDeletePermissionResult {
+  allowed: boolean;
+  message?: string;
+}
+
+interface CarouselEditPermissionResult {
+  allowed: boolean;
+  message?: string;
+}
+
 @Injectable()
 export class CarouselsService {
   constructor(
@@ -460,6 +470,56 @@ export class CarouselsService {
     );
   }
 
+  async canAdminEditCarousel(
+    carouselId: string,
+    adminId: string,
+    adminRole: Role,
+  ): Promise<CarouselEditPermissionResult> {
+    if (adminRole === Role.SUPER_ADMIN) return { allowed: true };
+
+    if (adminRole === Role.ADMIN) {
+      const carousel = await this.prisma.carousel.findUnique({
+        where: { id: carouselId },
+        select: {
+          authorId: true,
+          author: { select: { role: true } },
+        },
+      });
+      if (!carousel) {
+        return {
+          allowed: false,
+          message: 'Carousel not found',
+        };
+      }
+
+      if (carousel.authorId === adminId) return { allowed: true };
+
+      if (!carousel.authorId) {
+        return {
+          allowed: false,
+          message: "You can't edit this carousel.",
+        };
+      }
+
+      if (carousel.author?.role === AdminRole.SUPER_ADMIN) {
+        return {
+          allowed: false,
+          message: "You can't edit a carousel created by a super admin.",
+        };
+      }
+
+      return {
+        allowed: false,
+        message: "You can't edit a carousel created by another admin.",
+      };
+    }
+
+    return {
+      allowed: false,
+      message: "You can't edit this carousel.",
+    };
+  }
+
   async delete(
     id: string,
     authorName: string = 'Admin',
@@ -471,6 +531,8 @@ export class CarouselsService {
     });
     if (!carousel) throw new NotFoundException('Carousel not found');
 
+    await this.prisma.carousel.delete({ where: { id } });
+
     try {
       this.deleteMediaFileIfExists(carousel.image);
     } catch (e: unknown) {
@@ -479,8 +541,6 @@ export class CarouselsService {
         e instanceof Error ? e.message : String(e),
       );
     }
-
-    await this.prisma.carousel.delete({ where: { id } });
 
     try {
       await this.notificationGateway.emitCarouselDeleted(
@@ -496,5 +556,55 @@ export class CarouselsService {
     }
 
     return this.toCarouselResponse(carousel);
+  }
+
+  async canAdminDeleteCarousel(
+    carouselId: string,
+    adminId: string,
+    adminRole: Role,
+  ): Promise<CarouselDeletePermissionResult> {
+    if (adminRole === Role.SUPER_ADMIN) return { allowed: true };
+
+    if (adminRole === Role.ADMIN) {
+      const carousel = await this.prisma.carousel.findUnique({
+        where: { id: carouselId },
+        select: {
+          authorId: true,
+          author: { select: { role: true } },
+        },
+      });
+      if (!carousel) {
+        return {
+          allowed: false,
+          message: 'Carousel not found',
+        };
+      }
+
+      if (carousel.authorId === adminId) return { allowed: true };
+
+      if (!carousel.authorId) {
+        return {
+          allowed: false,
+          message: "You can't delete this carousel.",
+        };
+      }
+
+      if (carousel.author?.role === AdminRole.SUPER_ADMIN) {
+        return {
+          allowed: false,
+          message: "You can't delete a carousel created by a super admin.",
+        };
+      }
+
+      return {
+        allowed: false,
+        message: "You can't delete a carousel created by another admin.",
+      };
+    }
+
+    return {
+      allowed: false,
+      message: "You can't delete this carousel.",
+    };
   }
 }

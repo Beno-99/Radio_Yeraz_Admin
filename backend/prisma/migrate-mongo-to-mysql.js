@@ -309,6 +309,9 @@ async function migrateStreamLinks(prisma, database) {
       continue;
     }
 
+    const authorId = toId(doc.author);
+    const author = (await adminExists(prisma, authorId)) ? authorId : null;
+
     await prisma.streamLink.upsert({
       where: { id },
       update: {
@@ -319,6 +322,7 @@ async function migrateStreamLinks(prisma, database) {
         bitrate: Number.isInteger(doc.bitrate) ? doc.bitrate : null,
         displayOrder: Number.isInteger(doc.displayOrder) ? doc.displayOrder : 0,
         isActive: doc.isActive !== false,
+        authorId: author,
         createdAt: toDate(doc.createdAt),
         updatedAt: toDate(doc.updatedAt),
       },
@@ -331,6 +335,7 @@ async function migrateStreamLinks(prisma, database) {
         bitrate: Number.isInteger(doc.bitrate) ? doc.bitrate : null,
         displayOrder: Number.isInteger(doc.displayOrder) ? doc.displayOrder : 0,
         isActive: doc.isActive !== false,
+        authorId: author,
         createdAt: toDate(doc.createdAt),
         updatedAt: toDate(doc.updatedAt),
       },
