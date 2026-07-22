@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft, Upload, Image as ImageIcon, Video } from "lucide-react";
 import { toast } from "sonner";
 import { postsAPI } from "@/lib/api/api";
+import { getLocalStorageValue } from "@/lib/browser-storage";
 import { SimpleImageUpload } from "@/components/posts/PostImageUpload";
 import { ExternalLinksInput } from "@/components/posts/ExternalLinksInput";
 import { parseFacebookUrl } from "@/lib/facebook";
@@ -21,6 +22,19 @@ import { getYouTubeEmbedUrl, parseYouTubeUrl } from "@/lib/youtube";
 import Swal from "sweetalert2";
 
 type MediaType = "image" | "youtube" | "facebook" | "none";
+type AdminRole = "SUPER_ADMIN" | "ADMIN";
+
+interface StoredAdmin {
+  _id?: string;
+  id?: string;
+  sub?: string;
+  role?: string;
+}
+
+interface PostAuthorMeta {
+  id?: string;
+  role?: AdminRole;
+}
 
 const DEFAULT_EXPIRE_AFTER_DAYS = 5;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -37,6 +51,46 @@ const getPostEditErrorMessage = (error: unknown) => {
   }
 
   return message || "Failed to update post";
+};
+
+const normalizeAdminRole = (role?: string): AdminRole | undefined => {
+  if (role === "SUPER_ADMIN" || role === "ADMIN") return role;
+  return undefined;
+};
+
+const getCurrentAdmin = () => {
+  const rawUser = getLocalStorageValue("user");
+  if (!rawUser) return null;
+
+  try {
+    const user = JSON.parse(rawUser) as StoredAdmin;
+
+    return {
+      id: user._id || user.id || user.sub,
+      role: normalizeAdminRole(user.role),
+    };
+  } catch {
+    return null;
+  }
+};
+
+const getFrontendPostEditBlockMessage = (
+  postAuthor: PostAuthorMeta | null,
+) => {
+  const currentAdmin = getCurrentAdmin();
+
+  if (currentAdmin?.role !== "ADMIN") return null;
+  if (postAuthor?.id && postAuthor.id === currentAdmin.id) return null;
+
+  if (postAuthor?.role === "SUPER_ADMIN") {
+    return "You can't edit a post created by a super admin.";
+  }
+
+  if (postAuthor?.role === "ADMIN") {
+    return "You can't edit a post created by another admin.";
+  }
+
+  return "You can't edit this post.";
 };
 
 const getExpireAfterDays = (postedDate?: string, expiresAt?: string) => {
@@ -77,6 +131,7 @@ export default function EditPostPage() {
   const [postMeta, setPostMeta] = useState({
     postedDate: "",
   });
+  const [postAuthor, setPostAuthor] = useState<PostAuthorMeta | null>(null);
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -102,6 +157,7 @@ export default function EditPostPage() {
       try {
         const response = await postsAPI.getPost(postId);
         const post = response.data.data || response.data;
+        const author = post.author;
 
         setFormData({
           title: post.title || "",
@@ -125,6 +181,14 @@ export default function EditPostPage() {
         setPostMeta({
           postedDate: post.postedDate || "",
         });
+        setPostAuthor(
+          author
+            ? {
+                id: author._id || author.id,
+                role: normalizeAdminRole(author.role),
+              }
+            : null,
+        );
 
         if (post.facebookUrl || post.videoSource === "FACEBOOK") {
           setMediaType("facebook");
@@ -182,6 +246,17 @@ export default function EditPostPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const editBlockMessage = getFrontendPostEditBlockMessage(postAuthor);
+    if (editBlockMessage) {
+      await Swal.fire({
+        icon: "error",
+        title: "Permission denied",
+        text: editBlockMessage,
+        confirmButtonColor: "#7c3aed",
+      });
+      return;
+    }
 
     if (!formData.title.trim()) {
       await Swal.fire({
