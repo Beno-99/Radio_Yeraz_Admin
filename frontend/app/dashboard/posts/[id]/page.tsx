@@ -242,14 +242,14 @@ export default function PostDetailPage() {
     return parseYouTubeUrl(post.youtubeUrl)?.embedUrl ?? null;
   };
 
-  const getFacebookEmbedUrl = () => {
+  const getFacebookPreview = () => {
     if (!post) return null;
-    return parseFacebookUrl(post.facebookUrl)?.embedUrl ?? null;
+    return parseFacebookUrl(post.facebookUrl);
   };
 
   const imageUrl = getImageUrl();
   const youtubeEmbedUrl = getYoutubeEmbedUrl();
-  const facebookEmbedUrl = getFacebookEmbedUrl();
+  const facebookPreview = getFacebookPreview();
   const effectiveLiveStatus = getEffectiveLiveStatus(
     post?.liveStatus,
     post?.isLive,
@@ -370,15 +370,25 @@ export default function PostDetailPage() {
                 {getMediaLiveLabel("YouTube", post.liveStatus, post.isLive)}
               </div>
             </div>
-          ) : facebookEmbedUrl ? (
-            <div className="relative aspect-video w-full bg-black">
-              <iframe
-                src={facebookEmbedUrl}
-                title={post.title}
-                className="h-full w-full"
-                allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
-                allowFullScreen
-              />
+          ) : facebookPreview ? (
+            <div className="relative aspect-video w-full bg-blue-950">
+              <div className="flex h-full w-full flex-col items-center justify-center gap-4 px-6 text-center text-white">
+                <div className="rounded-full bg-blue-600 px-5 py-2 text-base font-bold">
+                  Facebook Video
+                </div>
+                <p className="max-w-md text-sm text-blue-100">
+                  Facebook may block embedded previews. Open the video directly
+                  on Facebook to watch it.
+                </p>
+                <a
+                  href={facebookPreview.normalizedUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-full bg-white px-5 py-2 text-sm font-bold text-blue-700 hover:bg-blue-50"
+                >
+                  Watch on Facebook
+                </a>
+              </div>
               <div
                 className={`absolute top-4 right-4 px-3 py-1.5 text-white text-sm font-medium rounded-full flex items-center gap-1.5 ${
                   getMediaLiveBadgeClass(post.liveStatus, post.isLive, "bg-blue-600")

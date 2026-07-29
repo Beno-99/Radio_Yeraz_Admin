@@ -145,7 +145,7 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
     const youtubeEmbedUrl =
       (post.youtubeVideoId ? getYouTubeEmbedUrl(post.youtubeVideoId) : null) ||
       parseYouTubeUrl(post.youtubeUrl)?.embedUrl;
-    const facebookEmbedUrl = parseFacebookUrl(post.facebookUrl)?.embedUrl;
+    const facebookPreview = parseFacebookUrl(post.facebookUrl);
     const effectiveLiveStatus = getEffectiveLiveStatus(
       post.liveStatus,
       post.isLive,
@@ -176,17 +176,25 @@ export function PostCard({ post, mediaUrl, onDelete }: PostCardProps) {
       );
     }
 
-    if (facebookEmbedUrl) {
+    if (facebookPreview) {
       return (
-        <div className="relative h-56 w-full overflow-hidden rounded-t-lg bg-black sm:h-72">
-          <div className="h-full w-full">
-            <iframe
-              src={facebookEmbedUrl}
-              title={post.title}
-              className="h-full w-full"
-              allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
-              allowFullScreen
-            />
+        <div className="relative h-56 w-full overflow-hidden rounded-t-lg bg-blue-950 sm:h-72">
+          <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-5 text-center text-white">
+            <div className="rounded-full bg-blue-600 px-4 py-2 text-sm font-bold">
+              Facebook Video
+            </div>
+            <p className="max-w-sm text-sm text-blue-100">
+              Facebook may block embedded previews. Open the video directly on
+              Facebook to watch it.
+            </p>
+            <a
+              href={facebookPreview.normalizedUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-full bg-white px-4 py-2 text-sm font-bold text-blue-700 hover:bg-blue-50"
+            >
+              Watch on Facebook
+            </a>
           </div>
           <div
             className={`absolute top-2 right-2 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-bold text-white flex items-center gap-1 uppercase tracking-wider ${

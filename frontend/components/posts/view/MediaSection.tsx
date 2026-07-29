@@ -23,7 +23,7 @@ export function MediaSection({
   const youtubeEmbedUrl =
     (youtubeVideoId ? getYouTubeEmbedUrl(youtubeVideoId) : null) ||
     parseYouTubeUrl(youtubeUrl)?.embedUrl;
-  const facebookEmbedUrl = parseFacebookUrl(facebookUrl)?.embedUrl;
+  const facebookPreview = parseFacebookUrl(facebookUrl);
 
   if (youtubeEmbedUrl) {
     return (
@@ -39,16 +39,26 @@ export function MediaSection({
     );
   }
 
-  if (facebookEmbedUrl) {
+  if (facebookPreview) {
     return (
-      <div className="relative aspect-video max-h-[600px] overflow-hidden bg-black">
-        <iframe
-          src={facebookEmbedUrl}
-          title={title}
-          className="h-full w-full"
-          allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
-          allowFullScreen
-        />
+      <div className="relative aspect-video max-h-[600px] overflow-hidden bg-blue-950">
+        <div className="flex h-full w-full flex-col items-center justify-center gap-4 px-6 text-center text-white">
+          <div className="rounded-full bg-blue-600 px-5 py-2 text-base font-bold">
+            Facebook Video
+          </div>
+          <p className="max-w-md text-sm text-blue-100">
+            Facebook may block embedded previews. Open the video directly on
+            Facebook to watch it.
+          </p>
+          <a
+            href={facebookPreview.normalizedUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-full bg-white px-5 py-2 text-sm font-bold text-blue-700 hover:bg-blue-50"
+          >
+            Watch on Facebook
+          </a>
+        </div>
       </div>
     );
   }
